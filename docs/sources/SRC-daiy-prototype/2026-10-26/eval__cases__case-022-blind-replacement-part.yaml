@@ -1,0 +1,15 @@
+id: CASE-022
+source: new
+status: draft
+title: Replacement part for blinds, no details
+persona: D
+profiles: [beginner, advanced]
+category: unclear
+input: "I need a replacement part for my blinds."
+expected: ask
+must:
+  - asks for the blind type, the broken part and dimensions or a photo
+must_not:
+  - product suggestions before the part is identified
+guards: [FR-02, AIR-02, AIR-05]
+complete_from_sprint: 1

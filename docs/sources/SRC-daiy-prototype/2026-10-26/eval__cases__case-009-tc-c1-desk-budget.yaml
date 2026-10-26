@@ -1,0 +1,23 @@
+id: CASE-009
+source: TC-C1
+status: draft
+title: Desk and storage for 60 euros, no tools
+persona: C
+profiles: [beginner, advanced]
+category: normal
+inventory:
+  materials: []
+  tools: []
+input: "Desk and storage for my room, max €60, I have no tools"
+expected: [ask, answer]
+must:
+  - second-hand and own items proposed before new ones (SUS-07, FR-05)
+  - total cost estimate, stated as an estimate (G2, only once accepted)
+  - missing tools listed with a rent-or-borrow hint (FR-12)
+  - offer data marked with source and freshness (SUS-04, AIR-06)
+must_not:
+  - a purchase inside the app (FR-09)
+  - specific listings claimed as available without data
+guards: [FR-04, FR-05, FR-12, SUS-01, SUS-04, SUS-07, AIR-06]
+complete_from_sprint: 7
+review_notes: "Budget handling depends on G2 (sprint 8 if accepted)."

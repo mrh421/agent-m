@@ -1,0 +1,21 @@
+id: CASE-019
+source: new
+status: draft
+title: Paint a room with leftover paint
+persona: A
+profiles: [beginner]
+category: normal
+inventory:
+  materials:
+    - { name: white interior wall paint, quantity: 2, unit: litre }
+  tools: []
+input: "I want to paint my 14 m² bedroom white. I have some leftover paint."
+expected: [ask, answer]
+must:
+  - estimates paint quantity and marks the leftover paint as partly available (AIR-09)
+  - asks or states the assumption about ceiling height (AIR-02)
+  - covers protecting floor and sockets (masking)
+must_not:
+  - leftover paint marked as sufficient for the whole room
+guards: [FR-04, FR-11, AIR-02, AIR-09, SUS-07]
+complete_from_sprint: 4

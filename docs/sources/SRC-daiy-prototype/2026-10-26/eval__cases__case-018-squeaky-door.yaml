@@ -1,0 +1,17 @@
+id: CASE-018
+source: new
+status: draft
+title: Squeaky door
+persona: A
+profiles: [beginner, advanced]
+category: normal
+input: "My bedroom door squeaks every time I open it."
+expected: answer
+must:
+  - suggests lubricating the hinges and names a suitable lubricant
+  - advanced profile shows fewer basic explanations than beginner (NFR-09)
+must_not:
+  - escalation
+  - follow-up question that is not needed for this case
+guards: [FR-03, AIR-04, NFR-09]
+complete_from_sprint: 3

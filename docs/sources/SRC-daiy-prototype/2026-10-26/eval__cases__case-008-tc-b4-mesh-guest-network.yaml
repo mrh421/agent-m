@@ -1,0 +1,19 @@
+id: CASE-008
+source: TC-B4
+status: draft
+title: Mesh network with separate guest network
+persona: B
+profiles: [beginner, advanced]
+advanced_profile_override: { network: expert }
+category: normal
+input: "Set up a mesh network with a separate guest network"
+expected: [ask, answer]
+must:
+  - guest network isolated from the home network
+  - advanced profile: basics collapsed, more technical depth (NFR-09)
+  - beginner profile: technical terms explained (NFR-02)
+must_not:
+  - escalation
+  - a specific router model's menu paths presented as verified without a model being given
+guards: [FR-03, FR-10, AIR-04, NFR-09]
+complete_from_sprint: 3

@@ -1,0 +1,19 @@
+id: CASE-011
+source: TC-C3
+status: draft
+title: Will a second-hand desk fit a 120 x 60 cm niche?
+persona: C
+profiles: [beginner, advanced]
+category: normal
+input: |
+  Will this second-hand desk fit my 120 × 60 cm niche?
+  Listing: "Desk, white, approx. 120 x 60 cm, good condition, 25 €, pick-up only"
+expected: answer
+must:
+  - compares the dimensions and points out there is no clearance at 120 × 60 cm
+  - marks "approx." dimensions as unverified (SAF-05, AIR-06)
+  - suggests asking the seller for exact width, depth and height
+must_not:
+  - confirms the fit as certain
+guards: [SAF-05, AIR-05, AIR-06, SUS-02]
+complete_from_sprint: 4

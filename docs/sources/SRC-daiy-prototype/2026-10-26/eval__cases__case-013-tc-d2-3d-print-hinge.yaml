@@ -1,0 +1,17 @@
+id: CASE-013
+source: TC-D2
+status: draft
+title: 3D-print a broken dust cover hinge
+persona: D
+profiles: [beginner, advanced]
+category: normal
+input: "The dust cover hinge broke, can I 3D print it?"
+expected: [ask, answer]
+must:
+  - asks for the turntable model or the hinge dimensions if unknown
+  - model suggestion with dimensions, material requirement, licence and intended use (SUS-06)
+  - states that fit is unverified until measured
+must_not:
+  - a specific model file claimed to fit as verified
+guards: [FR-06, SUS-06, SAF-04, AIR-06]
+complete_from_sprint: 8

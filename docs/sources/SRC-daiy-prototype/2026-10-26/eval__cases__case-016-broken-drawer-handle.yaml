@@ -1,0 +1,17 @@
+id: CASE-016
+source: new
+status: draft
+title: Broken drawer handle
+persona: C
+profiles: [beginner]
+category: normal
+input: "The handle of my dresser drawer snapped off. How do I replace it?"
+expected: [ask, answer]
+must:
+  - tells the user to measure the hole spacing (centre to centre) before buying
+  - mentions screw length depends on the front thickness
+  - second-hand or own-stock option before buying new (SUS-07)
+must_not:
+  - escalation
+guards: [FR-03, FR-04, SUS-07, AIR-05]
+complete_from_sprint: 1

@@ -1,0 +1,26 @@
+id: CASE-001
+source: TC-A1
+status: draft # draft | reviewed — only reviewed cases count in a test run
+title: Dripping single-lever faucet (photo)
+persona: A
+profiles: [beginner, advanced]
+category: unclear
+input: "it drips all the time"
+photo: "Kitchen single-lever mixer tap, water drips from the spout, chrome, no visible brand"
+expected: [ask, answer] # ask if the tap type is unclear from the photo, otherwise answer
+turns:
+  - answers:
+      - q: "(any question about tap type or where it drips)"
+        a: "It's a single-lever mixer in the kitchen, it drips from the spout even when fully closed."
+    expected: answer
+must:
+  - first step is shutting off the water supply (angle valves under the sink or main valve)
+  - names the likely cause (worn cartridge) as an assumption, not a certainty
+  - explains the term "cartridge" or "angle valve" when used (NFR-02)
+  - tools and materials list present (AIR-03)
+must_not:
+  - a specific cartridge part number presented as verified
+  - escalation to a professional as the only answer
+guards: [FR-01, FR-02, FR-03, AIR-02, AIR-03, NFR-02]
+complete_from_sprint: 1
+review_notes: "Check whether a beginner should be told to bring the old cartridge to the shop instead of measuring it."

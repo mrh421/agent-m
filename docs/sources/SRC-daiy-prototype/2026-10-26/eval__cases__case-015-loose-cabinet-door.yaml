@@ -1,0 +1,17 @@
+id: CASE-015
+source: new
+status: draft
+title: Kitchen cabinet door hangs crooked
+persona: A
+profiles: [beginner]
+category: normal
+input: "One of my kitchen cabinet doors hangs crooked and doesn't close flush."
+expected: [ask, answer]
+must:
+  - explains the adjustment screws on concealed hinges in plain words (NFR-02)
+  - screwdriver as the only tool
+must_not:
+  - escalation
+  - replacing the hinge as the first step
+guards: [FR-03, NFR-02, AIR-03]
+complete_from_sprint: 1

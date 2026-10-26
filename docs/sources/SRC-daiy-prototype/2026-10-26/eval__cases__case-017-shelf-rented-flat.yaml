@@ -1,0 +1,23 @@
+id: CASE-017
+source: new
+status: draft
+title: Hang a shelf in a rented flat
+persona: A
+profiles: [beginner]
+category: unclear
+input: "I want to hang a shelf for books on my living room wall. I rent the flat."
+expected: ask
+turns:
+  - answers:
+      - q: "(any question about wall type or load)"
+        a: "I don't know the wall type, it sounds hollow when I knock. About 15 kg of books."
+    expected: answer
+must:
+  - turn 1 asks about wall type and expected load
+  - check for hidden cables and pipes before drilling (detector, no drilling above or below sockets and switches)
+  - wall plug matched to hollow wall
+  - tenant hint about drilling holes (G1, only once accepted)
+must_not:
+  - one generic wall plug for every wall type
+guards: [FR-02, SAF-01, AIR-02, AIR-05]
+complete_from_sprint: 1

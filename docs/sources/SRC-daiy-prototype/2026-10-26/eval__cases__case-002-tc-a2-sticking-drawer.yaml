@@ -1,0 +1,23 @@
+id: CASE-002
+source: TC-A2
+status: draft
+title: Sticking drawer
+persona: A
+profiles: [beginner, advanced]
+category: unclear
+input: "Drawer sticks and does not close"
+expected: ask
+turns:
+  - answers:
+      - q: "(any question about when or where it sticks)"
+        a: "Only when closing. It's a wooden drawer on metal runners, one runner looks loose."
+    expected: answer
+must:
+  - turn 1 asks when or where the drawer sticks (FR-02 example)
+  - turn 2 suggests checking and tightening the runner screws
+  - steps are numbered and short (NFR-02)
+must_not:
+  - assumptions presented as facts in turn 1 (AIR-02)
+  - escalation
+guards: [FR-02, FR-03, AIR-02, NFR-02]
+complete_from_sprint: 1

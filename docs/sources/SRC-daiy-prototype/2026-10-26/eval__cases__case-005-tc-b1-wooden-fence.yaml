@@ -1,0 +1,32 @@
+id: CASE-005
+source: TC-B1
+status: draft
+title: 12 m wooden fence with own stock
+persona: B
+profiles: [beginner, advanced]
+category: normal
+inventory:
+  materials:
+    - { name: quick-set concrete, quantity: 3, unit: bag (25 kg) }
+    - { name: larch boards, quantity: 12, unit: piece (2 m) }
+    - { name: stainless steel screws 5x50, quantity: 200, unit: piece }
+  tools: [cordless drill, mitre saw, laser level, manual post-hole auger]
+input: "I want to build a 12 m wooden fence along the garden boundary."
+expected: [ask, answer]
+turns:
+  - answers:
+      - q: "(any question about height, post spacing or ground)"
+        a: "About 1.2 m high, posts every 2 m, normal garden soil, horizontal boards."
+    expected: answer
+must:
+  - concrete marked "partly available" with the missing quantity (US-4, AIR-09)
+  - product suggestions only for missing items (FR-04, SUS-07)
+  - fence height and distance to the boundary marked "check locally" (AIR-10)
+  - advanced profile: basic steps (e.g. using a spirit level) collapsed but expandable (NFR-09)
+must_not:
+  - a legal maximum fence height stated as fact
+  - concrete marked as fully available
+  - suggestions to buy items that are in the inventory in sufficient quantity
+guards: [FR-04, FR-11, AIR-09, AIR-10, SUS-07, NFR-09]
+complete_from_sprint: 4
+review_notes: "Missing-tool hint (FR-12) only from sprint 7. Larch board quantity is deliberately too low; check that the app notices."
