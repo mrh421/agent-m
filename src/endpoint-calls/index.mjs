@@ -1,6 +1,8 @@
 // MOD-endpoint-calls — direct endpoint tests, diagnoses, and model drivers for browser and Node callers.
 
-import { driverPrompt, estimate } from "../job-runner/index.mjs";
+import { driverPrompt } from "../job-runner/index.mjs";
+import { toolLoop } from "./loop.mjs";
+import { RETRY_MAX_RETRIES, retryDelay, retryable, wait } from "./retries.mjs";
 
 /**
  * @typedef {{ name: string, kind: "openai-compatible" | "anthropic", baseUrl: string, model: string, key: string | null }} EndpointConfig
@@ -39,7 +41,7 @@ function openaiMessages(messages) {
     const result = { role: message.role, content: message.text };
     if (message.role === "tool") result.tool_call_id = message.callId;
     if (message.calls?.length) result.tool_calls = message.calls.map((call) => ({
-      id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.args) },
+      id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.args ?? {}) },
     }));
     return result;
   });
@@ -51,7 +53,7 @@ function anthropicMessages(messages) {
     if (message.role === "assistant") {
       const content = [];
       if (message.text) content.push({ type: "text", text: message.text });
-      for (const call of message.calls ?? []) content.push({ type: "tool_use", id: call.id, name: call.name, input: call.args });
+      for (const call of message.calls ?? []) content.push({ type: "tool_use", id: call.id, name: call.name, input: call.args ?? {} });
       result.push({ role: "assistant", content: message.calls?.length ? content : message.text });
       continue;
     }
@@ -68,7 +70,9 @@ function anthropicMessages(messages) {
   return result;
 }
 
-function providerRequest(config, prompt, { maxTokens = config.kind === "anthropic" ? DRIVER_MAX_TOKENS : null, signal, messages, tools = [] } = {}) {
+// One request in the endpoint's own form. `maxTokens` is the most the answer may hold — 1024 on Anthropic and none on an OpenAI-compatible endpoint where
+// the caller names none —; `system` is sent as the endpoint's system prompt.
+function providerRequest(config, prompt, { maxTokens = config.kind === "anthropic" ? DRIVER_MAX_TOKENS : null, signal, messages, tools = [], system = null } = {}) {
   if (config.kind === "anthropic") {
     const headers = {
       "content-type": "application/json",
@@ -78,6 +82,7 @@ function providerRequest(config, prompt, { maxTokens = config.kind === "anthropi
     if (config.key !== null) headers["x-api-key"] = config.key;
     const body = { model: config.model, max_tokens: maxTokens,
       messages: messages ? anthropicMessages(messages) : [{ role: "user", content: prompt }] };
+    if (system) body.system = system;
     if (tools.length) body.tools = tools.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.input }));
     return {
       url: endpointUrl(config.baseUrl, "/messages"),
@@ -88,7 +93,7 @@ function providerRequest(config, prompt, { maxTokens = config.kind === "anthropi
 
   const headers = { "content-type": "application/json" };
   if (config.key !== null) headers.Authorization = `Bearer ${config.key}`;
-  const history = messages ? openaiMessages(messages) : [{ role: "user", content: prompt }];
+  const history = [...(system ? [{ role: "system", content: system }] : []), ...(messages ? openaiMessages(messages) : [{ role: "user", content: prompt }])];
   const body = maxTokens === null ? { model: config.model, messages: history } : { model: config.model, messages: history, max_tokens: maxTokens };
   if (tools.length) body.tools = tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.input } }));
   return {
@@ -123,26 +128,54 @@ function answerOf(body, kind) {
   return kind === "anthropic" ? body?.content?.find((part) => part.type === "text")?.text : body?.choices?.[0]?.message?.content;
 }
 
+// A call whose arguments are not JSON keeps them as `invalid: { text, message }` — the text it sent and why it cannot be read —, for the loop to answer.
+function argumentsOf(call) {
+  try {
+    return { id: call.id, name: call.function.name, args: JSON.parse(call.function.arguments) };
+  } catch (error) {
+    return { id: call.id, name: call.function.name, args: null, invalid: { text: String(call.function.arguments), message: error.message } };
+  }
+}
+
+// The answer of one request: its text, the calls it makes, the usage reported, and `cut` where it ended at the output limit — finish_reason `length`,
+// stop_reason `max_tokens`.
 function exchangeAnswer(body, kind) {
   const calls = kind === "anthropic"
     ? (body?.content ?? []).filter((part) => part.type === "tool_use").map((part) => ({ id: part.id, name: part.name, args: part.input }))
-    : (body?.choices?.[0]?.message?.tool_calls ?? []).map((call) => ({ id: call.id, name: call.function.name, args: JSON.parse(call.function.arguments) }));
+    : (body?.choices?.[0]?.message?.tool_calls ?? []).map(argumentsOf);
   const text = kind === "anthropic"
     ? (body?.content ?? []).filter((part) => part.type === "text").map((part) => part.text).join("")
     : body?.choices?.[0]?.message?.content ?? "";
-  return { text, calls, usage: usageOf(body?.usage) };
+  const cut = kind === "anthropic" ? body?.stop_reason === "max_tokens" : body?.choices?.[0]?.finish_reason === "length";
+  return { text, calls, usage: usageOf(body?.usage), ...(cut ? { cut } : {}) };
 }
 
-// One provider request: return calls to the caller without executing or following them.
-export async function endpointExchange(config, exchange) {
-  const where = typeof window === "undefined" ? "node" : "browser";
-  const request = providerRequest(config, null, { messages: exchange.messages, tools: exchange.tools });
-  const response = await endpointResponse(config, request, where);
-  if (!response.ok) {
-    const message = await responseMessage(response);
-    const diagnosis = diagnoseEndpoint({ status: response.status, message }, config, where);
-    throw new EndpointFailed(diagnosis);
+// A request sent, and sent again where it failed as opencode retries — a rate limit, a server error or a network error, up to five times, after the delay
+// retries.mjs gives; never a context overflow. Returns the response that is ok; throws EndpointFailed with the last failure's diagnosis.
+async function sentWithRetries(config, { url, init }, where, signal) {
+  for (let attempt = 1; ; attempt++) {
+    let diagnosis, status, headers = null;
+    try {
+      const response = await fetch(url, { ...init, signal });
+      if (response.ok) return response;
+      status = response.status;
+      headers = response.headers;
+      diagnosis = diagnoseEndpoint({ status, message: await responseMessage(response) }, config, where);
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      diagnosis = diagnoseEndpoint(error, config, where);
+    }
+    if (attempt > RETRY_MAX_RETRIES || !retryable(status, diagnosis)) throw new EndpointFailed(diagnosis);
+    await wait(retryDelay(attempt, headers), signal);
   }
+}
+
+// One provider request: return calls to the caller without executing or following them. A failed request is sent again as retries.mjs says.
+export async function endpointExchange(config, exchange, { signal } = {}) {
+  const where = typeof window === "undefined" ? "node" : "browser";
+  const request = providerRequest(config, null, { messages: exchange.messages, tools: exchange.tools, system: exchange.system ?? null,
+    ...(exchange.maxTokens ? { maxTokens: exchange.maxTokens } : {}) });
+  const response = await sentWithRetries(config, request, where, signal);
   try {
     return exchangeAnswer(await response.json(), config.kind);
   } catch (error) {
@@ -150,57 +183,18 @@ export async function endpointExchange(config, exchange) {
   }
 }
 
-function addUsage(total, usage) {
-  if (!usage) return total;
-  if (!total) return { ...usage };
-  const sum = (a, b) => (a === null ? b : b === null ? a : a + b);
-  return { inputTokens: sum(total.inputTokens, usage.inputTokens), outputTokens: sum(total.outputTokens, usage.outputTokens), minutes: null, cost: null };
-}
-
-// The execution loop: each request is one endpointExchange; the runner's ToolUse carries every call out.
-// A tool's result that would carry the conversation past the participant's declared context is not added: the model is told its size and what is left, so that
-// it asks for a smaller part (UC-049 3a: nothing is left out silently, nothing is sent that does not fit). Null `context`: no bound is known, and none is applied.
-async function toolLoop(config, input, signal, exchangeOf, context = null) {
-  const { definitions, limit } = input.tools;
-  const messages = [{ role: "user", text: driverPrompt(input) }];
-  const used = () => messages.reduce((sum, message) => sum + estimate(message.text ?? "") + (message.calls ? estimate(JSON.stringify(message.calls)) : 0), 0);
-  let offered = definitions, carriedOut = 0, usage = null;
-  for (;;) {
-    signal?.throwIfAborted();
-    const answer = await exchangeOf(config, { messages, tools: offered });
-    usage = addUsage(usage, answer.usage);
-    if (answer.calls.length === 0 || offered.length === 0) return { text: answer.text, usage };
-    messages.push({ role: "assistant", text: answer.text, calls: answer.calls });
-    for (const requested of answer.calls) {
-      let text;
-      if (carriedOut < limit) {
-        signal?.throwIfAborted();
-        text = await input.tools.call(requested.name, requested.args);
-        carriedOut += 1;
-        const size = estimate(text), left = context === null ? null : context - used();
-        if (left !== null && size > left) {
-          text = `refused: the result of ${requested.name} holds about ${size} tokens, and about ${Math.max(0, left)} of the context's ${context} tokens are left; `
-            + "ask for a smaller part — search-files for the lines you need, or read a shorter file";
-        }
-      } else text = `refused: the limit of ${limit} tool calls is reached`;
-      messages.push({ role: "tool", text, callId: requested.id });
-    }
-    if (carriedOut >= limit) offered = [];
-  }
-}
-
-// endpointDriver(config, participant) -> Driver — one direct exchange for a prepared job prompt, or, where the input offers
-// tools, the requests of the execution loop — each one call of `exchange`, which is endpointExchange unless the caller gives its own; no route selection, retries, input cutting, or part duplication belongs here.
-export function endpointDriver(config, participant, exchange = endpointExchange) {
+// endpointDriver(config, participant, exchange?, { system }?) -> Driver — one direct exchange for a prepared job prompt, or, where the input offers tools,
+// the requests of the execution loop (loop.mjs) — each one call of `exchange`, which is endpointExchange unless the caller gives its own —, `system` sent as
+// the endpoint's system prompt in the loop. A failed request is sent again as retries.mjs says; no route selection, input cutting or part duplication
+// belongs here.
+export function endpointDriver(config, participant, exchange = endpointExchange, { system = null } = {}) {
   return { participant, async send(input, options = {}) {
-    if (input.tools?.definitions?.length) return toolLoop(config, input, options.signal, exchange, Number.isInteger(participant?.context) ? participant.context : null);
-    const where = typeof window === "undefined" ? "node" : "browser";
-    const { url, init } = driverRequest(config, driverPrompt(input), options.signal);
-    const response = await endpointResponse(config, { url, init }, where);
-    if (!response.ok) {
-      const message = await responseMessage(response);
-      throw new EndpointFailed(diagnoseEndpoint({ status: response.status, message }, config, where));
+    if (input.tools?.definitions?.length) {
+      return toolLoop(config, input, { exchange: exchange ?? endpointExchange, signal: options.signal, system,
+        context: Number.isInteger(participant?.context) ? participant.context : null });
     }
+    const where = typeof window === "undefined" ? "node" : "browser";
+    const response = await sentWithRetries(config, driverRequest(config, driverPrompt(input), options.signal), where, options.signal);
     const body = await response.json();
     return { text: answerOf(body, config.kind), usage: usageOf(body?.usage) };
   } };

@@ -373,6 +373,25 @@ test("queue-entries — two queues of one day in one repository get the day and 
   assert.match(folderOf(g.instance.host.commits[0])[0], /^docs\/spec-freigaben\/2026-10-12_/, "another repository: no letter");
 });
 
+// TST-1360301 · level: unit · module: MOD-spec-changes
+// guards: A REVIEWED ARTIFACT ENTERS THE DEFAULT BRANCH AS OPEN; A HOSTED JOB WRITES WITH THE PERSON'S TOKEN FROM A CI SECRET; UC-049
+// given: a product that is its own instance, held in two checkouts with two hosts — as a hosted job holds it, where only the product's checkout writes into the job's
+//   result (JOB-20261026-2019-0155: the instance's push was refused) —; both snapshots name the repository https://github.com/alice/product; a result with a candidate
+//   for the product and one that constrains the process
+// input: the writer
+// expect: both queues are committed through the product's host, none through the instance's; the second commit's expectedHead is the first commit, so the two follow
+//   each other in one repository
+test("queue-entries — a product that is its own instance in two checkouts writes both queues through the product's host", async () => {
+  const f = fixture();
+  const web = "https://github.com/alice/product";
+  f.product.snapshot.repository = { web };
+  f.instance.snapshot.repository = { web };
+  await writer(resultOf([NEW, candidate("A PROCESS RULE", { constrains: "process" })]), f.context);
+  assert.equal(f.instance.host.commits.length, 0, "nothing through the instance's checkout");
+  assert.equal(f.product.host.commits.length, 2);
+  assert.equal(f.product.host.commits[1].expectedHead, "product-commit-1".padEnd(40, "0"));
+});
+
 // ---------------------------------------------------------------- two changes of one requirement (ITM-636)
 
 const SECOND_CHANGE = candidate("A SECOND NAME", { rule: "A reader reads a file whole, or names why not.", check: "`tests/second.test.mjs`", class: "change", of: "A SAMPLE RULE" });

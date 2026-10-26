@@ -43,8 +43,8 @@ async function server(answer, { hold = null } = {}) {
     const request = { method: req.method, url: req.url, headers: req.headers, body: text ? JSON.parse(text) : null };
     seen.push(request);
     if (hold) await hold.promise;
-    const { status, body } = answer(request);
-    res.writeHead(status, { "content-type": "application/json" });
+    const { status, body, headers = {} } = answer(request);
+    res.writeHead(status, { "content-type": "application/json", ...headers });
     res.end(JSON.stringify(body));
   });
   await new Promise((resolve) => http.listen(0, "127.0.0.1", resolve));
@@ -121,12 +121,14 @@ test("an endpoint ask sends the key in the provider's header and in no url", asy
 
 // TST-472086 · level: unit · module: MOD-bridge-jobs
 // guards: A REMOTE INTERFACE NAMES HOW IT FAILS; UC-003
-// given: a model server that refuses the key with 401 and a message that quotes the key; one that cannot be reached (its port closed); one that answers with a rate limit
-// input: POST /v1/ask to each; GET until it ends
-// expect: refused: state failed, text and usage null, an error that names "key refused" and the endpoint's words with the key replaced by [key]; unreachable: failed naming "not reachable"; rate-limited: failed naming "rate limited"
-test("a refused key, an unreachable server and a rate limit are failed asks with the endpoint's own words", async () => {
+// given: a model server that refuses the key with 401 and a message that quotes the key; one that cannot be reached (its port closed); one that answers every
+//   request with a rate limit and retry-after-ms 0
+// input: POST /v1/ask to each; GET until it ends — for the unreachable one, with this test's timers mocked and advanced, since its five retries wait 2 s to 30 s
+// expect: refused: state failed, text and usage null, an error that names "key refused" and the endpoint's words with the key replaced by [key], after one
+//   request; unreachable: failed naming "not reachable"; rate-limited: failed naming "rate limited", after six requests — the request and five retries
+test("a refused key, an unreachable server and a rate limit are failed asks with the endpoint's own words", async (t) => {
   const refusing = await server(() => ({ status: 401, body: { error: { message: `Incorrect API key provided: ${KEY}.` } } }));
-  const limited = await server(() => ({ status: 429, body: { error: { message: "Too many requests today." } } }));
+  const limited = await server(() => ({ status: 429, headers: { "retry-after-ms": "0" }, body: { error: { message: "Too many requests today." } } }));
   const closed = await server(ok("never", null));
   const closedBase = closed.base;
   await closed.close();
@@ -139,15 +141,25 @@ test("a refused key, an unreachable server and a rate limit are failed asks with
     assert.match(refused.error, /key refused/);
     assert.match(refused.error, /Incorrect API key provided: \[key\]\./);
     assert.equal(refused.error.includes(KEY), false);
-
-    const unreachable = await finished(handlers, (await post(handlers, { endpoint: endpointOf(closedBase), input: "Hello." })).ask);
-    assert.equal(unreachable.state, "failed");
-    assert.match(unreachable.error, /not reachable/);
+    assert.equal(refusing.seen.length, 1);
 
     const slow = await finished(handlers, (await post(handlers, { endpoint: endpointOf(limited.base), input: "Hello." })).ask);
     assert.equal(slow.state, "failed");
     assert.match(slow.error, /rate limited/);
     assert.match(slow.error, /Too many requests today\./);
+    assert.equal(limited.seen.length, 6);
+
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const { ask } = await post(handlers, { endpoint: endpointOf(closedBase), input: "Hello." });
+    let unreachable = await read(handlers, ask);
+    for (let step = 0; step < 400 && unreachable.state === "running"; step++) {
+      await new Promise((resolve) => setImmediate(resolve));
+      t.mock.timers.tick(1000);
+      unreachable = await read(handlers, ask);
+    }
+    t.mock.timers.reset();
+    assert.equal(unreachable.state, "failed");
+    assert.match(unreachable.error, /not reachable/);
   } finally { await refusing.close(); await limited.close(); }
 });
 

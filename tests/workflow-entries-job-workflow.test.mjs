@@ -242,14 +242,15 @@ test("onRecordsChanged — a missing secret ends the entry not run, naming it, w
 // guards: ONE DEFINITION, THREE DRIVERS; A JOB IS RECORDED IN ITS PRODUCT REPOSITORY
 // given: the product with a queued job and the workspace of the job workflow
 // input: onRecordsChanged; the recipe of the kind keeps the context the entry gives the runner
-// expect: the context names the product's address, the instance's checkout — the workspace's instance/ folder — with a snapshot read from it that holds the participants' register, the job's identifier, the person who started it, Agent M's version and commit as the record names them, and the participants the register lists
-test("onRecordsChanged — the job's context names the instance's checkout", async () => {
+// expect: the context names the product's address and no instance checkout — the job's participant is a model endpoint in Agent M's own tool loop, which reads no
+//   files of a checkout itself (MOD-job-runner: `instance.checkout` is the folder in which the participant works and reads files itself) —, with the instance's snapshot read from the workspace's instance/ folder, holding the participants' register, the job's identifier, the person who started it, Agent M's version and commit as the record names them, and the participants the register lists
+test("onRecordsChanged — the job's context of an endpoint in Agent M's own tool loop names no instance checkout", async () => {
   fakeEndpoint();
   seen = null;
   await withWorkspace({ records: (agentM) => [recordFile(jobStart(JOB, { agentM }))] }, async (w) => {
     await run(w);
     assert.ok(seen, "the recipe was given a context");
-    assert.equal(seen.instance.checkout, join(w.workspace, "instance"));
+    assert.equal(seen.instance.checkout, undefined);
     assert.equal(await seen.instance.snapshot.read("docs/participants.md"), PARTICIPANTS);
     assert.equal(seen.product.address, "https://github.com/alice/thesis-tool");
     assert.equal(seen.jobId, JOB);

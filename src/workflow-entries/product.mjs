@@ -112,7 +112,8 @@ const PLANNED = /^ITM-\d+$/;
 // writer writes at once. -> the lines the job's end lists: what its writer wrote, or `not run: <kind> — <why>`.
 async function handedOver(handOver, context, participant, driver, record) {
   const worksOn = [handOver.works_on].flat().filter(Boolean).map(String);
-  const notRun = (why) => [`not run: ${handOver.kind} — ${why}`];
+  // One line each, as the record's `results` holds them: a failure's own text may span several, as git's does.
+  const notRun = (why) => [`not run: ${handOver.kind} — ${String(why).replace(/\s*\n\s*/g, " ")}`];
   let kind;
   try {
     kind = await kindOf(handOver.kind);
@@ -196,11 +197,15 @@ async function runJobOf(env, composed, participants, row, handOver = null) {
   let ended = { state: "failed", results: [], draft: null, rounds: [], usage: null, reason: null }, outcome = null, endpoint = null;
   try {
     context.kind = await kindOf(record.kind);
+    endpoint = handOver?.endpoint ? endpointOf(handOver.endpoint) : null;
+    // A model endpoint driven by Agent M's own tool loop works in no checkout: its input begins with AGENTS.md as text, not as a path in the
+    // instance's checkout, which only a coding agent can read (EVERY MODEL READS AGENT M'S AGENTS.MD FIRST).
+    const ownLoop = endpoint ? readsAndDrafts(context.kind) : Boolean((record.params ?? {}).endpoint);
+    if (ownLoop) context.instance = { ...context.instance, checkout: undefined };
     const prepared = await prepareJob(record.kind, context, { drafter: participant, reviewers: [], limit: record.limit });
     if (prepared.blocking.length > 0 || prepared.notFitting.length > 0) {
       throw Object.assign(new Error(prepared.blocking.map((found) => found.what).join("; ") || "the job does not fit its participant"), { name: "NotStartable" });
     }
-    endpoint = handOver?.endpoint ? endpointOf(handOver.endpoint) : null;
     const driver = !endpoint ? await driverOf(participant, record.params ?? {}, secretName, job.keys[secretName], instance.checkout)
       : readsAndDrafts(context.kind) ? endpointDriver({ name: "hand-over", ...endpoint, key: job.keys[secretName] ?? null }, participant)
         : await opencodeDriver(participant, endpoint, secretName, job.productDir ?? instance.checkout);

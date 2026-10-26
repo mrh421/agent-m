@@ -136,7 +136,7 @@ async function withWorkspace(params, run, { extraBin = null } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-m-converse-")));
   const workspace = join(root, "ws");
   try {
-    const instance = repository(root, "instance", { "README.md": "# Instance\n", "docs/participants.md": PARTICIPANTS, [`docs/sources/${PO}.md`]: PO_ENTRY,
+    const instance = repository(root, "instance", { "README.md": "# Instance\n", "AGENTS.md": RULES_TEXT, "docs/participants.md": PARTICIPANTS, [`docs/sources/${PO}.md`]: PO_ENTRY,
       "docs/sources/SRC-vibe-coding.md": BOOK_ENTRY, ...Object.fromEntries(CHAPTERS.map(([name, body]) => [`docs/sources/SRC-vibe-coding/2026-10-05/${name}`, body])) },
     join(workspace, "instance"));
     const agentM = { version: "2026.10.0", commit: git(join(workspace, "instance"), "rev-parse", "HEAD") };
@@ -166,6 +166,9 @@ function snapshotAt(w, ref = "main") {
 // The world: the model endpoint, which answers by the prompt it is sent — a change kind's draft for the prompt of that kind, the conversation's draft for any other —, and the repository
 // server's API: the product's history, answered from its origin by git, and the pull requests, of which every opening is kept.
 const PROMPTS = { "change-requirements": "You change requirements of a product", "change-use-case": "You change a use case of a product", "change-architecture": "You change the architecture of a product" };
+// Agent M's AGENTS.md of the fixture instance, which every input to a model begins with.
+const RULES_TEXT = "# AGENTS.md — the fixture's working rules, marker rules-1360109\n";
+
 function fakeWorld(drafts, w) {
   const requests = [], pulls = [];
   globalThis.fetch = async (address, init = {}) => {
@@ -351,10 +354,10 @@ test("TST-1360107: a hand-over of a kind that does not wait for a person, or one
 // ---------------------------------------------------------------- the job whose task travels with its hand-over (the endpoint's own job spawned by the bar)
 
 // TST-1360108 · level: component · module: MOD-workflow-entries
-// guards: UC-049; A CI AGENT'S DRAFT ENTERS AS OPEN; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON
+// guards: UC-049; A CI AGENT'S DRAFT ENTERS AS OPEN; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON; EVERY MODEL READS AGENT M'S AGENTS.MD FIRST
 // given: a queued converse job of the endpoint's own (route ci hosted, task `with the hand-over`, `declares` draft text and read the repository, the person's source as its parameter); the model endpoint answers the conversation with a hand-over { kind change-use-case, works_on [UC-001] } and the change of the use case with UC-001's new text; an executable `opencode` on the PATH that notes every start
 // input: onDispatch with the inputs job, task "Tell the member the due date, token heron-1360", the endpoint and the secret FIXTURE_KEY
-// expect: outcome `done`; opencode is never started — a kind that only reads and drafts runs through Agent M's own job runner, calling the endpoint itself —; the endpoint is sent the conversation and then the change of the use case; UC-001's file on main is the drafted text and not accepted; the job's end lists the writer's commit and UC-001's path; no file and no commit message of the product holds heron-1360; no approval record is written
+// expect: outcome `done`; every request to the endpoint begins with the text of the instance's AGENTS.md, not its path; opencode is never started — a kind that only reads and drafts runs through Agent M's own job runner, calling the endpoint itself —; the endpoint is sent the conversation and then the change of the use case; UC-001's file on main is the drafted text and not accepted; the job's end lists the writer's commit and UC-001's path; no file and no commit message of the product holds heron-1360; no approval record is written
 test("TST-1360108: the endpoint's own converse job, dispatched with its task, runs through Agent M's job runner and lists the hand-over's result in its record", async () => {
   const TASK = "Tell the member the due date, token heron-1360";
   const declared = (agentM) => ({ ...converseStart(agentM, { endpoint: undefined, instruction: undefined }), participant: "fixture-endpoint", task: "with the hand-over",
@@ -378,6 +381,12 @@ test("TST-1360108: the endpoint's own converse job, dispatched with its task, ru
       assert.ok(!readFileSync(started, "utf8").includes("run"), "opencode is never started to run a job");
       const calls = world.requests.filter((each) => each.address.startsWith("https://llm.example.test/"));
       assert.ok(calls.length >= 2, "the endpoint is called for the conversation and for the change of the use case");
+      // EVERY MODEL READS AGENT M'S AGENTS.MD FIRST: an endpoint in Agent M's own tool loop reads no checkout, so each request begins with the file's text, not its path.
+      for (const call of calls) {
+        const first = JSON.parse(call.body).messages.find((message) => message.role !== "system");
+        const content = typeof first.content === "string" ? first.content : first.content.map((part) => part.text ?? "").join("");
+        assert.ok(content.startsWith(RULES_TEXT.trim()), `the input begins with AGENTS.md's text: ${content.slice(0, 120)}`);
+      }
       assert.ok(world.prompted("change-use-case") >= 1, "the change of the use case ran, in the same run");
       assert.equal(fileAt(w, UC_PATH), UC_AFTER);
       assert.notEqual([...statuses(snapshotAt(w)).values()].find((each) => each.id === "UC-001").status, "accepted");

@@ -67,6 +67,7 @@ provides:
   - sourcesOf
   - handOverParams
   - refusedEdit
+  - withheld
 ---
 # MOD-job-runner The one runner of every job kind
 
@@ -225,7 +226,7 @@ ONLY WHEN RECORDING IS ON`).
 - `Usage` — `{ inputTokens: number | null, outputTokens: number | null, minutes: number | null, cost: { amount: number,
   currency: string } | null }`: exactly what a runtime reported; nothing is estimated.
 - `JobContext` — `{ kind: KindDefinition, params: Record<string, unknown>, product: { address: string, snapshot: Snapshot,
-  host: Host | null }, instance: { snapshot: Snapshot, host: Host | null }, connect: (address: string) => Promise<Host>,
+  host: Host | null, checkout?: string | null }, instance: { snapshot: Snapshot, host: Host | null }, connect: (address: string) => Promise<Host>,
   participants: Participant[], places: { sources: Record<string, string[]>, mailbox: string[] | null, contents: {
   source: string, paths: string[] }[] }, gates: { name:
   string, point: string, passed: boolean }[], person: string | null, now: Date, agentM: { version: string, commit: string
@@ -233,7 +234,9 @@ ONLY WHEN RECORDING IS ON`).
   `instance.checkout` is the folder of a checkout of the instance in which the participant works and reads files itself
   — on a Bridge the instance at the job's `agent_m` commit in the offered agent's working folder (MOD-bridge-jobs), in
   CI the job workflow's checkout of the instance —, from which the instance's `snapshot` is then read; it is `null` in a
-  browser. `connect` opens another repository with the credentials of
+  browser. `product.checkout` is the folder of a checkout of the product in which a model endpoint's tools work
+  (MOD-checkout-tools) — in CI the job workflow's checkout of the product, on a Bridge the job's working clone —; absent
+  or `null` where there is none, in a browser always. `connect` opens another repository with the credentials of
   the program — the token in a browser, the CI secret in CI, the computer's login on a Bridge; `places` gives, for every
   restricted source and for the mailbox, the places they allow, and the paths of the product that hold a restricted source's content; `gates` the gates of the product's workflow at this job's
   points, with whether their decisions are recorded.
@@ -353,13 +356,18 @@ ONLY WHEN RECORDING IS ON`).
   names the path or a folder above it, once each: what a part holding that file carries (`RESTRICTED CONTENT GOES ONLY
   WHERE ITS SOURCE PERMITS`).
 - `handOverParams(worksOn: string[], snapshot: Snapshot) -> Record<string, unknown>` — the parameters a hand-over's job
-  takes for what it works on, by the keys the kinds' strategies read: `requirements` for the names that are
-  neither an identifier nor a web address, `useCases` for the use cases and `useCase` beside it for one alone, `steps` for the plan's steps — the
+  takes for what it works on, by the keys the kinds' strategies read: `requirements` for the names in capitals,
+  as the SPEC writes them, that are neither an identifier nor a web address — an entry with a lowercase letter, such as a
+  section, names no requirement, and the task carries it —, `useCases` for the use cases and `useCase` beside it for one alone, `steps` for the plan's steps — the
   `ITM-<n>` the snapshot holds as a file under `docs/plan/` — and `items` for the other `ITM-<n>`; a key it would leave
   empty is left out, and any other identifier is in the job's `works_on` only. Pure, but for reading the snapshot's
   paths.
 - `refusedEdit(path: string) -> string | null` — why `propose-edit` refuses a document, naming where it is changed, as
   the table under Data states; `null` for a document it holds; the writer `proposed-edits` reads it too, so that the rule stands once.
+- `withheld(context: JobContext, path: string) -> string | null` — for a tool's call on a path, with `context` the one a
+  tool's strategy is handed: the refusal it answers where a source of the path — by `sourcesOf` — does not allow the place
+  of the exchange's drafter, naming the path, the source and the place; `null` where every source allows it. The built-in
+  tools and MOD-checkout-tools' tools answer it alike (`RESTRICTED CONTENT GOES ONLY WHERE ITS SOURCE PERMITS`).
 - `provenanceLines(job: { agentM: { version: string, commit: string }, jobId: string | null, kind: string, participant:
   Participant, rounds: number }) -> string[]` — the trailer lines defined under Data; a job without a record — a
   conversation held in the tab — has no `Agent-M-Job` line.

@@ -240,9 +240,13 @@ export async function queueEntries(result, context) {
   const date = context.now.toISOString().slice(0, 10);
   const job = { source, prompted, page, agentM: context.agentM, participant: result.drafter ?? { name: "none", model: null }, rounds: result.rounds?.length ?? 0, date };
   const slug = slugOf([context.kind?.name, context.jobId].filter(Boolean).join("-")) || "candidates";
+  // A product that is its own instance may be held in two checkouts, as a hosted job holds it: its process queue is written through the product's
+  // host too, the one whose commits the job's result carries.
+  const web = (side) => side?.snapshot?.repository?.web ?? null;
+  const ownInstance = web(context.product) !== null && web(context.product) === web(context.instance);
   const targets = [
     { where: context.product, mine: writable.filter((candidate) => candidate.constrains !== "process"), decide: false },
-    { where: context.instance, mine: writable.filter((candidate) => candidate.constrains === "process"), decide: true },
+    { where: ownInstance ? { ...context.instance, host: context.product.host } : context.instance, mine: writable.filter((candidate) => candidate.constrains === "process"), decide: true },
   ];
   // Every target's sections are composed before any commit is made, so that a refusal of the second target (TwoChanges) leaves the first unwritten too.
   const plans = [];
@@ -316,9 +320,13 @@ export async function queueEntries(result, context) {
     prepared.push({ where, planned, message: `Propose ${sections.length} SPEC ${sections.length === 1 ? "change" : "changes"} as queue ${day}\n\n${trailers.join("\n")}` });
   }
 
+  // Two queues through one host follow each other: the second is committed on the first.
+  let last = null;
   for (const { where, planned, message } of prepared) {
     const { defaultBranch } = await where.host.repositoryInfo();
-    const committed = await where.host.commitFiles({ branch: defaultBranch, expectedHead: where.snapshot.commit ?? null, files: planned, message });
+    const head = last?.host === where.host ? last.commit : where.snapshot.commit ?? null;
+    const committed = await where.host.commitFiles({ branch: defaultBranch, expectedHead: head, files: planned, message });
+    last = { host: where.host, commit: committed.commit };
     outcome.commits.push(committed.commit);
     outcome.files.push(...planned.map((file) => file.path));
   }

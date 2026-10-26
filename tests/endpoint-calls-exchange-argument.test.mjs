@@ -26,7 +26,7 @@ const inputOf = (tools) => ({ prompt: "Inspect.", parts: [], output: null, findi
 // guards: ONE DEFINITION, THREE DRIVERS; UC-049
 // given: an input carrying tools (read_file, limit 10) and an exchange that answers a call c1 read_file("a.md") (3 in, 1 out) and then the text "done" (4 in, 2 out); fetch is a spy
 // input: endpointDriver(CONFIG, PARTICIPANT, exchange).send(input)
-// expect: exchange is called twice with CONFIG; the first call's request is { messages: [{ role: "user", text: "Inspect." }], tools: [DEFINITION] }; the second's messages end with the assistant turn { role: "assistant", text: "", calls: [c1] } and the tool turn { role: "tool", text: "text of a.md", callId: "c1" }; the tool ran once, "read_file:a.md"; the result is { text: "done", usage: { inputTokens: 7, outputTokens: 3, minutes: null, cost: null } }; fetch was not called
+// expect: exchange is called twice with CONFIG; the first call's request is { messages: [{ role: "user", text: "Inspect." }], tools: [DEFINITION], maxTokens: 32000 }; the second's messages end with the assistant turn { role: "assistant", text: "", calls: [c1] } and the tool turn { role: "tool", text: "text of a.md", callId: "c1" }; the tool ran once, "read_file:a.md"; the result is { text: "done", usage: { inputTokens: 7, outputTokens: 3, minutes: null, cost: null } }; fetch was not called
 test("endpointDriver — with an exchange, each request of the tool loop is one call of it and no request reaches the endpoint", async () => {
   const fetched = spy(), log = [], given = [];
   const replies = [{ text: "", calls: [{ id: "c1", name: "read_file", args: { path: "a.md" } }], usage: { inputTokens: 3, outputTokens: 1, minutes: null, cost: null } },
@@ -35,7 +35,7 @@ test("endpointDriver — with an exchange, each request of the tool loop is one 
   const result = await endpointDriver(CONFIG, PARTICIPANT, exchange).send(inputOf(toolsOf(log)));
   assert.equal(given.length, 2);
   assert.ok(given.every(([config]) => config === CONFIG));
-  assert.deepEqual(given[0][1], { messages: [{ role: "user", text: "Inspect." }], tools: [DEFINITION] });
+  assert.deepEqual(given[0][1], { messages: [{ role: "user", text: "Inspect." }], tools: [DEFINITION], maxTokens: 32000 });
   assert.deepEqual(given[1][1].messages.slice(-2), [{ role: "assistant", text: "", calls: [{ id: "c1", name: "read_file", args: { path: "a.md" } }] }, { role: "tool", text: "text of a.md", callId: "c1" }]);
   assert.deepEqual(log, ["read_file:a.md"]);
   assert.deepEqual(result, { text: "done", usage: { inputTokens: 7, outputTokens: 3, minutes: null, cost: null } });
@@ -46,7 +46,7 @@ test("endpointDriver — with an exchange, each request of the tool loop is one 
 // guards: ONE DEFINITION, THREE DRIVERS; UC-049
 // given: tools of limit 2 and an exchange that makes the call c1, then the calls c2 and c3, then answers the text "end"; fetch is a spy
 // input: endpointDriver(CONFIG, PARTICIPANT, exchange).send(input)
-// expect: three exchanges; the third offers no tools ([]); the tool ran for c1 and c2 only; the tool turn of c3 holds "refused: the limit of 2 tool calls is reached" and that of c2 its result; the text is "end"
+// expect: three exchanges; the third offers no tools ([]); the tool ran for c1 and c2 only; the tool turn of c3 holds "refused: the limit of 2 tool calls is reached" and that of c2 its result, and the maximum-steps text follows them; the text is "end"
 test("endpointDriver — the limit holds for the calls of an exchange the caller gives", async () => {
   spy();
   const log = [], given = [];
@@ -57,7 +57,8 @@ test("endpointDriver — the limit holds for the calls of an exchange the caller
   assert.equal(given.length, 3);
   assert.deepEqual(given[2].tools, []);
   assert.deepEqual(log, ["read_file:1", "read_file:2"]);
-  assert.deepEqual(given[2].messages.slice(-2).map((turn) => [turn.callId, turn.text]), [["c2", "text of 2"], ["c3", "refused: the limit of 2 tool calls is reached"]]);
+  assert.deepEqual(given[2].messages.slice(-3, -1).map((turn) => [turn.callId, turn.text]), [["c2", "text of 2"], ["c3", "refused: the limit of 2 tool calls is reached"]]);
+  assert.ok(given[2].messages.at(-1).text.startsWith("CRITICAL - MAXIMUM STEPS REACHED"));
   assert.equal(result.text, "end");
 });
 

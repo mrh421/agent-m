@@ -18,6 +18,7 @@ provides:
   - installedAgents
   - agentDriver
   - testAgent
+  - stopTree
 ---
 # MOD-agent-processes Coding-agent CLIs as processes on a machine
 
@@ -82,6 +83,10 @@ never an argument: it is written to the agent's standard input, so no size of a 
   module never sees or passes the value. An abort of the signal stops the agent and every process it started, before
   anything further is pushed. It throws `AgentMissing`, `EndpointUnsupported`, `AgentNotLoggedIn`, `AgentFailed { exitCode, lastOutput }` and
   `Cancelled`.
+- `stopTree(child: ChildProcess, signal?: string) -> Promise<void>` — sends `signal`, `SIGKILL` where none is given, to the
+  process group of a child started detached, so that every process it started receives it; on Windows it ends the
+  child's tree with `taskkill`, whatever the signal. A group that is already gone is no failure. The driver stops an agent
+  with it on a cancel; MOD-checkout-tools ends a command's process group with it at the command's timeout.
 - `testAgent(agent: Agent) -> Promise<{ answered: true, version: string } | { answered: false, reason: string }>` — a
   harmless request, a one-word answer, given on the agent's standard input as a task is, to show that the agent answers
   with its login (UC-017).

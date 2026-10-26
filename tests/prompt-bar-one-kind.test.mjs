@@ -253,3 +253,21 @@ test("TST-1360004: on a page that refuses hand-over and propose-edit, an answer 
   assert.equal(readTabValue(it.store, "prompt-bar:draft"), null);
   assert.deepEqual([...it.instance.attempts, ...it.product.attempts], []);
 });
+
+// TST-1360005 · level: unit · module: MOD-trace-pages; MOD-prompt-bar
+// guards: UC-049; THE PERSON WHO PROMPTS IS A SOURCE
+// given: the specification view kept while the head's graph is stored: the earlier version shown (onDefaultBranch false, asOf set) with the person's own source
+//   SRC-po-fixture, nothing open; known positive: the same at a released version the person chose, whose page read no source, gives none
+// input: MOD-trace-pages' subjectOf, then its paramsFor
+// expect: paramsFor gives source SRC-po-fixture — a message spawned in the read-only minutes after a push hands its change on with the person's source
+//   (JOB-20261026-2011-8761 was refused without it) —; at the released version no source
+test("TST-1360005: the person's own source is given while the earlier version is shown after a push", () => {
+  const spec = { requirements: new Map(), sections: [] };
+  const base = { target: { textContent: "" }, spec, requirements: [], groups: [] };
+  const earlier = traceSubject({ title: "Current requirements", params: { key: "specification", ref: "main" }, context: { product: null },
+    shown: { ...base, ref: "e".repeat(40), onDefaultBranch: false, asOf: "As of eeeeeee: …", source: "SRC-po-fixture" } });
+  assert.equal(earlier.paramsFor({}).source, "SRC-po-fixture");
+  const released = traceSubject({ title: "Current requirements", params: { key: "specification", ref: "v2026.1.0" }, context: { product: null },
+    shown: { ...base, ref: "v2026.1.0", onDefaultBranch: false, asOf: null, source: null } });
+  assert.equal(released.paramsFor({}).source, undefined);
+});

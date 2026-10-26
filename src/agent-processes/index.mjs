@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { documentFindings, loadSchema, readRegister } from "../documents/index.mjs";
 import { processDriver } from "./processes.mjs";
+export { stopTree } from "./processes.mjs";
 
 const OWNER = "MOD-agent-processes";
 const SCHEMA_FILE = new URL("./agents.schema.md", import.meta.url);

@@ -435,3 +435,15 @@ test("search-files reads only the files below its path, and refuses a search of 
   assert.equal(answers[1], "SPEC.md:2: the needle");
   assert.match(answers[2], /^refused: docs\/many\/ holds 249 files, more than the 200/);
 });
+
+// TST-1360201 · level: unit · module: MOD-job-runner
+// guards: UC-049
+// given: a snapshot with no plan; a hand-over whose works_on names the requirement "NO SERVER", the place "SPEC.md section 16 Usability", the use case UC-007 and a web address
+// input: handOverParams(works_on, snapshot)
+// expect: requirements ["NO SERVER"] — the place, written with lowercase letters, names no requirement (JOB-20261026-2006-2d8e was refused for it) —; useCases ["UC-007"], useCase "UC-007"
+test("handOverParams — an entry with lowercase letters, such as a section, names no requirement", async () => {
+  const { handOverParams } = await import("../src/job-runner/index.mjs");
+  const snapshot = { paths: ["SPEC.md"] };
+  assert.deepEqual(handOverParams(["NO SERVER", "SPEC.md section 16 Usability", "UC-007", "https://example.test/x"], snapshot),
+    { requirements: ["NO SERVER"], useCases: ["UC-007"], useCase: "UC-007" });
+});

@@ -44,6 +44,8 @@ in a browser and in Node, and keeps nothing.
 - `openai-compatible.mjs` — requests and answers of OpenAI-compatible endpoints.
 - `anthropic.mjs` — requests and answers of Anthropic endpoints.
 - `diagnosis.mjs` — telling apart why a call failed.
+- `loop.mjs` — the execution loop and its rules.
+- `retries.mjs` — whether a failed request is sent again, and after how long.
 
 ## Data
 
@@ -70,7 +72,8 @@ address and is never written anywhere (`A CREDENTIAL IS NEVER PLACED IN A URL`, 
   "bridge")[] }`: why a call failed, in the endpoint's or the browser's own words where there are any, and the routes on
   which the same job would work — GitHub Actions (UC-010) or the Bridge (UC-011) — where the browser was the obstacle.
 - `endpointDriver(config: EndpointConfig, participant: Participant, exchange?: (config: EndpointConfig, exchange: {
-  messages: object[], tools: object[] }) -> Promise<{ text: string, calls: object[], usage: Usage | null }>) -> Driver` — a
+  messages: object[], tools: object[], maxTokens: number, system?: string }, options: { signal?: AbortSignal }) ->
+  Promise<{ text: string, calls: object[], usage: Usage | null, cut?: true }>, options?: { system?: string }) -> Driver` — a
   driver whose `send` turns the
   `DriverInput` into a chat request to the endpoint, using `driverPrompt` once for its message text, crosses the network
   to it, and returns the answer's text and the
@@ -78,26 +81,53 @@ address and is never written anywhere (`A CREDENTIAL IS NEVER PLACED IN A URL`, 
   `tools` (MOD-job-runner's `ToolUse`), it offers their definitions in the endpoint's own form — tools of an
   OpenAI-compatible endpoint, tool use of an Anthropic one —, hands each call the endpoint makes to `tools.call` and
   returns its result to the endpoint, and goes on until the endpoint answers without a call; that answer is the text it
-  returns, and the usage is the sum of what each request reported. It makes at most `tools.limit` calls; at the limit it
-  asks the endpoint once more for its answer without offering tools. A call's result that would carry the conversation
-  past the participant's declared `context` — each message's size estimated as MOD-job-runner's `estimate` does — is not
-  returned: the endpoint is told instead how large it is and how much of the context is left, so that it asks for a smaller
-  part (UC-049 3a); a participant without a declared context sets no such bound. The driver decides nothing about a call: what a
-  tool may do, and what it refuses, is the runner's. Each request of the loop is one `endpointExchange` — or one call of `exchange` where the caller gives it: MOD-runtimes'
+  returns, and the usage is the sum of what each request reported. `options.system`, where given, is sent with every
+  request of the loop as the endpoint's system prompt — MOD-checkout-tools' `checkoutPrompt` for an endpoint that works
+  in a checkout. The driver decides nothing about a call: what a tool may do, and what it refuses, is the runner's. The
+  loop keeps these rules, which follow opencode's:
+  - **Every call gets one result**, in the order the endpoint made its calls, a refusal included.
+  - **Arguments that cannot be read** — not JSON — are answered, not thrown: the call is not carried out, and its result
+    is opencode's `The arguments provided to the tool are invalid: Invalid input for tool <name>: JSON parsing failed:
+    Text: <the arguments>.` followed by the parser's message. A tool's name the endpoint gives in another case than an
+    offered tool's is read as that tool's.
+  - **The same call three times in a row** — the same tool with the same arguments — is not carried out the third time;
+    its result says so and asks for other arguments or another way.
+  - **The limit.** It makes at most `tools.limit` calls, a refused one counted; at the limit it asks the endpoint once more
+    without offering tools, adding opencode's maximum-steps text, which asks for a summary of what is done and what remains.
+  - **The output limit.** Every request of the loop asks for at most 32000 tokens, or, for a participant with a declared
+    `context`, at most what the context leaves. An answer the endpoint ended at that limit — finish reason `length`, stop
+    reason `max_tokens` — is followed by a message that tells it so and asks it to continue where it stopped or to make
+    smaller edits; the continuation counts as one call of the limit, and the answer returned is the parts joined.
+  - **A full context.** For a participant with a declared `context`, each message's size estimated as MOD-job-runner's
+    `estimate` does: once what the conversation uses leaves less than a quarter of the context, at most 32000 tokens, the
+    oldest tool results beyond the newest 40000 tokens of them are replaced by the visible marker `[old tool result
+    cleared]`, where that frees more than 20000 tokens — so nothing is left out silently (UC-049 3a): the endpoint sees
+    where a result was cleared and can ask for it again. A call's result that still would carry the conversation past the
+    context is not returned: the endpoint is told instead how large it is and how much of the context is left, so that it
+    asks for a smaller part. A participant without a declared context sets no such bound.
+  Each request of the loop is one `endpointExchange` — or one call of `exchange` where the caller gives it: MOD-runtimes'
   `bridgeDriver` gives the Bridge's `ask` of one exchange, so that the loop of an endpoint a Bridge calls is this same
   loop, run in the tab.
 - `endpointExchange(config: EndpointConfig, exchange: { messages: { role: "user" | "assistant" | "tool", text: string,
   calls?: { id: string, name: string, args: object }[], callId?: string }[], tools: { name: string, description: string,
-  input: object }[] }) -> Promise<{ text: string, calls: { id: string, name: string, args: object }[], usage: Usage | null
-  }>` — one request of the loop, in the endpoint's own form: the messages so far and the tools offered, and back the
-  endpoint's text, the tool calls it makes, and the usage it reported. It carries no call out. The Bridge calls it for an
+  input: object }[], maxTokens?: number, system?: string }, options?: { signal?: AbortSignal }) -> Promise<{ text: string,
+  calls: { id: string, name: string, args: object | null, invalid?: { text: string, message: string } }[], usage: Usage |
+  null, cut?: true }>` — one request of the loop, in the endpoint's own form: the messages so far, the tools offered, the
+  most tokens the answer may hold — 1024 on Anthropic and none on an OpenAI-compatible endpoint where `maxTokens` is not
+  given —, and `system` as the system prompt; and back the endpoint's text, the tool calls it makes — one whose arguments
+  are not JSON with `args` null and `invalid` holding the text it sent and why it cannot be read —, the usage it reported,
+  and `cut` where the endpoint ended the answer at the output limit. It carries no call out. The Bridge calls it for an
   endpoint it reaches (MOD-bridge-jobs), so that the loop of a bridged endpoint runs in the tab, each request through the
   Bridge (MOD-runtimes' `bridgeDriver`). Crosses the network; throws `EndpointFailed { diagnosis }` as `endpointDriver`
   does. It throws `EndpointFailed {
   diagnosis }`: the endpoint answered with an error — its message kept, a refused key among them (UC-003) —, the browser
   blocked the call before it reached the endpoint, the network failed, or the endpoint refused the request for its length,
   which the runner reports as not fitting and never answers by cutting the input. One `send` is one exchange — one
-  request, or the requests of its tool calls —; a failed request is not repeated by the driver. A cancel through the signal aborts the request.
+  request, or the requests of its tool calls. A request of `send` or of `endpointExchange` that fails is sent again as
+  opencode retries it: at most five times, for a rate limit (429), a server error (5xx), or a network error that left
+  the endpoint not reachable — never for a context overflow, and never for a call a browser blocked —, after the delay
+  the endpoint names in `retry-after-ms` or `retry-after`, else 2 s doubled for each earlier retry with up to 25 % jitter,
+  at most 30 s; the last failure is the one thrown. A cancel through the signal aborts the request and the wait.
 - `testEndpoint(config: EndpointConfig) -> Promise<{ works: true, model: string, tools: boolean, toolMessage: string | null }
   | { works: false, diagnosis: Diagnosis }>` — sends one short request that offers the model one harmless tool and asks it
   to call it, across the network, and says whether the configuration works and whether the model called the tool —

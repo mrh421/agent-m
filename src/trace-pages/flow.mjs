@@ -894,10 +894,13 @@ export const route = {
         shown.spec = parseSpec(text ?? "");
         shown.specText = text ?? "";
         const editable = specification && isDefault;
+        // The person's own source belongs to the person, not to the version shown: it is read wherever the page shows the current state — the default
+        // branch, or the earlier version shown while the head's graph is stored —, so that a message of the prompt bar can hand a change on (UC-049).
+        const current = specification && (isDefault || Boolean(earlier));
         // Whether a source moved on is asked now, beside the entries and the arrangement; its rows are marked once the page is drawn.
         const moved = specification ? sourceChanged(shown) : null;
         moved?.catch(() => {});
-        const [source, open, groupText] = await Promise.all([editable ? personsSource(context, snapshot) : null, editable ? waitingEntries(snapshot) : [], groupRead]);
+        const [source, open, groupText] = await Promise.all([current ? personsSource(context, snapshot) : null, editable ? waitingEntries(snapshot) : [], groupRead]);
         if (descriptor.key === "gaps") {
           const place = el("div", "gaps-body", el("p", "traces-reading", "Reading the gaps…"));
           body = el("section", "gaps head", el("h2", null, descriptor.title), place);
@@ -907,7 +910,7 @@ export const route = {
           body = el("section", "tests head", el("h2", null, descriptor.title), await testsViews("Browser"), place);
           fill = () => showTests(place, shown, params);
         } else {
-          if (editable) shown.source = source;
+          if (current) shown.source = source;
           waiting = waitingSection(open);
           const arranged = await arrangement(snapshot, shown.spec, open, groupText);
           const adding = shown.onDefaultBranch ? addLinks(shown.spec) : null;

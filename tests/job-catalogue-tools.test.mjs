@@ -137,10 +137,11 @@ test("hand-over — its arguments name what the job works on, as a required list
 // guards: ONE DEFINITION, THREE DRIVERS
 // given: the catalogue as shipped; known positive: the description of list-files is a text that does not mention works_on
 // input: the description of hand-over, and that of list-files
-// expect: the description of hand-over names works_on and says that it names the requirements, use cases, decisions, modules or items the job works on; that of list-files does not name works_on
+// expect: the description of hand-over names works_on and says that it names the existing requirements, use cases, decisions, modules or items the job works on, and is empty for something new; that of list-files does not name works_on
 test("hand-over — its description tells the drafter what works_on names", async () => {
   const [handOver, listFiles] = await catalogue.toolsOf(["hand-over", "list-files"]);
   assert.ok(!listFiles.description.includes("works_on"), "known positive: another description does not name it");
   assert.ok(handOver.description.includes("works_on"), "names works_on");
-  assert.match(handOver.description, /requirements, use cases, decisions, modules or items the job works on/);
+  assert.match(handOver.description, /existing requirements \(by their names\), use cases, decisions, modules or items the job works on/);
+  assert.match(handOver.description, /empty for something new, such as a new requirement/);
 });

@@ -107,10 +107,10 @@ test("TST-487006: Anthropic text-only exchange reports absent usage as null", as
 
 async function failureCase(t, provider) {
   let next = { status: 200, body: textReply(fixtures[provider].config.kind, "Positive.") }, calls = 0;
-  withFetch(t, async () => { calls += 1; if (next.error) throw next.error; return reply(next.status, next.body); });
+  withFetch(t, async () => { calls += 1; if (next.error) throw next.error; return { ...reply(next.status, next.body), headers: new Headers({ "retry-after-ms": "0" }) }; });
   const input = { messages: [{ role: "user", text: "Do not cut this input." }], tools: [] };
   assert.equal((await exchange(fixtures[provider].config, input)).text, "Positive.", "same-call positive before refusals");
-  for (const [status, message, reason] of [[401, "Key refused.", "key refused"], [413, "Input too long.", "too long"], [429, "Rate limit reached.", "rate limited"], [500, "Provider unavailable.", "endpoint error"]]) {
+  for (const [status, message, reason, requests] of [[401, "Key refused.", "key refused", 1], [413, "Input too long.", "too long", 1], [429, "Rate limit reached.", "rate limited", 6], [500, "Provider unavailable.", "endpoint error", 6]]) {
     next = { status, body: { error: { message } } };
     const before = calls;
     await assert.rejects(exchange(fixtures[provider].config, input), (error) => {
@@ -118,26 +118,38 @@ async function failureCase(t, provider) {
       assert.deepEqual(error.diagnosis, { reason, message, routes: [] });
       return true;
     });
-    assert.equal(calls, before + 1, "a failed exchange is not repeated");
+    assert.equal(calls, before + requests, requests === 1 ? "a refusal is not repeated" : "a rate limit and a server error are retried five times");
   }
+  // A network error is retried too, after 2 s, 4 s, 8 s, 16 s and 30 s: the test's timers are mocked and advanced until the exchange ends.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   next = { error: new TypeError("connect ECONNREFUSED") };
-  await assert.rejects(exchange(fixtures[provider].config, input), (error) => error.name === "EndpointFailed" && error.diagnosis.reason === "not reachable" && error.diagnosis.message === "connect ECONNREFUSED");
-  assert.equal(calls, 6);
+  const before = calls;
+  let settled = false;
+  const failing = exchange(fixtures[provider].config, input).then(() => null, (error) => error).finally(() => { settled = true; });
+  for (let step = 0; step < 400 && !settled; step++) {
+    await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(1000);
+  }
+  const error = await failing;
+  assert.ok(error?.name === "EndpointFailed" && error.diagnosis.reason === "not reachable" && error.diagnosis.message === "connect ECONNREFUSED", String(error));
+  assert.equal(calls, before + 6);
 }
 
 // TST-487007 · level: unit · module: MOD-endpoint-calls
 // guards: UC-049; AN UNSUPPORTED ENDPOINT SAYS SO
-// given: one successful OpenAI exchange followed by constructed key, length, rate, provider and network failures
+// given: one successful OpenAI exchange followed by constructed key, length, rate, provider and network failures, each answer with retry-after-ms 0
 // input: the same public exchange for each refusal
-// expect: EndpointFailed with the exact diagnosis/message, one request per invocation and no retry
-test("TST-487007: OpenAI exchange failures preserve their diagnosis without retry", async (t) => failureCase(t, "openai"));
+// expect: EndpointFailed with the exact diagnosis/message; one request for a refused key and for a too-long input; six — the request and five retries — for a
+//   rate limit, a provider error and a network error
+test("TST-487007: OpenAI exchange failures preserve their diagnosis, retried only where opencode retries", async (t) => failureCase(t, "openai"));
 
 // TST-487008 · level: unit · module: MOD-endpoint-calls
 // guards: UC-049; AN UNSUPPORTED ENDPOINT SAYS SO
-// given: one successful Anthropic exchange followed by constructed key, length, rate, provider and network failures
+// given: one successful Anthropic exchange followed by constructed key, length, rate, provider and network failures, each answer with retry-after-ms 0
 // input: the same public exchange for each refusal
-// expect: EndpointFailed with the exact diagnosis/message, one request per invocation and no retry
-test("TST-487008: Anthropic exchange failures preserve their diagnosis without retry", async (t) => failureCase(t, "anthropic"));
+// expect: EndpointFailed with the exact diagnosis/message; one request for a refused key and for a too-long input; six — the request and five retries — for a
+//   rate limit, a provider error and a network error
+test("TST-487008: Anthropic exchange failures preserve their diagnosis, retried only where opencode retries", async (t) => failureCase(t, "anthropic"));
 
 async function probeCase(t, provider, mode) {
   const { config } = fixtures[provider], calls = [];

@@ -22,6 +22,7 @@ export { registerStrategies } from "./registry.mjs";
 export { estimate, prepareJob } from "./prepare.mjs";
 export { runJob, writeResult } from "./loop.mjs";
 export { driverPrompt } from "./driver-prompt.mjs";
+export { sourcesOf, withheld } from "./tools.mjs";
 export { provenanceLines, roundsText } from "./provenance.mjs";
 export { handOverParams, refusedEdit } from "./tools.mjs";
 
@@ -41,10 +42,11 @@ export { handOverParams, refusedEdit } from "./tools.mjs";
  * repository, the participants, the places every restricted source and the mailbox allow, the gates at this job's points,
  * the person, the time, Agent M's version, and the job's identifier. `instance.checkout` is the folder of a checkout of the
  * instance, at the commit `agentM.commit`, in which the participant works and from which the instance's snapshot is read; null in a
- * browser.
+ * browser. `product.checkout` is the folder of the checkout of the product in which a model endpoint's tools work (MOD-checkout-tools); null or
+ * absent where there is none.
  * @typedef {{ kind: KindDefinition, params: Record<string, unknown>, product: { address: string, snapshot: Snapshot,
- *   host: Host | null }, instance: { snapshot: Snapshot, host: Host | null, checkout?: string | null }, connect: (address: string) => Promise<Host>,
- *   participants: Participant[], places: { sources: Record<string, string[]>, mailbox: string[] | null },
+ *   host: Host | null, checkout?: string | null }, instance: { snapshot: Snapshot, host: Host | null, checkout?: string | null }, connect: (address: string) => Promise<Host>,
+ *   participants: Participant[], places: { sources: Record<string, string[]>, mailbox: string[] | null, contents?: { source: string, paths: string[] }[] },
  *   gates: Array<{ name: string, point: string, passed: boolean }>, person: string | null, now: Date,
  *   agentM: { version: string, commit: string }, jobId: string | null }} JobContext
  */

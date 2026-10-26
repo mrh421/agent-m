@@ -20,11 +20,15 @@ function environmentFor(keyVariable, ownLoginEnvironment) {
   return ownLoginEnvironment();
 }
 
-function stop(child) {
+/**
+ * stopTree(child, signal = "SIGKILL") -> Promise<void> — sends `signal` to the process group of a child started detached, so that every process it started
+ * receives it; on Windows, ends the child's tree with taskkill, whatever the signal. A group that is already gone is no failure.
+ */
+export function stopTree(child, signal = "SIGKILL") {
   if (!child.pid) return Promise.resolve();
   if (process.platform !== "win32") {
     try {
-      process.kill(-child.pid, "SIGKILL");
+      process.kill(-child.pid, signal);
       return Promise.resolve();
     } catch (error) {
       if (error?.code === "ESRCH") return Promise.resolve();
@@ -99,7 +103,7 @@ function started(command, args, workdir, keyVariable, options, ownLoginEnvironme
     let stdout = "", stderr = "", aborted = options.signal?.aborted === true, settled = false, stopping = null, stopError = null;
     const cancel = () => {
       aborted = true;
-      stopping ??= stop(child).catch((error) => { stopError = error; });
+      stopping ??= stopTree(child).catch((error) => { stopError = error; });
     };
     const finish = async (result) => {
       if (settled) return;

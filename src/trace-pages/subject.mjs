@@ -1,6 +1,7 @@
 // The subject the specification view gives the prompt bar (docs/architecture/MOD-trace-pages.md, Data: specification; Interfaces: view),
 // MOD-prompt-bar's `Subject`, for UC-049, UC-019 (step 1) and UC-020 (1a). A subject is context only: the bar runs `converse` on every page.
-// - on the default branch, the open requirement, or the group with the names it holds, as `requirements`, the person's own source where the product
+// - at the current state — the default branch, or the earlier version shown while the head's graph is stored — the open requirement, or the group
+//   with the names it holds, as `requirements`, the person's own source where the product
 //   links one, and the review pages' `draft` as its draft route, `draft/subject=<key, encoded>`, in the form the review pages' own subjects give;
 //   with nothing open, the page and the person's own source where there is one; a missing source refuses nothing here — a change of requirements
 //   refuses by its own precondition (UC-019 4b);
@@ -82,7 +83,7 @@ export function subjectOf({ title, params, context, shown }) {
   const keyOf = (...parts) => ["trace", `key=${encoded(params.key ?? "")}`, ...(version ? [`ref=${encoded(ref)}`] : []), ...parts,
     ...(address ? [`product=${encoded(address)}`] : [])].join("/");
   const pageText = () => lines(title, address, version, shown?.target.textContent);
-  const own = () => (shown?.onDefaultBranch && typeof shown.source === "string" ? { source: shown.source } : {});
+  const own = () => (typeof shown?.source === "string" ? { source: shown.source } : {});
   const frames = () => ({ key: keyOf(), title, paramsFor: () => ({ page: pageText(), ...(params.key === "specification" ? own() : {}) }),
     draftRoute: null, withhold: null, refuses: [] });
   if (params.key !== "specification" || !shown?.spec) return frames();
