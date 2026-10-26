@@ -152,7 +152,7 @@ function throughClone(repository, folder, rest) {
   };
   return {
     repositoryInfo: rest ? (...a) => rest.repositoryInfo(...a) : without("the repository's information"),
-    history: rest ? (...a) => rest.history(...a) : without("the history"),
+    history: rest ? (...a) => rest.history(...a) : (...a) => clone.history(...a),
     listTags: rest ? (...a) => rest.listTags(...a) : without("the tags"),
     issueCounts: rest ? (...a) => rest.issueCounts(...a) : without("the issue counts"),
     listIssues: rest ? (...a) => rest.listIssues(...a) : without("the issues"),

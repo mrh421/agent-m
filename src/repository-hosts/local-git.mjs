@@ -75,6 +75,33 @@ export function localAdapter(address, folder) {
       return { commit, blobs };
     },
 
+    // readHistory through the clone: the commits that changed a path (the repository where it is null), newest first, from `ref` (the clone's checked-out branch where none is given), at most `limit` of them,
+    // each { commit, parents, author: { account: null, name }, date, message, changes }; `changes: false` leaves the changed files out. The clone is a full one, so git has all of it; no token is needed.
+    async history(path, { ref, limit, changes: withChanges } = {}) {
+      const start = ref ? await commitOf(ref) : await resolve("HEAD");
+      if (!start) {
+        const what = `${address.web} at ${ref ?? "HEAD"}`;
+        throw new HostError("NotFound", { what }, `${what} was not found in the clone, nor in its origin.`);
+      }
+      const log = await git(["log", "-z", "--format=%H%x1f%P%x1f%an%x1f%cI%x1f%B", ...(limit === undefined ? [] : ["--max-count", String(limit)]), start, "--", ...(path ? [path] : [])]);
+      const names = { A: "added", M: "modified", D: "deleted", R: "renamed" };
+      const entries = [];
+      for (const record of log.split("\0").filter(Boolean)) {
+        const [commit, parents, name, date, ...message] = record.split("\x1f");
+        const changes = [];
+        if (withChanges !== false) {
+          const listed = (await git(["diff-tree", "--root", "--no-commit-id", "--name-status", "-r", "-M", "-z", commit])).split("\0").filter(Boolean);
+          for (let i = 0; i < listed.length;) {
+            const status = listed[i++][0];
+            if (status === "R") { const from = listed[i++]; changes.push({ path: listed[i++], change: "renamed", from }); }
+            else { const file = listed[i++]; if (names[status]) changes.push({ path: file, change: names[status] }); }
+          }
+        }
+        entries.push({ commit: commit.trim(), parents: parents.split(" ").filter(Boolean), author: { account: null, name }, date, message: message.join("\x1f").replace(/\n+$/, ""), changes });
+      }
+      return entries;
+    },
+
     // Whether the branch's history holds the commit: `git merge-base --is-ancestor <commit> <branch>` exits 0 when it does and 1 when it
     // does not; any other exit — a commit or branch the clone does not hold — is not contained either. Nothing is fetched.
     async containsCommit(branch, commit) {
