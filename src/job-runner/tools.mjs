@@ -44,19 +44,26 @@ export async function offerTools(kind, drafter, context) {
 }
 
 /**
- * withHeld(draft, held) -> unknown — the draft with what its exchange held: the edits proposed by `propose-edit` added to the draft's own
- * `edits`, the later edit of a path replacing the earlier in its place, and the proposed hand-over as `handOver`. A draft that is not
- * an object, or an exchange that held nothing, leaves the draft as it is.
+ * withHeld(draft, held, refuses = []) -> unknown — the draft with what its exchange held: the edits proposed by `propose-edit` added to the draft's own
+ * `edits`, the later edit of a path replacing the earlier in its place, and the proposed hand-over as `handOver`. What the draft holds of a tool
+ * `refuses` names — `edits` for `propose-edit`, `handOver` for `hand-over` — is dropped, whether the exchange held it or the answer gave it
+ * (MOD-job-runner, ToolUse). A draft that is not an object leaves it as it is.
  */
-export function withHeld(draft, held) {
-  if (!held || draft === null || typeof draft !== "object" || Array.isArray(draft)) return draft;
+export function withHeld(draft, held, refuses = []) {
+  if (draft === null || typeof draft !== "object" || Array.isArray(draft)) return draft;
+  const refused = (name) => refuses.includes(name);
+  const without = { ...draft };
+  if (refused("propose-edit")) delete without.edits;
+  if (refused("hand-over")) delete without.handOver;
+  if (!held) return without;
+  draft = without;
   const added = {};
-  if (held.edits.size) {
+  if (held.edits.size && !refused("propose-edit")) {
     const edits = new Map((Array.isArray(draft.edits) ? draft.edits : []).map((edit) => [edit.path, edit]));
     for (const [path, text] of held.edits) edits.set(path, { path, text });
     added.edits = [...edits.values()];
   }
-  if (held.handOver) added.handOver = held.handOver;
+  if (held.handOver && !refused("hand-over")) added.handOver = held.handOver;
   return { ...draft, ...added };
 }
 
@@ -84,8 +91,8 @@ const record = (path) => refusal(`${path} is a record, written once as evidence 
 const RECORDS = ["docs/approvals/", "docs/gates/", "docs/jobs/", "docs/conversations/", "docs/test-results/", "docs/tests/"];
 const SETTINGS_FILES = ["docs/settings.md", "docs/collaborators.md", "docs/conversation-recording.md"];
 
-// Why a document may not be proposed, naming where it is changed, or null.
-function notProposable(path) {
+/** refusedEdit(path: string) -> string | null — why `propose-edit` refuses a document, naming where it is changed; null for one it holds (MOD-job-runner). */
+export function refusedEdit(path) {
   if (path === "SPEC.md") return refusal("SPEC.md is changed by a job of change-requirements, from the requirements page");
   if (!path.startsWith("docs/") || path.split("/").includes("..")) return outside(path);
   if (path.startsWith("docs/use-cases/")) return refusal(`${path} is a use case, changed by a job of change-use-case, from the use case's page`);
@@ -136,12 +143,12 @@ export const tools = {
   },
   // Holds the new text of one document below docs/ in the exchange — the later edit of a path replaces the earlier — and writes nothing.
   "propose-edit": async ({ path, text }, context) => {
-    const why = notProposable(path);
+    const why = refusedEdit(path);
     if (why) return why;
     context.exchange.held.edits.set(path, text);
     return `proposed: ${path} is held for the person, who may save it`;
   },
-  // Holds a proposed hand-over in the exchange and queues nothing: the prompt bar shows it, and the person's click lets it go on.
+  // Holds a proposed hand-over in the exchange and queues nothing itself: the prompt bar, or the program that runs an unattended job, carries it out (UC-049 4a, 4f).
   "hand-over": async ({ kind, works_on, task }, context) => {
     let definition;
     try {
@@ -152,6 +159,27 @@ export const tools = {
     }
     if (definition.participant === "none") return refusal(`${kind} has no participant`);
     context.exchange.held.handOver = { kind, works_on, task };
-    return `proposed: a job of ${kind} is held for the person, who may hand it over`;
+    return `proposed: a job of ${kind} goes on once you have answered: what it drafts is a proposal for the person`;
   },
 };
+
+// ---------------------------------------------------------------- the parameters of a hand-over's job
+
+// An item of the backlog or a step of the plan, by its identifier.
+const PLANNED = /^ITM-\d+$/;
+
+/**
+ * handOverParams(worksOn: string[], snapshot: Snapshot) -> Record<string, unknown> — the parameters a hand-over's job takes for what it works on, by the keys the kinds'
+ * strategies read: `requirements` for the names that are neither an identifier nor a web address, `useCases` for the use cases and `useCase` beside it for one alone, `steps`
+ * for the plan's steps — the ITM-<n> the snapshot holds as a file under docs/plan/ — and `items` for the other ITM-<n>; a key it would leave empty is left out.
+ */
+export function handOverParams(worksOn, snapshot) {
+  const names = [worksOn].flat().filter(Boolean).map(String);
+  const useCases = names.filter((name) => /^UC-\d+$/.test(name));
+  const planned = names.filter((name) => PLANNED.test(name));
+  const steps = planned.filter((name) => snapshot.paths.some((path) => path.startsWith(`docs/plan/${name}-`)));
+  const items = planned.filter((name) => !steps.includes(name));
+  const requirements = names.filter((name) => !/^[A-Z]+-[A-Za-z0-9-]+$/.test(name) && !/^https?:\/\//.test(name));
+  return { ...(requirements.length ? { requirements } : {}), ...(useCases.length ? { useCases } : {}), ...(useCases.length === 1 ? { useCase: useCases[0] } : {}),
+    ...(items.length ? { items } : {}), ...(steps.length ? { steps } : {}) };
+}

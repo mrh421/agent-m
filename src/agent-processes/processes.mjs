@@ -67,7 +67,7 @@ function endpointOptions(row, endpoint, keyVariable) {
   };
 }
 
-function started(command, args, workdir, keyVariable, options, ownLoginEnvironment, endpointEnvironment) {
+function started(command, args, workdir, keyVariable, options, ownLoginEnvironment, endpointEnvironment, input = null) {
   return new Promise((resolve) => {
     const environment = environmentFor(keyVariable, ownLoginEnvironment);
     if (Object.keys(endpointEnvironment).length) {
@@ -87,10 +87,15 @@ function started(command, args, workdir, keyVariable, options, ownLoginEnvironme
     }
     const child = spawn(command, args, {
       cwd: workdir,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [input == null ? "ignore" : "pipe", "pipe", "pipe"],
       detached: process.platform !== "win32",
       ...(environment ? { env: environment } : {}),
     });
+    if (input != null) {
+      // An agent that exits without reading its whole input closes the pipe; its exit status, not the write, decides.
+      child.stdin.on("error", () => {});
+      child.stdin.end(input);
+    }
     let stdout = "", stderr = "", aborted = options.signal?.aborted === true, settled = false, stopping = null, stopError = null;
     const cancel = () => {
       aborted = true;
@@ -131,9 +136,8 @@ export function processDriver(agent, { workdir, keyVariable, endpoint }, partici
       const row = helpers.configuration(agent.name);
       if (!row) throw failure("AgentMissing", "the selected agent is not supported");
       const configured = endpointOptions(row, endpoint, keyVariable);
-      const prompt = driverPrompt(input);
-      const result = await started(row.command, [...row.task.args.map((arg) => arg === "{prompt}" ? prompt : arg), ...configured.args],
-        input.workdir ?? workdir, keyVariable, options, helpers.ownLoginEnvironment, configured.env);
+      const result = await started(row.command, [...row.task.args, ...configured.args],
+        input.workdir ?? workdir, keyVariable, options, helpers.ownLoginEnvironment, configured.env, driverPrompt(input));
       if (result.stopError) {
         throw failure("AgentFailed", "the agent process could not be stopped", {
           exitCode: result.stopError.exitCode ?? result.status,

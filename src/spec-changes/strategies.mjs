@@ -26,6 +26,7 @@ import { parseSpec, sectionText } from "../spec-document/index.mjs";
 import { coverageGaps, traceGraph } from "../trace-graph/index.mjs";
 import { queueEntries } from "./propose.mjs";
 import { queues } from "./queues.mjs";
+import { finding } from "../text-tools/index.mjs";
 
 const SPEC_PATH = "SPEC.md";
 const IN_SPEC = "in SPEC";
@@ -107,7 +108,20 @@ async function wholeSpec(context) {
  *   `candidate-classes` classifies a draft; no part for a product without a requirement;
  * - recipe `whole-spec`: the SPEC as it stands, byte for byte, as one part named SPEC.md. Throws SpecNotFound { path } for a product without one.
  */
+// The precondition `person-source`: an error under THE PERSON WHO PROMPTS IS A SOURCE where the job's parameter `source` names no source, naming the two steps that are missing
+// (UC-019 4b); none otherwise, so that a change of requirements by prompt starts only with the person's own source, wherever it runs.
+async function personSource(context) {
+  const source = context.params?.source;
+  if (typeof source === "string" && source.trim() !== "") return null;
+  return finding({ artifact: context.product?.address ?? SPEC_PATH, line: 1, kind: "error", rule: "THE PERSON WHO PROMPTS IS A SOURCE",
+    what: "the person who asks for this change has no source of their own that the product links",
+    fix: "register the person as a source (#library) and link that source to the product (#sources), then ask again" });
+}
+
 export const specStrategies = {
+  preconditions: {
+    "person-source": personSource,
+  },
   recipes: {
     "chosen-requirements": chosen,
     "named-requirements": sectionsOfNamed,

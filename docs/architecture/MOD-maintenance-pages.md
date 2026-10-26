@@ -131,7 +131,7 @@ person reviews it. Its formats are those of the modules it uses.
     its parameter `question`, or written by hand — and *Send and wait*; removing the label `waiting-for-reporter`; *Reopen* and *Leave closed* for a mail
     that arrived in a closed issue's thread; *Close and reply*.
 
-  Each route gives the prompt bar its subject, of the kind `converse` (UC-049 3b): on a route that shows mail, the
+  Each route gives the prompt bar its subject (UC-049 3b): on a route that shows mail, the
   page a participant is given holds the text of a mail, its sender and its attachments only for a participant whose
   processing place the mailbox allows and that does not declare *write to the repository* (`THE PLACES A MAILBOX'S MAIL
   MAY GO ARE CONFIGURED`, `A PARTICIPANT THAT WRITES TO A REPOSITORY NEVER RECEIVES A MAIL`), and only the mail's `MAIL-`

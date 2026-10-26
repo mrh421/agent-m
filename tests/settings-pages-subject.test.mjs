@@ -49,7 +49,7 @@ test("TST-1127001 the subject of the Settings page names each setting and whethe
   try {
     assert.equal(typeof route.subject, "function", "the route gives a subject");
     const subject = route.subject({}, given);
-    assert.equal(subject.kind, "converse");
+    assert.equal(subject.kind, undefined, "a subject names no kind: the bar runs converse on every page");
     assert.equal(subject.title, "Settings");
     const page = pageOf(subject);
     assert.match(page, /GitHub token[^\n]*\bstored\b/i);

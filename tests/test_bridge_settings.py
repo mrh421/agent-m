@@ -92,13 +92,19 @@ async function opened() {
   const press = async (label, last = false) => { const control = last ? button(label).at(-1) : button(label)[0]; assert.ok(control, `${label} is in the window`); control.dispatchEvent(new Event("click")); await settle(); };
   const fieldOf = (label) => { const caption = descendants(body, (node) => node.localName === "label" && node.textContent.trim() === label)[0]; assert.ok(caption, `${label} is in the window`); return descendants(caption, (node) => ["input", "textarea"].includes(node.localName))[0]; };
   const type = (label, value) => { fieldOf(label).value = String(value); };
-  const goTo = async (label) => { await press(label); await redraw(); };
+  // A view is drawn once the app's main process has answered, which on a loaded computer takes longer than one settle: wait until the view with this heading is drawn anew.
+  const view = (heading) => descendants(body, (node) => node.localName === "h1" && node.textContent === heading)[0];
+  const drawnAnew = async (heading, action) => { const before = view(heading); await action(); await until(() => view(heading) && view(heading) !== before); };
+  const HEADINGS = { Agents: "Bridge agents", Pairing: "Agent M Bridge pairing", Settings: "Bridge settings", Tunnels: "Tunnels" };
+  const goTo = (label) => drawnAnew(HEADINGS[label], async () => { await press(label); await redraw(); });
   await redraw();
   const dataFiles = (folder = data) => readdirSync(folder, { recursive: true }).filter((name) => statSync(join(folder, name)).isFile()).sort();
   return {
-    first, second, data, body, handlers, press, type, fieldOf, goTo, redraw, descendants,
+    first, second, data, body, handlers, press, type, fieldOf, goTo, drawnAnew, redraw, descendants,
     settingsFile: () => JSON.parse(readFileSync(join(data, "settings.json"), "utf8")),
     token: () => readFileSync(join(data, "pairing-token"), "utf8").trim(),
+    // The token while Pair anew may still be writing it: none yet is no token.
+    tokenWritten: () => { try { return readFileSync(join(data, "pairing-token"), "utf8").trim(); } catch { return ""; } },
     everythingWritten: () => dataFiles().map((name) => readFileSync(join(data, name), "utf8")).join("\n"),
     answers: async (port, token) => (await bridgeAsks(port, ORIGIN, token)).status,
     refusedAt: async (port) => (await bridgeAsks(port, ORIGIN, null)).status,
@@ -114,7 +120,8 @@ async function setInTheWindow(input) {
     const firstToken = app.token();
     await app.goTo("Settings");
     app.type("Name", input.name); app.type("Port", app.second); app.type("Products", input.products.join("\n")); app.type("Interval seconds", input.every);
-    await app.press("Save settings");
+    // Save settings restarts the Bridge on the port set; the view is drawn anew once it has.
+    await app.drawnAnew("Bridge settings", () => app.press("Save settings"));
     const saved = app.settingsFile();
     out.afterSettings = { ...saved, port: saved.port === app.second ? "the port set" : saved.port };
     out.portSetIsServed = await app.answers(app.second, firstToken);
@@ -122,7 +129,7 @@ async function setInTheWindow(input) {
     out.tokenKeptByASettingsSave = app.token() === firstToken;
     await app.goTo("Tunnels");
     app.type("Jump host", input.jumpHost.hostname); app.type("SSH user", input.jumpHost.user); app.type("SSH port", input.jumpHost.sshPort);
-    await app.press("Save jump host");
+    await app.drawnAnew("Tunnels", () => app.press("Save jump host"));
     out.jumpHost = app.settingsFile().jumpHost;
     await app.goTo("Agents");
     const rowOfClaude = () => app.descendants(app.body, (node) => node.localName === "p" && app.descendants(node, (child) => child.localName === "strong" && child.textContent === "claude").length)[0];
@@ -132,9 +139,12 @@ async function setInTheWindow(input) {
     app.descendants(row, (node) => node.type === "checkbox")[0].checked = true;
     app.type("Working folder", input.agentFolder);
     await app.press("Save agents");
+    await until(() => /Saved \d+ agent\(s\)\./.test(app.body.textContent));
     out.agents = app.settingsFile().agents;
     await app.goTo("Pairing");
     await app.press("Pair anew"); await app.press("Pair anew", true);
+    // Pair anew writes the new token and then draws the window anew: wait until the window shows a token other than the first, the one written.
+    await until(() => { const written = app.tokenWritten(); return written && written !== firstToken && app.body.textContent.includes(written); });
     const fresh = app.token();
     out.pairedAnew = { differs: fresh !== firstToken, oldToken: await app.answers(app.second, firstToken), newToken: await app.answers(app.second, fresh), shownInWindow: app.body.textContent.includes(fresh) };
     const final = app.settingsFile();
@@ -163,7 +173,7 @@ async function imported(input) {
     const firstToken = app.token();
     await app.goTo("Settings");
     app.type("Name", "set-in-the-window"); app.type("Products", "https://github.com/alice/set-in-the-window"); app.type("Interval seconds", 77);
-    await app.press("Save settings");
+    await app.drawnAnew("Bridge settings", () => app.press("Save settings"));
     out.before = { name: app.settingsFile().name, products: app.settingsFile().products, every: app.settingsFile().every };
     const text = await exportOf(input.export, input.instance);
     await app.goTo("Settings");

@@ -181,7 +181,9 @@ export async function withWorkflow(s, { answers, inputs = null, token = "github_
     const files = Object.fromEntries(Object.entries({ ...s.product.files, ...given }).map(([path, text]) => [path, path.startsWith("docs/jobs/") ? text.replaceAll("c0ffee0000000000000000000000000000000000", instance.commit) : text]));
     const product = checkout(root, "product", files);
     const agentM = { version: "2026.10.0", commit: instance.commit };
-    // The coding agent a hand-over to a model endpoint runs is opencode (MOD-agent-processes); the runner's is a fixture executable that answers with `agent.answer` (the draft) or fails with `agent.fail`.
+    // The coding agent a hand-over to a model endpoint runs, for a kind that changes code or runs tests, is opencode (MOD-agent-processes); the runner's is a fixture executable that answers with
+    // `agent.answer` (the draft) or fails with `agent.fail`. A kind that only reads and drafts runs through Agent M's own job runner calling the endpoint (MOD-workflow-entries, onDispatch), which then
+    // answers `agent.answer` where no `answers` are given: the same model behind either driver.
     const bin = join(root, "bin");
     mkdirSync(bin);
     writeFileSync(join(bin, "answer.json"), JSON.stringify({ type: "text", part: { text: JSON.stringify({ draft: agent?.answer ?? {}, answers: [] }) } }) + "\n" + JSON.stringify({ type: "step_finish", part: { tokens: { input: 11, output: 7 } } }) + "\n");
@@ -192,7 +194,7 @@ export async function withWorkflow(s, { answers, inputs = null, token = "github_
       GITHUB_REF_NAME: "main", GITHUB_SHA: product.commit, GITHUB_RUN_ID: "7", GITHUB_ACTOR: "akmaier", AGENT_M_RUNNER: runner, AGENT_M_PRODUCT_DIR: product.checkout,
       AGENT_M_TOKEN_NAME: "AGENT_M_TOKEN", AGENT_M_KEY_NAMES: "CI_KEY", AGENT_M_TOKEN: token, CI_KEY: key };
     const script = `import {runEntry} from ${JSON.stringify(new URL("../src/workflow-entries/main.mjs", import.meta.url).href)};
-      const answers=${JSON.stringify(answers)},requests=[]; globalThis.fetch=async(url,init={})=>{if(!String(url).startsWith("https://fixture-endpoint.example.test/"))throw Error("uncontrolled request: "+url);requests.push({headers:init.headers,body:JSON.parse(init.body)});if(${JSON.stringify(fail)})throw new TypeError(${JSON.stringify(fail)});return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({draft:answers[Math.min(requests.length-1,answers.length-1)],answers:[]})}}]}),{status:200})};
+      const answers=${JSON.stringify(answers.length === 0 && agent?.answer ? [agent.answer] : answers)},requests=[]; globalThis.fetch=async(url,init={})=>{if(!String(url).startsWith("https://fixture-endpoint.example.test/"))throw Error("uncontrolled request: "+url);requests.push({headers:init.headers,body:JSON.parse(init.body)});if(${JSON.stringify(fail)})throw new TypeError(${JSON.stringify(fail)});return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({draft:answers[Math.min(requests.length-1,answers.length-1)],answers:[]})}}]}),{status:200})};
       const status=await runEntry(${JSON.stringify(inputs ? "onDispatch" : "onRecordsChanged")},${JSON.stringify(environment)},{now:new Date("2026-10-19T12:01:00Z")});console.log(JSON.stringify({status,requests}));`;
     const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
     delete env.NODE_TEST_CONTEXT;

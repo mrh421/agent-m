@@ -233,17 +233,14 @@ const handedOver = async (options = {}) => {
 // TST-513010 · level: system · module: MOD-prompt-bar · MOD-runtimes · MOD-workflow-entries
 // guards: UC-049; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; A HOSTED JOB WRITES WITH THE PERSON'S TOKEN FROM A CI SECRET; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET; A JOB IS RECORDED IN ITS PRODUCT REPOSITORY; NO SECRET IN THE REPOSITORY
 // given: handy, a model endpoint at "GitHub Actions in the USA" with the CI secret CI_KEY, that can run code and tests; the product holds Agent M's job workflow; handy answers a message by proposing to hand over a converse job on A LOAN HAS A DUE DATE with a task
-// input: the proposal shown; a click that a script makes on Hand over; the person's click on Hand over; the run (the real entry onDispatch on fixture checkouts, with the coding agent a fixture executable) ; the next poll
-// expect: the proposal shows the kind, what it works on, the task, "handy — GitHub Actions in the USA" and the route "ci hosted"; nothing is written before the person's click and a script's click writes nothing; the click commits one file, the record of the job, which names the participant, the model, the route and what it works on and holds none of the conversation's messages and not the task (the record says the task travels with the hand-over); the job workflow is started once with the job and the task as its inputs; the bar says waiting for GitHub Actions; the run ends done in its record without a commit of the task, and the bar shows the end (flow: UC-049 alternative 4a)
-test("alternative 4a: the participant proposes a hand-over, the person's click queues the job and starts the workflow with the task, and the run's end is shown", async () => {
+// input: the person's Send, whose answer proposes the hand-over — no further click —; the run (the real entry onDispatch on fixture checkouts; the conversation's kind runs through Agent M's own job runner, calling the fixture endpoint); the next poll
+// expect: the proposal shows the kind, what it works on, the task, "handy — GitHub Actions in the USA" and the route "ci hosted", and no button Hand over; the hand-over goes on at once and commits one file, the record of the job, which names the participant, the model, the route and what it works on and holds none of the conversation's messages and not the task (the record says the task travels with the hand-over); the job workflow is started once with the job and the task as its inputs; the bar says waiting for GitHub Actions; the run ends done in its record without a commit of the task, and the bar shows the end (flow: UC-049 alternative 4a)
+test("alternative 4a: the participant proposes a hand-over, which is queued without a further click and starts the workflow with the task, and the run's end is shown", async () => {
   const { s, w, clock, done } = await handedOver();
   const text = proposalOf(s).textContent;
   for (const part of ["Kind: converse", `Works on: ${LOAN}`, `Task: ${HAND_OVER.task}`, "Participant: handy — GitHub Actions in the USA", "Route: ci hosted"]) assert.ok(text.includes(part), `${part} in ${text}`);
-  assert.deepEqual([s.product.writes.length, w.dispatches.length], [0, 0], "nothing is written before the click");
-  scripted(handOverButton(s));
-  await rest(s);
-  assert.deepEqual([s.product.writes.length, w.dispatches.length], [0, 0], "a click that a script makes writes nothing");
-  await press(s, handOverButton(s));
+  assert.equal(handOverButton(s), undefined, "no click is asked for");
+  await until(() => s.product.writes.length === 1, "the hand-over is queued at once");
   assert.equal(s.product.writes.length, 1, "one commit");
   const [path, record] = queuedRecord(s);
   assert.deepEqual(Object.keys(s.product.writes[0].files), [path], "the record of the job is the one file");
@@ -289,7 +286,6 @@ test("alternative 4a: the participant proposes a hand-over, the person's click q
 // expect: the conversation is gone — the bar shows none of its messages and follows no job —, and the job's record is still in the product repository, naming the participant and what it works on (flow: UC-049 alternative 4b)
 test("alternative 4b: when the tab is closed the conversation is gone and the job's record remains", async () => {
   const { s, done } = await handedOver();
-  await press(s, handOverButton(s));
   const [path, record] = queuedRecord(s);
   assert.ok(conversationOf(s).length > 0 && followingOf(s).includes("Handed over"), "known positive: the first tab held a conversation and followed the job");
   done();
@@ -327,7 +323,6 @@ test("alternative 4c: a product without the job workflow gets nothing handed ove
 // expect: the run ends failed and its record names the reason — the run failed against the endpoint, why, and the routes that would work: a self-hosted runner, or a Bridge —; the bar shows the end as failed with that reason (flow: UC-049 alternative 4d)
 test("alternative 4d: when GitHub's runners cannot reach the endpoint the run fails and names the reason and the routes that would work", async () => {
   const { s, w, clock, done } = await handedOver();
-  await press(s, handOverButton(s));
   const [path, record] = queuedRecord(s);
   await withWorkflow(s, { answers: [], inputs: w.dispatches[0].inputs, files: { [path]: record }, agent: { fail: "connection refused" }, fail: "fetch failed" }, async ({ status, git, product }) => {
     assert.equal(status.outcome, "failed");
@@ -372,7 +367,6 @@ test("alternative 5a: Stop ends the loop in the tab and nothing is written", asy
 // expect: the CI is asked to cancel the run once; the bar shows cancelled and the record ends cancelled; nothing more is committed to the product after the cancel (the only commit is the record of the hand-over and its end) (flow: UC-049 alternative 5a)
 test("alternative 5a: Stop cancels a run in GitHub Actions and commits nothing more", async () => {
   const { s, w, clock, done } = await handedOver();
-  await press(s, handOverButton(s));
   const [path, record] = queuedRecord(s);
   s.product.change(path, appendToRecord(record, { part: "taken", at: new Date("2026-10-19T12:00:30Z"), by: RUN_URL }));
   w.runs.push({ id: "7", workflow: "agent-m-jobs.yml", commit: "c0", event: "workflow_dispatch", status: "in_progress", conclusion: null, url: RUN_URL });
@@ -520,23 +514,23 @@ test("alternative 6c: a conversation held on a page of the instance is recorded 
 
 // TST-513027 · level: system · module: MOD-prompt-bar · MOD-workflow-entries · MOD-spec-changes
 // guards: UC-049; A GENERATED ARTIFACT IS A PROPOSAL
-// given: handy proposes handing over a change of the requirement A LOAN HAS A DUE DATE (the kind change-requirements); the person's click queues it; the run is the real entry onDispatch on fixture checkouts, with the coding agent answering a draft of the change
-// input: Hand over; the run
-// expect: UC-049 4a.3 says the run's answer appears with the commits it made — artifacts committed as open —: the run ends done and commits the change as an open proposal. FINDING: the run ends failed with "entrySections needs the job's source as text": the record the bar queues carries the requirement and no source (the person's own source, which the message of the tab names), so this case is red on main until the hand-over gives the job its source (flow: UC-049 alternative 4a)
-test("alternative 4a: a hand-over of a change of requirements runs to its end and commits an open proposal", async () => {
+// given: handy proposes handing over a change of the requirement A LOAN HAS A DUE DATE (the kind change-requirements, whose result waits for the person, and which handy can do); the page of the requirement, whose subject gives the person's own source
+// input: Send — no further click —; Review the draft; Save
+// expect: UC-049 4a.1: the change runs in this tab at once, its draft is shown for review, nothing is written before Save and no job is queued; Save commits the change as an open proposal — a queue entry with its rationale —, SPEC.md stays as it was and no approval record is written (flow: UC-049 alternative 4a)
+test("alternative 4a: a hand-over of a change of requirements runs in the tab without a click, and Save commits an open proposal", async () => {
   const s = await scenario({ instanceFiles: register(DRAFTER, HANDY), answers: [{ answer: "x" }] });
-  const w = watch(s, { script: [answer("Handing on.", { candidates: [], handOver: { kind: "change-requirements", works_on: [LOAN], task: "Make the due date visible." } })] });
-  const clock = followClock();
-  await onRequirementPage(s); // the page UC-049 4a means: the requirement's own, whose subject is of the kind change-requirements and gives the person's own source
+  const w = watch(s, { script: [answer("Handing on.", { handOver: { kind: "change-requirements", works_on: [LOAN], task: "Make the due date visible." } }), { envelope: { draft: draft(), answers: [] } }] });
+  await onRequirementPage(s); // the page of the requirement, whose subject gives the person's own source
   await sendNow(s, "Please change this rule.", { participant: "handy" });
   await free(s);
-  await until(() => all(barOf(s), "button", "queue").length > 0, "the hand-over is offered");
-  await press(s, all(barOf(s), "button", "queue")[0]);
-  const [path, record] = queuedRecord(s);
-  await withWorkflow(s, { answers: [], inputs: w.dispatches[0].inputs, files: { [path]: record }, agent: { answer: draft() } }, async ({ status, git, product }) => {
-    assert.equal(status.outcome, "done", status.summary);
-    assert.ok(git(product.origin, "ls-tree", "-r", "--name-only", "main").split("\n").some((each) => each.endsWith(".begruendung.md")), "an open proposal is committed");
-  });
-  clock.stop();
+  await until(() => all(barOf(s), "button", "review").length > 0, "the draft of the hand-over is ready");
+  assert.equal(all(barOf(s), "button", "queue").length, 0, "no click is asked for");
+  assert.equal(s.product.writes.length, 0, "nothing is written before Save");
+  assert.equal(w.dispatches.length, 0, "no job is queued");
+  await review(s);
+  await until(() => all(s.target, "section", "requirements-result").length === 1, `the draft of the requirements: ${s.target.textContent}`);
+  await save(s);
+  assert.equal(proposalWrites(s).length, 1, "an open proposal is committed");
+  assert.ok(!Object.keys(s.product.files).some((path) => path.startsWith("docs/approvals/")), "no approval record is written");
   w.stop();
 });

@@ -162,8 +162,8 @@ test("TST-513203: with recording off a conversation that reads, saves and hands 
   assert.ok(conversationOf(s).some((line) => line.includes("two rules")), "known positive: the conversation took place");
   await sendNow(s, messages[1], { participant: "handy" });
   await free(s);
-  await until(() => all(barOf(s), "button", "queue").length > 0, "the hand-over is offered");
-  await press(s, all(barOf(s), "button", "queue")[0]);
+  // The hand-over goes on without a further click (UC-049 4a): the person's message was the request.
+  await until(() => Object.keys(s.product.files).some((path) => /^docs\/jobs\/JOB-.*\.md$/.test(path)), "the hand-over is queued");
   assert.equal(s.product.writes.length, 1, "known positive: the hand-over wrote its record");
   assert.ok(Object.keys(s.product.files).some((path) => /^docs\/jobs\/JOB-.*\.md$/.test(path)), "the job record is in the product's repository");
   assert.ok(!Object.keys(s.instance.files).some((path) => path.startsWith("docs/jobs/")), "and not in the instance's");
@@ -295,8 +295,8 @@ test("TST-513208: the tab and the Bridge are driven by one definition of the kin
 
 // TST-513209 · level: release · module: MOD-prompt-bar · MOD-runtimes · MOD-workflow-entries
 // guards: UC-049; A JOB IS RECORDED IN ITS PRODUCT REPOSITORY; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET; A HOSTED JOB WRITES WITH THE PERSON'S TOKEN FROM A CI SECRET; NO COST IS GUESSED; NO SECRET IN THE REPOSITORY
-// given: a hand-over to handy (CI secret CI_KEY) queued by the person's click and run by the real job workflow entry with the key and the person's token as secrets of the run; handy declares no price
-// input: the click on Hand over; the run
+// given: a hand-over to handy (CI secret CI_KEY) queued, without a further click, by the person's Send whose answer proposed it, and run by the real job workflow entry with the key and the person's token as secrets of the run; handy declares no price
+// input: Send; the run
 // expect: the record is in the product's repository; neither the record, nor a commit, nor the workflow's inputs hold the key's value or the token's value; the agent of the run was given the key by the name of the secret (the run's environment), not by its value in an argument; the run's end names the cost as unknown — no number — because handy declares no price
 test("TST-513209: a hand-over is recorded in the product, the run authenticates with CI secrets, and no cost is guessed", async () => {
   const s = await scenario({ instanceFiles: register(DRAFTER, HANDY), answers: [{ answer: "x" }] });
@@ -304,8 +304,8 @@ test("TST-513209: a hand-over is recorded in the product, the run authenticates 
   const clock = followClock();
   await sendNow(s, "Please run the tests.", { participant: "handy" });
   await free(s);
-  await until(() => all(barOf(s), "button", "queue").length > 0, "the hand-over is offered");
-  await press(s, all(barOf(s), "button", "queue")[0]);
+  // The hand-over goes on without a further click (UC-049 4a): the person's message was the request.
+  await until(() => Object.keys(s.product.files).some((path) => /^docs\/jobs\/JOB-.*\.md$/.test(path)), "the hand-over is queued");
   const [path, queued] = Object.entries(s.product.files).find(([each]) => each.startsWith("docs/jobs/JOB-"));
   const KEY = "ci-key-value-7D3A", TOKEN = "github_pat_ci-person-token-7D3A";
   await withWorkflow(s, { answers: [], inputs: w.dispatches[0].inputs, files: { [path]: queued }, key: KEY, token: TOKEN, agent: { answer: { answer: "Done." } } }, async ({ status, git, product }) => {
@@ -358,8 +358,11 @@ test("TST-513211: participants are offered by their declared capabilities and pl
   assert.ok(!text.includes("observer"), "observer cannot draft text and is not offered");
   const explained = all(barOf(s), "details").filter((node) => node.textContent.length > 120);
   assert.ok(explained.length >= 1, "the bar has a folded explanation with words");
+  // The hand-over goes on at once and is followed every 15 seconds: the follow's timer is held, so that it does not keep the process.
+  const clock = followClock();
   await sendNow(s, "Run the tests.", { participant: "handy" });
   await free(s);
   await until(() => all(barOf(s), "section", "hand-over").length > 0, "the hand-over is proposed");
+  clock.stop();
   w.stop();
 });

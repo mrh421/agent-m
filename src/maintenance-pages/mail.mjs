@@ -425,7 +425,7 @@ export function mailSubject({ key, title, entries, store }) {
     if (entries().some(({ mail }) => [...runsOf(squeeze(mail.text))].some((run) => mine.has(run)))) return "the text quotes a passage of a mail";
     return null;
   };
-  return { key, title, kind: "converse", entry: null, paramsFor: (participant) => ({ page: pageFor(participant) }), draftRoute: null, withhold, refuses: ["propose-edit", "hand-over"] };
+  return { key, title, entry: null, paramsFor: (participant) => ({ page: pageFor(participant) }), draftRoute: null, withhold, refuses: ["propose-edit", "hand-over"] };
 }
 
 const subject = (params, context) => mailSubject({ key: "mail", title: "Mail", entries: () => listed, store: context.store });

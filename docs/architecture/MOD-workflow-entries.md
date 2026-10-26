@@ -26,6 +26,7 @@ uses:
   - MOD-job-runner.registerStrategies
   - MOD-job-runner.prepareJob
   - MOD-job-runner.runJob
+  - MOD-job-runner.handOverParams
   - MOD-job-catalogue.kindOf
   - MOD-job-ledger.JobRecord
   - MOD-job-ledger.RecordPart
@@ -180,7 +181,15 @@ the writing machine.
   parameters of its `## Parameters` and its pinned inputs —, with the driver of its participant, a coding-agent process or
   a model endpoint, the participant's key from its secret, appending its records. No person attends a job in CI: its
   kind's writer writes at once (`A CI AGENT'S DRAFT ENTERS AS OPEN`), and a kind that hands its draft back leaves it in
-  the record's end as `draft:`, from which the page shows it and a run starts the job that follows. The entry resumes each
+  the record's end as `draft:`, from which the page shows it and a run starts the job that follows. A job whose draft
+  holds a hand-over (MOD-job-runner's `hand-over`, UC-049 4f) is followed in the same run, with the same participant and
+  driver, by a job of the kind it names, where that kind is not the job's own, its result waits for a person (`review: person`) and
+  the hand-over works on no item of the backlog or step of the plan: its parameters the job's `source`, those
+  MOD-job-runner's `handOverParams` gives for what it works on, and its task as `instruction`; prepared, and run
+  unattended, so that its writer writes at once — a change of requirements as an open entry of a new queue, a use case
+  or an architecture file as open; no job writes an approval record. A hand-over of any other kind, or one whose job
+  does not start, is not run, and the job's end names it with why. The end lists every result of both: their commits,
+  their files and pull requests, and their writers' notes. The entry resumes each
   job of this route whose gate is now recorded (`A JOB STOPS AT EVERY GATE`); and computes the next actions of every run
   the change concerns, from the product's facts read once, taking those of this route and queueing those of other routes
   by their start records (`A RUN CONTINUES WITHOUT A CLICK BETWEEN ITS JOBS`). Two entries that compute the same action
@@ -216,8 +225,12 @@ the writing machine.
   inputs the dashboard named (UC-024): writes the job's start record, those inputs its parameters, and runs it as
   `onRecordsChanged` runs a job. On a run a hand-over started (UC-049 4a), whose input `job` names a queued record whose
   task travels with the hand-over: takes that job and runs it with the input `task` as its instruction — for a model
-  endpoint, with opencode working with the endpoint the input `endpoint` names and the key from the CI secret the input
-  `secret` names (MOD-agent-processes) —; a record that holds `declares` is run with the `Participant` of
+  endpoint, the endpoint the input `endpoint` names, with the key from the CI secret the input `secret` names: a job of a
+  kind that only reads and drafts text — whose `needs` hold *draft text* and nothing but *draft text* and *read the repository*, as
+  `converse` and the change kinds of requirements, use cases and the architecture — runs through Agent M's own job
+  runner, MOD-endpoint-calls' `endpointDriver` calling the endpoint, with its tool loop where the record declares *use
+  tools*, as in the tab, and a job handed on from it in the same run takes the same driver; a job of any other kind —
+  one that changes code or runs tests — runs with opencode working with that endpoint (MOD-agent-processes) —; a record that holds `declares` is run with the `Participant` of
   MOD-participant-list's shape built from it alone — its name and model from `participant` and `model`, its place from
   `## Destinations`, its context and capabilities from `declares`, the type *model endpoint* and no price —, any other
   with the participant of the instance's list that it names; it writes the task to no file, and a branch whose commit
@@ -344,7 +357,8 @@ sections with their decisions and the fetched texts of sources. Reads secrets on
   `MOD-endpoint-calls.testEndpoint` — after a handed-over run's agent failed working with an endpoint, one short request to
   that endpoint, whose diagnosis names the reason where the endpoint is the cause.
 - `MOD-job-runner.JobContext`, `registerStrategies`, `prepareJob`, `runJob`, `MOD-job-catalogue.kindOf` — running a job of
-  any kind from its record, unattended.
+  any kind from its record, unattended; `MOD-job-runner.handOverParams` — the parameters of a hand-over run in the same
+  job.
 - `MOD-job-ledger.JobRecord`, `RecordPart`, `newJobId`, `startRecord`, `takeJob`, `appendToRecord`, `jobState` — the
   records of the jobs it takes, their parameters, and their ends with a draft handed back.
 - `MOD-runtimes.queueJob` — queueing the actions of other routes.

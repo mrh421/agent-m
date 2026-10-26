@@ -48,13 +48,14 @@ Workflows — and keeps nothing but the processes it started.
 | Agent | the name by which a participant names the agent, one row per supported agent: `claude`, `codex`, `opencode` |
 | Command | the command the CLI is started by |
 | Version | how its version is asked for |
-| Task | how a task is given to it without a conversation, and how its final answer is told from its other output |
+| Task | the arguments that make it read a task from its standard input without a conversation, and how its final answer is told from its other output |
 | Login check | how it is asked, harmlessly, whether it is logged in, and the agent's own login step (`login`), the command a person runs to log in |
 | Key variable | the environment variable from which it reads a key, used only in CI |
 | Endpoint | how it is made to work with a model endpoint of the kind OpenAI-compatible or Anthropic — the options or settings that name the endpoint's address and model —, or `—` where it cannot |
 | Install | the vendor's installation page for each platform (`THE BRIDGE GUIDES THE INSTALLATION OF A MISSING AGENT`) |
 
-The exact commands and options are data in this register, not code, so a changed CLI is a changed row.
+The exact commands and options are data in this register, not code, so a changed CLI is a changed row. The prompt is
+never an argument: it is written to the agent's standard input, so no size of a prompt can fail the agent's start.
 
 ## Interfaces
 
@@ -68,7 +69,8 @@ The exact commands and options are data in this register, not code, so a changed
   register's Version and Login check columns; changes nothing.
 - `agentDriver(agent: Agent, options: { workdir: string, keyVariable: string | null, endpoint: { kind:
   "openai-compatible" | "anthropic", baseUrl: string, model: string } | null }, participant: Participant) -> Driver` — a
-  driver whose `send` starts the agent with `driverPrompt(input)` as its task in the working folder — where `endpoint` is
+  driver whose `send` starts the agent in the working folder and writes `driverPrompt(input)`, its task, to the agent's
+  standard input — where `endpoint` is
   given, made to work with that endpoint as the register's Endpoint column says, its key from `keyVariable`, for the work
   a conversation with a model endpoint hands to CI (UC-049 4a); an agent whose Endpoint is `—` refuses it with
   `EndpointUnsupported`, before it starts —, streams its output
@@ -81,7 +83,8 @@ The exact commands and options are data in this register, not code, so a changed
   anything further is pushed. It throws `AgentMissing`, `EndpointUnsupported`, `AgentNotLoggedIn`, `AgentFailed { exitCode, lastOutput }` and
   `Cancelled`.
 - `testAgent(agent: Agent) -> Promise<{ answered: true, version: string } | { answered: false, reason: string }>` — a
-  harmless request, a one-word answer, to show that the agent answers with its login (UC-017).
+  harmless request, a one-word answer, given on the agent's standard input as a task is, to show that the agent answers
+  with its login (UC-017).
 
 ## Files
 

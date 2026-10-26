@@ -377,11 +377,11 @@ const handOver = (kind, works_on, task) => ["hand-over", { kind, works_on, task 
 // guards: CODE ENTERS THE DEFAULT BRANCH THROUGH A PULL REQUEST WITH GREEN CI
 // given: the real catalogue, whose kind implement has a participant; the kind of TST-486001
 // input: hand-over of implement, works on UC-049, with the task "Add the tool"; then of implement, works on UC-001, with the task "Add the other tool"
-// expect: each answered "proposed: a job of implement is held for the person, who may hand it over"; the draft's handOver is { kind: "implement", works_on: ["UC-001"], task: "Add the other tool" }, the later replacing the earlier; no host was touched, so nothing is queued
+// expect: each answered "proposed: a job of implement goes on once you have answered: what it drafts is a proposal for the person"; the draft's handOver is { kind: "implement", works_on: ["UC-001"], task: "Add the other tool" }, the later replacing the earlier; no host was touched, so nothing is queued
 test("hand-over holds the proposed hand-over in the draft's handOver and queues nothing", async () => {
   const { answers, result, touched } = await answersTo([handOver("implement", ["UC-049"], "Add the tool"),
     handOver("implement", ["UC-001"], "Add the other tool")]);
-  assert.deepEqual(answers, Array(2).fill("proposed: a job of implement is held for the person, who may hand it over"));
+  assert.deepEqual(answers, Array(2).fill("proposed: a job of implement goes on once you have answered: what it drafts is a proposal for the person"));
   assert.deepEqual(result.draft.handOver, { kind: "implement", works_on: ["UC-001"], task: "Add the other tool" });
   assert.deepEqual(touched, []);
 });

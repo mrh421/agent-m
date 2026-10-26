@@ -1,11 +1,11 @@
 // The subject the specification view gives the prompt bar (docs/architecture/MOD-trace-pages.md, Data: specification; Interfaces: view),
-// MOD-prompt-bar's `Subject`, for UC-049, UC-019 (step 1) and UC-020 (1a):
-// - on the default branch, the open requirement, or the group with the names it holds, with the kind `change-requirements`, the person's own
-//   source and the review pages' `draft` as its draft route, `draft/subject=<key, encoded>`, in the form the review pages' own subjects give; without the person's own
-//   source its parameters are refused with the error NoPersonSource, which names registering the person as a source and linking it to the product (UC-019 4b);
-// - at a released version, the requirement as it read there, with the kind `converse` and no draft route, since a change is drafted only
-//   against the current text;
-// - every other view, and the specification with nothing open, the frame's default with the version shown among its page.
+// MOD-prompt-bar's `Subject`, for UC-049, UC-019 (step 1) and UC-020 (1a). A subject is context only: the bar runs `converse` on every page.
+// - on the default branch, the open requirement, or the group with the names it holds, as `requirements`, the person's own source where the product
+//   links one, and the review pages' `draft` as its draft route, `draft/subject=<key, encoded>`, in the form the review pages' own subjects give;
+//   with nothing open, the page and the person's own source where there is one; a missing source refuses nothing here — a change of requirements
+//   refuses by its own precondition (UC-019 4b);
+// - at a released version, the requirement as it read there, and no draft route, since a change is drafted only against the current text;
+// - every other view the frame's default with the version shown among its page.
 // "The open requirement" is the one whose detail was opened last and is still open; "the open group" the group of the group file whose list was opened last
 // and is still open; an open requirement is the narrower subject and wins. The subject is read at each Send, so what is open is kept as
 // the person opens and closes it, and the person's source is read when the page is drawn: a subject reads nothing and sends nothing.
@@ -66,11 +66,6 @@ export async function personsSource(context, snapshot) {
 }
 
 const encoded = encodeURIComponent;
-// A change of requirements without the person's own source sends nothing and names the two steps that are missing (UC-019 4b), as the review pages' subjects do.
-function missingSource() {
-  return Object.assign(new Error("The author has no personal source linked to this product. Register the person as a source (#library) and link that source to the product (#sources), then ask again."),
-    { name: "NoPersonSource" });
-}
 
 const lines = (...parts) => parts.filter((part) => typeof part === "string" && part !== "").join("\n");
 
@@ -86,7 +81,9 @@ export function subjectOf({ title, params, context, shown }) {
   const version = typeof ref === "string" && ref !== "" ? `Version: ${ref}` : "";
   const keyOf = (...parts) => ["trace", `key=${encoded(params.key ?? "")}`, ...(version ? [`ref=${encoded(ref)}`] : []), ...parts,
     ...(address ? [`product=${encoded(address)}`] : [])].join("/");
-  const frames = () => ({ key: keyOf(), title, kind: "converse", paramsFor: () => ({ page: lines(title, address, version, shown?.target.textContent) }),
+  const pageText = () => lines(title, address, version, shown?.target.textContent);
+  const own = () => (shown?.onDefaultBranch && typeof shown.source === "string" ? { source: shown.source } : {});
+  const frames = () => ({ key: keyOf(), title, paramsFor: () => ({ page: pageText(), ...(params.key === "specification" ? own() : {}) }),
     draftRoute: null, withhold: null, refuses: [] });
   if (params.key !== "specification" || !shown?.spec) return frames();
 
@@ -94,11 +91,8 @@ export function subjectOf({ title, params, context, shown }) {
   const group = shown.groups.at(-1);
   const changing = (part, names, about) => {
     const key = keyOf(part);
-    return { key, title: about, kind: "change-requirements",
-      paramsFor: () => {
-        if (shown.source === null) throw missingSource();
-        return { requirements: [...names], source: shown.source };
-      },
+    return { key, title: about,
+      paramsFor: () => ({ page: lines(pageText(), `Open: ${about}`, ...names), requirements: [...names], ...own() }),
       draftRoute: `${DRAFT_ROUTE}/subject=${encoded(key)}`, withhold: null, refuses: [] };
   };
   if (name !== undefined && shown.onDefaultBranch) return changing(`requirement=${encoded(name)}`, [name], name);
@@ -107,7 +101,7 @@ export function subjectOf({ title, params, context, shown }) {
   }
   const requirement = name === undefined ? undefined : shown.spec.requirements.get(name);
   if (requirement === undefined) return frames();
-  return { key: keyOf(`requirement=${encoded(name)}`), title: `${name} at ${ref}`, kind: "converse",
+  return { key: keyOf(`requirement=${encoded(name)}`), title: `${name} at ${ref}`,
     paramsFor: () => ({ page: lines(title, address, version, `Requirement ${name}`, `Source: ${requirement.source ?? ""}`,
       `Rule: ${requirement.rule ?? ""}`, `Check: ${requirement.check ?? ""}`) }),
     draftRoute: null, withhold: null, refuses: [] };

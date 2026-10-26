@@ -1,7 +1,7 @@
 // The hand-over in the prompt bar (ITM-505) — MOD-prompt-bar's startPromptBar when the participant proposes handing work on (UC-049 4a, 4c, 5a): the proposal shown with its kind, what it
 // works on, its task, the participant with its processing place and the route MOD-runtimes' routesFor gives; the product's start rules (MOD-work-plans' startable with the facts
 // MOD-progress-measures' productFacts reads for the scope `work`, and the proposed participant as the only participant, so that startable's own check of the implementing role is the check of
-// this participant) refusing with their reasons and queuing nothing; *Hand over* queuing with MOD-runtimes' handOverJob only on a person's click; the job followed every 15 seconds through
+// this participant) refusing with their reasons and queuing nothing; otherwise queuing with MOD-runtimes' handOverJob at once, without a further click, the person's Send being the request (UC-049 4a.2); the job followed every 15 seconds through
 // MOD-job-ledger's listJobs and MOD-runtimes' liveState and jobLog until its record has its end; *Stop* calling cancelJob. As the accepted text of docs/architecture/MOD-prompt-bar.md states it.
 // Run: node --test tests/prompt-bar-hand-over.test.mjs
 //
@@ -17,8 +17,8 @@
 // the global `fetch`, which keeps every request, so that a request to any other address is seen: it must be none. The clock is a fake one (node:test's mock timers for setTimeout): no test waits
 // for 15 real seconds. A script's click is a plain Event (isTrusted false); a person's click is an Event whose isTrusted is true. The task of every hand-over holds words that appear nowhere else
 // (PLANTED-TASK-9C2E), so that a record, a commit or a request that carries them is found. Readings of the module file that the tests state (the pull request names them): a hand-over that works
-// on no item or step of the product's plan has no start rule to meet and is checked by the job's own preconditions when it is handed over; a click is checked against the product as it stands
-// then; the proposal's participant is the one the message went to. The counter-proofs are recorded in the pull request.
+// on no item or step of the product's plan has no start rule to meet and is checked by the job's own preconditions when it is handed over; the hand-over is checked against the product as it
+// stands when the answer comes; the proposal's participant is the one the message went to. The counter-proofs are recorded in the pull request.
 
 import test, { afterEach, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
@@ -270,15 +270,14 @@ async function proposes(it, handOver, participant = "dev-ci") {
   await until(() => !textOf(one(it.target, "hand-over")).includes("Checking"), "the proposal is checked");
 }
 const proposal = (it) => one(it.target, "hand-over");
-const handOverButton = (it) => byClass(proposal(it), "queue")[0];
+const queued = (it) => byClass(proposal(it), "queued").length;
 const following = (it) => textOf(one(it.target, "following"));
 const writesOf = (it) => it.product.attempts.length + it.product.starts.length + it.instance.attempts.length + it.net.bridge.handedOver.length;
 const NOTHING_WRITTEN = "no commit was attempted, no workflow was started and nothing was handed to the Bridge";
 const ITEM = (id, over = {}) => ({ kind: "implement", works_on: [id], task: TASK, ...over });
 
-// Clicks *Hand over* as a person and waits until the job is shown.
+// Waits until the hand-over, queued at once without a further click, is followed.
 async function handsOver(it) {
-  handOverButton(it).dispatchEvent(personal());
   await until(() => following(it).includes("State:"), "the job is followed");
 }
 
@@ -299,17 +298,19 @@ async function after(ms) { mock.timers.tick(ms); await settle(); }
 // guards: UC-049; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // given: a Scrum product of team1 where ITM-004 is ready and selected for team1's sprint, and dev-ci (a model endpoint with the CI secret KEY_A, place "Anthropic, USA") holds the role Developers; the product holds Agent M's job workflow; dev-ci's answer proposes { kind: "implement", works_on: ["ITM-004"], task: TASK }
 // input: Send
-// expect: the proposal shows "Kind: implement", "Works on: ITM-004", the task, "Participant: dev-ci — Anthropic, USA" and "Route: ci hosted", no reason, and one button "Hand over"; nothing was written (no commit attempt, no workflow start, no Bridge hand-over) and exactly one request was made, the message to the endpoint
-test("a hand-over the participant proposes is shown with its kind, what it works on, its task, the participant with its place and its route, and Hand over beside it", async () => {
+// expect: the proposal shows "Kind: implement", "Works on: ITM-004", the task, "Participant: dev-ci — Anthropic, USA" and "Route: ci hosted", no reason, no button "Hand over", and "Queued as" — it went on
+//   without a further click —: one commit queued the job and one workflow was started; the only request to a model was the message to the endpoint
+test("a hand-over the participant proposes is shown with its kind, what it works on, its task, the participant with its place and its route, and queued without a click", async () => {
   const it = open();
   await proposes(it, ITEM("ITM-004"));
   const text = textOf(proposal(it));
   for (const line of ["Kind: implement", "Works on: ITM-004", `Task: ${TASK}`, "Participant: dev-ci — Anthropic, USA", "Route: ci hosted"]) assert.ok(text.includes(line), `${line} in ${text}`);
   assert.equal(byClass(proposal(it), "start-reasons").length, 0);
-  assert.equal(byClass(proposal(it), "queue").length, 1);
-  assert.equal(textOf(handOverButton(it)), "Hand over");
-  assert.equal(writesOf(it), 0, NOTHING_WRITTEN);
-  assert.deepEqual(it.net.seen.map((call) => call.origin), [MODELS]);
+  assert.equal(all(it.target, (node) => node.localName === "button" && /hand over/i.test(textOf(node))).length, 0, "no click is asked for");
+  await until(() => queued(it) === 1, "the job is queued at once");
+  assert.equal(it.product.attempts.length, 1);
+  assert.equal(it.product.starts.length, 1);
+  assert.deepEqual(it.net.seen.filter((call) => call.origin === MODELS).length, 1);
   assert.deepEqual(it.net.stray, []);
 });
 
@@ -322,7 +323,7 @@ test("a hand-over of an item no sprint selects shows the reason and queues nothi
   const it = open();
   await proposes(it, ITEM("ITM-005"));
   assert.match(textOf(one(proposal(it), "start-reasons")), /ITM-005 can start only once one selects it/);
-  assert.equal(byClass(proposal(it), "queue").length, 0);
+  assert.equal(queued(it), 0);
   assert.equal(writesOf(it), 0, NOTHING_WRITTEN);
 });
 
@@ -335,12 +336,12 @@ test("a hand-over of an item whose use case is not accepted, or that builds on a
   const unaccepted = open();
   await proposes(unaccepted, ITEM("ITM-003"));
   assert.match(textOf(one(proposal(unaccepted), "start-reasons")), /ITM-003 realises UC-002[^]*not accepted/);
-  assert.equal(byClass(proposal(unaccepted), "queue").length, 0);
+  assert.equal(queued(unaccepted), 0);
   assert.equal(writesOf(unaccepted), 0, NOTHING_WRITTEN);
   const builds = open();
   await proposes(builds, ITEM("ITM-006"));
   assert.match(textOf(one(proposal(builds), "start-reasons")), /ITM-006 builds on ITM-004/);
-  assert.equal(byClass(proposal(builds), "queue").length, 0);
+  assert.equal(queued(builds), 0);
   assert.equal(writesOf(builds), 0, NOTHING_WRITTEN);
 });
 
@@ -352,13 +353,13 @@ test("a hand-over of an item whose use case is not accepted, or that builds on a
 test("a hand-over proposed by a participant that holds no implementing role shows the reason and queues nothing", async () => {
   const positive = open();
   await proposes(positive, ITEM("ITM-004"));
-  assert.equal(byClass(proposal(positive), "queue").length, 1, "known positive: dev-ci may hand ITM-004 over");
+  await until(() => queued(positive) === 1, "known positive: dev-ci's hand-over of ITM-004 is queued");
   const it = open();
   await proposes(it, ITEM("ITM-004"), "outsider");
   const reasons = textOf(one(proposal(it), "start-reasons"));
   assert.match(reasons, /No job can implement ITM-004/);
   assert.ok(reasons.includes("Developers") && reasons.includes("team1"), reasons);
-  assert.equal(byClass(proposal(it), "queue").length, 0);
+  assert.equal(queued(it), 0);
   assert.equal(writesOf(it), 0, NOTHING_WRITTEN);
 });
 
@@ -371,7 +372,7 @@ test("a hand-over above the product's work-in-progress limit shows the limit and
   const it = open({ files: kanbanFiles() });
   await proposes(it, ITEM("ITM-004"));
   assert.match(textOf(one(proposal(it), "start-reasons")), /work-in-progress limit of 3/);
-  assert.equal(byClass(proposal(it), "queue").length, 0);
+  assert.equal(queued(it), 0);
   assert.equal(writesOf(it), 0, NOTHING_WRITTEN);
 });
 
@@ -384,7 +385,7 @@ test("a hand-over of a step behind a gate that is not recorded shows the gate an
   const it = open({ files: vModelFiles() });
   await proposes(it, ITEM("ITM-007"));
   assert.match(textOf(one(proposal(it), "start-reasons")), /Design → Implementation/);
-  assert.equal(byClass(proposal(it), "queue").length, 0);
+  assert.equal(queued(it), 0);
   assert.equal(writesOf(it), 0, NOTHING_WRITTEN);
 });
 
@@ -397,14 +398,14 @@ test("a participant with no route a hand-over takes, and a product without the j
   const tab = open();
   await proposes(tab, ITEM("ITM-004"), "tab-only");
   assert.match(textOf(one(proposal(tab), "route")), /^Route: not available — .*this tab/);
-  assert.equal(byClass(proposal(tab), "queue").length, 0);
+  assert.equal(queued(tab), 0);
   assert.equal(writesOf(tab), 0, NOTHING_WRITTEN);
   const files = scrumFiles();
   delete files[WORKFLOW_FILE];
   const missing = open({ files });
   await proposes(missing, ITEM("ITM-004"));
   assert.match(textOf(one(proposal(missing), "route")), /^Route: not available — .*job workflow/);
-  assert.equal(byClass(proposal(missing), "queue").length, 0);
+  assert.equal(queued(missing), 0);
   assert.equal(writesOf(missing), 0, NOTHING_WRITTEN);
 });
 
@@ -413,15 +414,12 @@ test("a participant with no route a hand-over takes, and a product without the j
 // TST-505008 · level: component · module: MOD-prompt-bar
 // guards: THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; UC-049
 // given: the allowed hand-over of TST-505001
-// input: a click a script makes on Hand over (isTrusted false); then a person's click (isTrusted true)
-// expect: after the script's click nothing was written; after the person's, exactly one commit on the head the page read, which adds docs/jobs/JOB-….md (kind implement, works_on ITM-004, participant dev-ci, route ci hosted, task "with the hand-over", started by alice) and whose message is "Queue job <id>: implement", and exactly one start of the workflow agent-m-jobs.yml on trunk with the inputs job (that id), task (the task, byte for byte) and endpoint (the JSON of kind, address and model, without the key); the page says the job is queued
-test("Hand over queues the job only on a person's click, on the head the page read, and starts the job workflow with the task", async () => {
+// input: the person's Send, whose answer proposes the hand-over — no further click
+// expect: exactly one commit on the head the page read, which adds docs/jobs/JOB-….md (kind implement, works_on ITM-004, participant dev-ci, route ci hosted, task "with the hand-over", started by alice) and whose message is "Queue job <id>: implement", and exactly one start of the workflow agent-m-jobs.yml on trunk with the inputs job (that id), task (the task, byte for byte) and endpoint (the JSON of kind, address and model, without the key); the page says the job is queued
+test("the hand-over is queued on the head the page read, without a further click, and starts the job workflow with the task", async () => {
   const it = open();
-  await proposes(it, ITEM("ITM-004"));
   const head = it.product.head();
-  handOverButton(it).dispatchEvent(scripted());
-  await settle();
-  assert.equal(writesOf(it), 0, "a click a script makes queues nothing");
+  await proposes(it, ITEM("ITM-004"));
   await handsOver(it);
   assert.equal(it.product.attempts.length, 1);
   const [commit] = it.product.attempts;
@@ -478,30 +476,27 @@ test("a hand-over to a Bridge is queued by one commit and handed to the Bridge w
 
 // TST-505011 · level: component · module: MOD-prompt-bar
 // guards: NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED; A JOB GOES ONLY TO A HOLDER OF ITS ROLE; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
-// given: the allowed hand-over of TST-505001 shown; then, before the click, the product's sprint record changes so that team1's sprint no longer selects ITM-004
-// input: a person's click on Hand over
-// expect: the click is checked against the product as it stands: the proposal shows the reason that ITM-004 is not selected, has no button, and nothing was written
-test("the click is checked again against the product as it stands then", async () => {
+// given: the product of TST-505001; before the person's Send, the product's sprint record changes so that team1's sprint no longer selects ITM-004
+// input: Send, whose answer proposes the hand-over of ITM-004
+// expect: the hand-over is checked against the product as it stands when the answer comes: the proposal shows the reason that ITM-004 is not selected, nothing is queued, and nothing was written
+test("the hand-over is checked against the product as it stands when the answer comes", async () => {
   const it = open();
-  await proposes(it, ITEM("ITM-004"));
   it.product.edit("docs/backlog/sprints/team1/01.md", () => sprintRecord(["ITM-003", "ITM-006"]));
-  handOverButton(it).dispatchEvent(personal());
+  await proposes(it, ITEM("ITM-004"));
   await until(() => byClass(proposal(it), "start-reasons").length > 0, "the reasons are shown");
   assert.match(textOf(one(proposal(it), "start-reasons")), /ITM-004/);
-  assert.equal(byClass(proposal(it), "queue").length, 0);
+  assert.equal(queued(it), 0);
   assert.equal(writesOf(it), 0, NOTHING_WRITTEN);
 });
 
 // TST-505012 · level: component · module: MOD-prompt-bar
 // guards: NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // given: the Scrum product; dev-ci's answer proposes a hand-over that works on the use case UC-002, which is open and is no item or step of the plan, so that no start rule applies and the job's own precondition decides
-// input: a person's click on Hand over
-// expect: the proposal showed Hand over (no start rule applies); after the click the page says "Nothing was queued." and the finding that the job rests on what is not accepted, naming UC-002 and the rule NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED; nothing was written
-test("a hand-over of an open use case is refused by the job's own precondition when the person clicks", async () => {
+// input: Send, whose answer proposes the hand-over
+// expect: no start rule applies, so it is queued at once, and refused there: the page says "Nothing was queued." and the finding that the job rests on what is not accepted, naming UC-002 and the rule NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED; nothing was written
+test("a hand-over of an open use case is refused by the job's own precondition at once", async () => {
   const it = open();
   await proposes(it, { kind: "implement", works_on: ["UC-002"], task: TASK });
-  assert.equal(byClass(proposal(it), "queue").length, 1);
-  handOverButton(it).dispatchEvent(personal());
   await until(() => textOf(proposal(it)).includes("Nothing was queued."), "the refusal is shown");
   const text = textOf(proposal(it));
   assert.ok(text.includes("UC-002") && text.includes("NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED"), text);
@@ -511,14 +506,13 @@ test("a hand-over of an open use case is refused by the job's own precondition w
 // TST-1123005 · level: component · module: MOD-prompt-bar
 // guards: UC-049; RESTRICTED CONTENT GOES ONLY WHERE ITS SOURCE PERMITS
 // given: the allowed hand-over of TST-505001, and the instance's register holds the source SRC-restricted (restricted, its content may go to "this machine" only); the recipe implementation-inputs gives one part that carries the sources of `places.contents`, as the real recipe does
-// input: a hand-over to dev-ci (place "Anthropic, USA"), a person's click on Hand over; the same hand-over to dev-bridge (place "this machine")
-// expect: the click on dev-ci's hand-over writes nothing and the page says "Nothing was queued." with a finding that names SRC-restricted and "Anthropic, USA"; dev-bridge's hand-over is queued by one commit (the counter-proof: a source whose licence allows the place is read)
+// input: a hand-over to dev-ci (place "Anthropic, USA"); the same hand-over to dev-bridge (place "this machine")
+// expect: dev-ci's hand-over writes nothing and the page says "Nothing was queued." with a finding that names SRC-restricted and "Anthropic, USA"; dev-bridge's hand-over is queued by one commit (the counter-proof: a source whose licence allows the place is read)
 test("a hand-over to a participant at a place a restricted source does not allow queues nothing, and one at a place it allows is queued", async () => {
   const restricted = ["---", "id: SRC-restricted", "title: A restricted handbook", "kind: document", "authority: informational", "licence: restricted - internal", "places:", "  - this machine", "content_repository: https://github.com/alice/thesis-tool", "---",
     "# SRC-restricted A restricted handbook", "", "## Versions", "", "| Version | Date | Edition | Read from | Files |", "|---|---|---|---|---|", "| `1` | 2026-10-13 | fixture | here | one file, hashed only |", ""].join("\n");
   const it = open({ instanceFiles: { "docs/sources/SRC-restricted.md": restricted } });
   await proposes(it, ITEM("ITM-004"));
-  handOverButton(it).dispatchEvent(personal());
   await until(() => textOf(proposal(it)).includes("Nothing was queued."), "the refusal is shown");
   const text = textOf(proposal(it));
   assert.ok(text.includes("SRC-restricted") && text.includes("Anthropic, USA"), text);
@@ -787,53 +781,43 @@ test("with recording on, a script's click on Send sends nothing and commits noth
 
 // ---------------------------------------------------------------- a hand-over of the subject's own kind takes only the subject's source (ITM-1129)
 
-// A page whose subject is of the kind `converse`: its paramsFor gives the person's own source, and also what a page gives the bar — the text of the page, a target and, on the route draft, the participant's answer
-// as `draft`. `refuseAt` is the call at which the source is gone (paramsFor throws NoPersonSource): the first call is *Send*'s, the second the hand-over's. `withSource: false` is a subject that gives none.
-function subjectGiving({ refuseAt = Infinity, withSource = true } = {}) {
-  let calls = 0;
-  return () => ({ key: "use-case:UC-001", title: "UC-001 Store", kind: "converse", entry: "use-cases",
-    paramsFor: () => {
-      calls += 1;
-      if (calls >= refuseAt) throw Object.assign(new Error("The author has no personal source linked to this product."), { name: "NoPersonSource" });
-      return { page: "PLANTED-PAGE-9A1 The page shows UC-001.", target: "UC-001", draft: { answer: "PLANTED-ANSWER-9A1 the participant's answer" }, ...(withSource ? { source: "SRC-person-alice" } : {}) };
-    }, draftRoute: null, withhold: null, refuses: [] });
+// A page whose subject gives, as context, the person's own source, and also what a page gives the bar — the text of the page, a target and, on the route draft, the participant's answer as `draft`.
+// `withSource: false` is a subject that gives none.
+function subjectGiving({ withSource = true } = {}) {
+  return () => ({ key: "use-case:UC-001", title: "UC-001 Store", entry: "use-cases",
+    paramsFor: () => ({ page: "PLANTED-PAGE-9A1 The page shows UC-001.", target: "UC-001", draft: { answer: "PLANTED-ANSWER-9A1 the participant's answer" }, ...(withSource ? { source: "SRC-person-alice" } : {}) }),
+    draftRoute: null, withhold: null, refuses: [] });
 }
 const jobRecordOf = (it) => it.product.attempts.flatMap((attempt) => attempt.files).find((file) => /^docs\/jobs\/JOB-.*\.md$/.test(file.path))?.text ?? "";
-const OWN_KIND = { kind: "converse", works_on: ["UC-001"], task: TASK };
 
 // TST-1129001 · level: component · module: MOD-prompt-bar
 // guards: THE PERSON WHO PROMPTS IS A SOURCE; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON; UC-049
-// given: a page whose subject is of the kind converse and whose paramsFor gives the source SRC-person-alice, and also the text of the page, a target and a draft that holds the participant's answer; the participant proposes a hand-over of the kind converse (the subject's own kind), and, in a second page, one of the kind implement
-// input: a person's click on Hand over, on each
-// expect: for the subject's own kind the queued job's record holds `"source": "SRC-person-alice"` among its parameters and no other parameter of the subject — no `page`, no `draft`, no text of the page and no text of the answer anywhere in the record —; for the other kind the record holds no source
-test("a hand-over of the subject's own kind takes only the subject's source into its record; of another kind it takes none", async () => {
-  const same = open({ subject: subjectGiving() });
-  await proposes(same, OWN_KIND);
-  await handsOver(same);
-  const record = jobRecordOf(same);
+// given: a page whose subject gives, as context, the source SRC-person-alice, and also the text of the page, a target and a draft that holds the participant's answer; the participant proposes a hand-over of the kind implement, queued since the participant's tab cannot run it
+// input: Send, whose answer proposes the hand-over
+// expect: the queued job's record holds `"source": "SRC-person-alice"` among its parameters and no other parameter of the subject — no `page`, no `draft`, no `target`, no text of the page and no text of the answer anywhere in the record
+test("a queued hand-over takes only the subject's source into its record", async () => {
+  const it = open({ subject: subjectGiving() });
+  await proposes(it, ITEM("ITM-004"));
+  await handsOver(it);
+  const record = jobRecordOf(it);
+  assert.ok(record.includes("kind: implement"), "known positive: the job is queued");
   assert.match(record, /"source": "SRC-person-alice"/);
   assert.doesNotMatch(record, /"page"|"draft"|"target"/);
   assert.doesNotMatch(record, /PLANTED-PAGE-9A1|PLANTED-ANSWER-9A1/);
-  const other = open({ subject: subjectGiving() });
-  await proposes(other, ITEM("ITM-004"));
-  await handsOver(other);
-  assert.ok(jobRecordOf(other).includes("kind: implement"), "known positive: the job is queued");
-  assert.doesNotMatch(jobRecordOf(other), /SRC-person-alice/);
 });
 
 // TST-1129002 · level: component · module: MOD-prompt-bar
-// guards: THE PERSON WHO PROMPTS IS A SOURCE; UC-049; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
-// given: a page whose subject is of the kind converse; Send found the person's source, and when the person clicks Hand over the subject finds none (paramsFor throws NoPersonSource); the hand-over is of the subject's own kind
-// input: a person's click on Hand over
-// expect: the hand-over is refused by name — the page says "Nothing was queued." and NoPersonSource —, nothing is written (no commit attempt, no workflow start, nothing handed to the Bridge), and Hand over can be pressed again
-test("a hand-over of the subject's own kind is refused by name when the subject finds no own source, and nothing is queued", async () => {
-  const it = open({ subject: subjectGiving({ refuseAt: 2 }) });
-  await proposes(it, OWN_KIND);
-  handOverButton(it).dispatchEvent(personal());
-  await until(() => textOf(proposal(it)).includes("Nothing was queued."), "the refusal is shown");
-  assert.match(textOf(proposal(it)), /NoPersonSource/);
-  assert.equal(writesOf(it), 0, NOTHING_WRITTEN);
-  assert.equal(handOverButton(it).disabled, false, "Hand over can be pressed again");
+// guards: THE PERSON WHO PROMPTS IS A SOURCE; UC-049
+// given: a page whose subject gives no source of the person; the participant proposes the hand-over of TST-1129001
+// input: Send, whose answer proposes the hand-over
+// expect: the job is queued all the same — the subject refuses nothing, a kind that needs the source refuses by its own precondition — and its record holds no source
+test("a queued hand-over from a subject without the person's source takes none", async () => {
+  const it = open({ subject: subjectGiving({ withSource: false }) });
+  await proposes(it, ITEM("ITM-004"));
+  await handsOver(it);
+  const record = jobRecordOf(it);
+  assert.ok(record.includes("kind: implement"), "known positive: the job is queued");
+  assert.doesNotMatch(record, /"source"/);
 });
 
 // ---------------------------------------------------------------- an endpoint of this browser that runs through GitHub Actions: *Spawn job*

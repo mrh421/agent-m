@@ -180,12 +180,12 @@ test("the modules view reads its module files in one batch and the stored graph 
 // guards: UC-025; UC-049
 // given: the modules view drawn at main for the product https://github.com/acme/library
 // input: route.subject for the key "modules" at main, with the context the route was drawn with
-// expect: kind "converse", no draft route, title "Modules", a key holding key=modules and ref=main, and a page text holding "Modules", the address and "Version: main"
+// expect: no kind of its own (the bar runs converse on every page), no draft route, title "Modules", a key holding key=modules and ref=main, and a page text holding "Modules", the address and "Version: main"
 test("the subject of the modules page is the page, titled Modules", async () => {
   const context = { product: { address: ADDRESS, host: hostOf() } };
   await render(context.product.host, modulesParams, context);
   const subject = route.subject(modulesParams, context);
-  assert.equal(subject.kind, "converse");
+  assert.equal(subject.kind, undefined, "a subject names no kind: the bar runs converse on every page");
   assert.equal(subject.draftRoute, null);
   assert.equal(subject.title, "Modules");
   assert.ok(subject.key.includes("key=modules") && subject.key.includes("ref=main"), subject.key);

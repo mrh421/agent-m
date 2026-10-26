@@ -25,6 +25,7 @@ import * as sourceRegister from "../source-register/index.mjs";
 import * as workPlans from "../work-plans/index.mjs";
 import * as runPlanner from "../run-planner/index.mjs";
 import * as runtimes from "../runtimes/index.mjs";
+import * as reuseFacts from "../reuse-facts/index.mjs";
 import { prepareResult } from "./result.mjs";
 
 const fs = globalThis.process?.getBuiltinModule?.("node:fs");
@@ -188,10 +189,11 @@ function checkoutHost(address, dir, branch, token, secrets) {
     async commitFiles(change) {
       try {
         const made = await host.commitFiles(change);
-        latest = made.commit;
+        // A commit on another branch — a conversation's proposed documents, on agent-m/<job> — is no head of this one.
+        if (change.branch === branch) latest = made.commit;
         return made;
       } catch (error) {
-        if (error?.name === "Moved" && error.head) latest = error.head;
+        if (error?.name === "Moved" && error.head && change.branch === branch) latest = error.head;
         throw error;
       }
     } };
@@ -210,7 +212,7 @@ function originOf(dir, fallback) {
 // The strategies the modules that offer them give the job runner, registered once for the program that runs, as the runner asks.
 const OFFERED = [["MOD-approvals", approvals, "approvalStrategies"], ["MOD-spec-changes", specChanges, "specStrategies"],
   ["MOD-artifact-edits", artifactEdits, "editStrategies"], ["MOD-source-register", sourceRegister, "sourceStrategies"],
-  ["MOD-work-plans", workPlans, "workStrategies"], ["MOD-run-planner", runPlanner, "runStrategies"], ["MOD-runtimes", runtimes, "routeStrategies"]];
+  ["MOD-work-plans", workPlans, "workStrategies"], ["MOD-run-planner", runPlanner, "runStrategies"], ["MOD-runtimes", runtimes, "routeStrategies"], ["MOD-reuse-facts", reuseFacts, "reuseStrategies"]];
 let registered = false;
 function registerStrategiesOnce() {
   if (registered) return;

@@ -419,8 +419,9 @@ test("Send — a message that cannot be recorded is not sent, and the page says 
 // guards: UC-049; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; ONE CLICK PER DECISION
 // given: a register whose participant drafter-a is a model endpoint with the CI secret KEY_A in its route and "Anthropic, USA" as its place; an instance that holds Agent M's job workflow; an endpoint whose draft proposes a hand-over { kind: "implement", works_on: ["ITM-504"], task: "Add the bar." }
 // input: Send
-// expect: the page shows "Kind: implement", "Works on: ITM-504", "Task: Add the bar.", "Participant: drafter-a — Anthropic, USA" and "Route: ci hosted", and one button "Hand over"; no commit was attempted
-test("Send — a hand-over the participant proposes is shown with its kind, what it works on, its task, the participant and its route, with Hand over beside it", async () => {
+// expect: the page shows "Kind: implement", "Works on: ITM-504", "Task: Add the bar.", "Participant: drafter-a — Anthropic, USA" and "Route: ci hosted", and no button "Hand over": the hand-over goes
+//   on without a further click (UC-049 4a), and is refused at once — "Nothing was queued." — since drafter-a, which drafts text only, cannot do implement; no commit was attempted
+test("Send — a hand-over the participant proposes is shown with its kind, what it works on, its task, the participant and its route, and goes on without a click", async () => {
   endpointAnswers(answer("I can hand this on.", { handOver: { kind: "implement", works_on: ["ITM-504"], task: "Add the bar." } }));
   const it = page({ rows: [DRAFTER_CI], instanceFiles: JOB_WORKFLOW });
   await drawn(it);
@@ -430,7 +431,8 @@ test("Send — a hand-over the participant proposes is shown with its kind, what
   for (const line of ["Kind: implement", "Works on: ITM-504", "Task: Add the bar.", "Participant: drafter-a — Anthropic, USA", "Route: ci hosted"]) {
     assert.ok(proposal.includes(line), `${line} in ${proposal}`);
   }
-  assert.equal(all(it.target, (node) => node.localName === "button" && /hand over/i.test(textOf(node))).length, 1);
+  assert.equal(all(it.target, (node) => node.localName === "button" && /hand over/i.test(textOf(node))).length, 0, "no click is asked for");
+  await until(() => textOf(one(it.target, "hand-over")).includes("Nothing was queued."), "the hand-over is refused at once");
   assert.equal(it.instance.attempts.length, 0);
 });
 
@@ -567,10 +569,10 @@ test("startPromptBar — where no participant reached can do the kind it says so
 
 // TST-560005 · level: component · module: MOD-prompt-bar; MOD-job-catalogue
 // guards: UC-019; A PARTICIPANT DECLARES ITS CAPABILITIES
-// given: drafter-a (draft text) and runner (draft text, run code and tests), both reached; the bar's subject getter first gives a subject of the kind converse (needs draft text), then one of the kind run-tests (needs run code and tests)
+// given: drafter-a (draft text) and runner (draft text, run code and tests), both reached; the bar's subject getter first gives one subject, then one that still names a kind of its own, run-tests (needs run code and tests)
 // input: startPromptBar; the getter now gives the new subject; nothing is announced; the person puts the cursor in the input (focus)
-// expect: first the selector offers drafter-a and runner; before the bar is used it still shows both (the getter is read when the bar is used); once the input takes focus the bar names runner alone, without a select
-test("startPromptBar — the offer belongs to the subject the getter gives when the bar is used", async () => {
+// expect: the selector offers drafter-a and runner, before and after the input takes focus: the offer is that of the bar's one kind, converse, and no subject narrows it (UC-049 step 3)
+test("startPromptBar — the offer is the bar's one kind's, whatever kind a subject names", async () => {
   endpointAnswers(answer("unused"));
   const it = page({ rows: [DRAFTER, row("runner", "model endpoint", "endpoint ep2", { capabilities: "draft text, run code and tests", place: "this machine" })], ep2: true });
   await drawn(it);
@@ -579,26 +581,25 @@ test("startPromptBar — the offer belongs to the subject the getter gives when 
   await tick();
   assert.equal(all(it.target, (node) => node.localName === "option").length, 2, "nothing reads the getter before the bar is used");
   one(it.target, "instruction").dispatchEvent(new Event("focus"));
-  await until(() => byClass(it.target, "participant").length === 1 && byClass(it.target, "participant")[0].localName === "span", "the offer follows the new kind");
-  assert.equal(textOf(one(it.target, "participant")), "runner — this machine");
-  assert.equal(all(it.target, (node) => node.localName === "select").length, 0);
+  for (let turn = 0; turn < 20; turn += 1) await tick();
+  assert.deepEqual(all(it.target, (node) => node.localName === "option").map(textOf), ["drafter-a — Anthropic, USA", "runner — this machine"], "the offer does not follow a subject's kind");
 });
 
 // TST-560006 · level: component · module: MOD-prompt-bar; MOD-job-catalogue
 // guards: UC-019; A PARTICIPANT DECLARES ITS CAPABILITIES
-// given: drafter-a and drafter-b (draft text each), both reached; the getter first gives a subject of the kind converse, then one of the kind run-tests (needs run code and tests), which neither can do
+// given: drafter-a and drafter-b (draft text each), both reached; the getter first gives one subject, then one that still names the kind run-tests (needs run code and tests), which neither can do
 // input: startPromptBar; the getter now gives the new subject; the person writes "run the tests" and presses Send without the input having taken focus
-// expect: Send reads the getter: nothing is sent (no request), the page says "Nothing was sent." and that no participant can do run-tests, and the offer is replaced by that statement and its link
-test("Send — reads the subject again: a page no participant can do sends nothing", async () => {
-  endpointAnswers(answer("unused"));
+// expect: Send reads the getter, and sends the message as converse all the same: one request, whose text holds the new subject's page; the answer is shown; nothing says that no participant can do run-tests
+test("Send — reads the subject again, and sends converse whatever kind it names", async () => {
+  endpointAnswers(answer("I hand the tests on."));
   const it = page({ rows: [DRAFTER, OTHER], ep2: true });
   await drawn(it);
-  it.current.subject = subjectOf({ key: "tests:all", title: "The tests", kind: "run-tests" });
+  it.current.subject = subjectOf({ key: "tests:all", title: "The tests", kind: "run-tests", paramsFor: () => ({ page: "The page lists the tests." }) });
   await sends(it, "run the tests");
-  assert.equal(requests.length, 0);
-  assert.ok(textOf(one(it.target, "status")).includes("Nothing was sent."));
-  assert.match(textOf(it.target), /No participant of this instance can do run-tests: it needs run code and tests\./);
-  assert.equal(byClass(it.target, "participants-link").length, 1);
+  assert.equal(requests.length, 1);
+  assert.ok(requests[0].body.includes("The page lists the tests."));
+  assert.ok(textOf(one(it.target, "answer")).includes("I hand the tests on."));
+  assert.doesNotMatch(textOf(it.target), /No participant of this instance can do run-tests/);
 });
 
 // TST-560007 · level: component · module: MOD-prompt-bar

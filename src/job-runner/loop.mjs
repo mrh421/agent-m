@@ -154,7 +154,7 @@ export async function runJob(prepared, drivers, options) {
           found: last?.findings.find((f) => line(f) === answer.finding) })).filter((answer) => answer.found);
         if (last) last.answers = answers.map(({ found, how, text }) => ({ finding: found, how, text: text ?? null }));
         for (const { found, how } of answers) if (found.kind === "warning" && how !== "fixed") settled.add(line(found));
-        const drafted = withHeld(read.value.draft, offered?.held);
+        const drafted = withHeld(read.value.draft, offered?.held, Array.isArray(context.params?.refuses) ? context.params.refuses : []);
         changed = number === 1 || JSON.stringify(drafted) !== JSON.stringify(draft);
         draft = drafted;
       }

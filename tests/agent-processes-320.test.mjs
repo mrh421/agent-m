@@ -32,7 +32,7 @@ const registerFixture = (folder, mutate = (text) => text) => {
 const FAULTS = {
   "TST-320001": ["installed: false", "installed: true"],
   "TST-320002": ["const loggedIn = loginMatches(row.login, login);", "const loggedIn = true;"],
-  "TST-320003": ["const result = await invoke(row.command, taskArgs(row.task, \"Reply with one word: ok.\"), ownLoginEnvironment());", "const result = await invoke(row.command, taskArgs(row.task, \"Reply with one word: ok.\"), process.env);"],
+  "TST-320003": ["const result = await invoke(row.command, row.task.args, ownLoginEnvironment(), \"Reply with one word: ok.\");", "const result = await invoke(row.command, row.task.args, process.env, \"Reply with one word: ok.\");"],
   "TST-320004": ["if (!result.ok) return { answered: false, reason: (result.stderr || result.error?.message || `exit ${result.status}`).trim() };", "if (!result.ok) return { answered: true, version: agent.version };"],
   "TST-320005": ["if (findings.length || !register.rows.length) {", "if (false) {"],
 };
@@ -88,15 +88,15 @@ test("TST-320002: discovery names missing supported commands without a task", as
 // level: unit
 // module: MOD-agent-processes
 // guards: THE BRIDGE FINDS THE INSTALLED AGENTS; A LOCAL AGENT USES THE PERSON'S OWN LOGIN; UC-011
-// given: a controlled Claude executable that records its complete argument vector, rejects a constructed inherited ANTHROPIC_API_KEY at its task invocation, and returns exactly one word otherwise.
+// given: a controlled Claude executable that records its complete argument vector and its standard input, rejects a constructed inherited ANTHROPIC_API_KEY at its task invocation, and returns exactly one word otherwise.
 // input: testAgent(the discovered public Claude Agent).
-// expect: its documented print-mode task asks for one word and returns `{ answered: true, version }`; no other agent executable is reachable.
+// expect: its documented print-mode task `claude -p` reads the one-word request on its standard input and returns `{ answered: true, version }`; no other agent executable is reachable.
 test("TST-320003: harmless agent test sends a one-word task", async () => {
   const folder = fixture();
   const priorKey = process.env.ANTHROPIC_API_KEY;
   try {
     const record = join(folder, "arguments");
-    command(folder, "claude", `case \"$*\" in '--version') echo 2.1.300;; 'auth status') echo '{\"authMethod\":\"claude.ai\"}';; *) [ -z \"$ANTHROPIC_API_KEY\" ] && [ \"$#\" = 2 ] && [ \"$1\" = '-p' ] && [ \"$2\" = 'Reply with one word: ok.' ] && printf '%s\\n' \"$@\" > ${record} && echo yes || exit 64;; esac`);
+    command(folder, "claude", `case \"$*\" in '--version') echo 2.1.300;; 'auth status') echo '{\"authMethod\":\"claude.ai\"}';; *) IFS= read -r input; [ -z \"$ANTHROPIC_API_KEY\" ] && [ \"$#\" = 1 ] && [ \"$1\" = '-p' ] && [ \"$input\" = 'Reply with one word: ok.' ] && printf '%s\\n' \"$@\" \"$input\" > ${record} && echo yes || exit 64;; esac`);
     process.env.ANTHROPIC_API_KEY = "constructed-parent-fixture-key";
     const agent = (await withPath(folder, () => installedAgents())).find((value) => value.name === "claude");
     const answer = await withPath(folder, () => testAgent(agent));
@@ -114,14 +114,14 @@ test("TST-320003: harmless agent test sends a one-word task", async () => {
 // level: unit
 // module: MOD-agent-processes
 // guards: A REMOTE INTERFACE NAMES HOW IT FAILS; UC-011; UC-044
-// given: a controlled Claude executable whose harmless request exits unsuccessfully after its own login check.
+// given: a controlled Claude executable whose harmless request, read on its standard input, exits unsuccessfully after its own login check.
 // input: testAgent(the discovered public Claude Agent).
 // expect: the documented print-mode harmless request returns `{ answered: false, reason }` rather than a fabricated success.
 test("TST-320004: harmless agent refusal is named", async () => {
   const folder = fixture();
   try {
     const record = join(folder, "arguments");
-    command(folder, "claude", `case \"$*\" in '--version') echo 2.1.300;; 'auth status') echo '{\"authMethod\":\"claude.ai\"}';; *) [ \"$#\" = 2 ] && [ \"$1\" = '-p' ] && [ \"$2\" = 'Reply with one word: ok.' ] && printf '%s\\n' \"$@\" > ${record} && { echo refused >&2; exit 23; } || exit 64;; esac`);
+    command(folder, "claude", `case \"$*\" in '--version') echo 2.1.300;; 'auth status') echo '{\"authMethod\":\"claude.ai\"}';; *) IFS= read -r input; [ \"$#\" = 1 ] && [ \"$1\" = '-p' ] && [ \"$input\" = 'Reply with one word: ok.' ] && printf '%s\\n' \"$@\" \"$input\" > ${record} && { echo refused >&2; exit 23; } || exit 64;; esac`);
     const agent = (await withPath(folder, () => installedAgents())).find((value) => value.name === "claude");
     const answer = await withPath(folder, () => testAgent(agent));
     assert.deepEqual(answer, { answered: false, reason: "refused" });

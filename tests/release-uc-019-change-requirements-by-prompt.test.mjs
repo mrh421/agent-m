@@ -62,8 +62,8 @@ test("TST-418101: prompting source follows the author account, not the product o
 // module: MOD-prompt-bar; MOD-runtimes
 // guards: UC-019; ONE DEFINITION, THREE DRIVERS
 // given: the endpoint record names paired Bridge release-bridge, with its configured loopback address and token
-// input: the prompt bar sends the message of change-requirements for the open requirement
-// expect: no direct model request; one POST /v1/ask to that named Bridge carries the same instruction and the requirement A LOAN HAS A DUE DATE
+// input: the prompt bar sends the message for the open requirement, which the conversation hands on to change-requirements (UC-049 4a.1)
+// expect: no direct model request; every exchange goes to that named Bridge — the conversation's, then one POST /v1/ask of change-requirements that carries the same instruction and the requirement A LOAN HAS A DUE DATE
 test("TST-418102: a named Bridge endpoint uses the Bridge transport from the bar", async () => {
   const s = await scenario({ bridge: true });
   const positive = await ask(bridgeAt({ address: "http://127.0.0.1:9418", token: "fixture-pairing-token" }),
@@ -74,8 +74,9 @@ test("TST-418102: a named Bridge endpoint uses the Bridge transport from the bar
   s.bridgeRequests.length = 0;
   await run(s);
   assert.equal(s.endpointRequests.length, 0, "a named Bridge endpoint is never contacted directly");
-  const asks = s.bridgeRequests.filter((request) => request.method === "POST" && request.url.endsWith("/v1/ask"));
-  assert.equal(asks.length, 1, "one exchange goes through the configured named Bridge");
+  const asks = s.bridgeRequests.filter((request) => request.method === "POST" && request.url.endsWith("/v1/ask") && JSON.stringify(request.body).includes("You change requirements of a product"));
+  assert.equal(asks.length, 1, "the change goes through the configured named Bridge in one exchange");
+  assert.ok(s.bridgeRequests.some((request) => request.method === "POST" && JSON.stringify(request.body).includes("You answer a person's message about the page")), "the conversation went through the Bridge too");
   assert.match(JSON.stringify(asks[0].body), /Make the due date visible\./);
   assert.match(JSON.stringify(asks[0].body), /A LOAN HAS A DUE DATE/);
   await save(s);

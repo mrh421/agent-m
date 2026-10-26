@@ -124,15 +124,15 @@ function changedBy(params) {
   return Array.isArray(params.requirements) && params.requirements.length ? params.requirements.join(", ") : null;
 }
 
-// The subject of this page (MOD-prompt-bar, Subject): the draft's own, so that a follow-up in the bar is a change of the same kind on the same target and its answer is a newer draft that this route
-// shows. `key` is the subject the draft was drafted on, and `draftRoute` the address of this route for it, the key percent-encoded as subjects.mjs writes it. Its parameters are the draft's own plus
+// The subject of this page (MOD-prompt-bar, Subject): the draft's own, as context, so that a follow-up in the bar is handed on to the draft's kind on the same target (UC-049 4a.1) and its
+// answer is a newer draft that this route shows. `key` is the subject the draft was drafted on, and `draftRoute` the address of this route for it, the key percent-encoded as subjects.mjs writes it. Its parameters are the draft's own plus
 // `draft`, the conversation's draft as it stands (its `result`; an edit open in an editor and not saved is the page's), which the change kinds hand over with their recipe `draft?`. Without a draft for
 // the subject the address names, null: the frame's default stands.
 function subject(params, context) {
   const key = params.subject ?? null;
   const draft = key === null ? null : latestDraft(context.store, key);
   if (draft === null) return null;
-  return { key, title: changedBy(draft.params) ?? draftRoute.title, kind: draft.kind, entry: null, paramsFor: () => ({ ...draft.params, draft: draft.result }),
+  return { key, title: changedBy(draft.params) ?? draftRoute.title, entry: null, paramsFor: () => ({ ...draft.params, draft: draft.result }),
     draftRoute: `draft/subject=${encodeURIComponent(key)}`, withhold: null, refuses: [] };
 }
 

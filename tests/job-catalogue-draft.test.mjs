@@ -19,6 +19,12 @@ import { prepareJob, registerStrategies } from "../src/job-runner/index.mjs";
 const CHANGE_KINDS = ["change-requirements", "change-use-case", "change-architecture"];
 
 const nothing = async () => [];
+// The precondition person-source of change-requirements (MOD-spec-changes), which these tests do not concern: it finds nothing.
+try {
+  registerStrategies("tests/job-catalogue-draft.test.mjs:person-source", { preconditions: { "person-source": async () => null } });
+} catch (error) {
+  if (error.name !== "DuplicateStrategy") throw error;
+}
 for (const [category, name] of [["recipes", "named-requirements"], ["recipes", "spec-with-queues"],
   ["recipes", "chapters-for-requirements"], ["recipes", "use-case-with-neighbours"], ["recipes", "whole-spec"],
   ["recipes", "use-cases"], ["recipes", "accepted-use-cases"], ["recipes", "whole-architecture"], ["recipes", "chapters-for-architecture"],

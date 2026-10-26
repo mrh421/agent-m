@@ -305,7 +305,10 @@ const recordRoute = (route) => (route.kind === "tab" ? "tab" : route.kind === "c
 const RETRY_PARAMS = new Map();
 function subjectOf(params) {
   if (!params?.retry || !params.id) return null;
-  return { key: `retry:${params.id}`, title: `Retry ${params.id}`, kind: params.retry, entry: null, paramsFor: () => structuredClone(RETRY_PARAMS.get(params.id) ?? {}), draftRoute: null, withhold: null, refuses: [] };
+  // Context only (MOD-prompt-bar, Subject): the job's kind as its page and its inputs as its parameters, so that the conversation hands the retry on to that kind (UC-049 4a).
+  return { key: `retry:${params.id}`, title: `Retry ${params.id}`, entry: null,
+    paramsFor: () => ({ page: `Retry of the job ${params.id}, a job of the kind ${params.retry}: to retry it, hand it on to ${params.retry} with the same inputs.`,
+      ...structuredClone(RETRY_PARAMS.get(params.id) ?? {}) }), draftRoute: null, withhold: null, refuses: [] };
 }
 
 function teamOf(item, facts, workflow) {

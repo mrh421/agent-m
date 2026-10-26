@@ -38,10 +38,14 @@ function rowOf(cells) {
 }
 const rows = register.rows.map(({ cells }) => rowOf(cells));
 
-function invoke(command, args, env = ownLoginEnvironment()) {
+function invoke(command, args, env = ownLoginEnvironment(), input = null) {
   return new Promise((resolve) => {
     let stdout = "", stderr = "";
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env });
+    const child = spawn(command, args, { stdio: [input == null ? "ignore" : "pipe", "pipe", "pipe"], env });
+    if (input != null) {
+      child.stdin.on("error", () => {}); // an agent that exits unread is judged by its exit status
+      child.stdin.end(input);
+    }
     child.stdout.on("data", (chunk) => { stdout += chunk; });
     child.stderr.on("data", (chunk) => { stderr += chunk; });
     child.on("error", (error) => resolve({ ok: false, status: null, stdout, stderr, error }));
@@ -60,7 +64,6 @@ function loginMatches(login, result) {
   return false;
 }
 const missingAgent = (row) => ({ name: row.name, installed: false, version: null, loggedIn: null, login: row.login.login, install: row.install });
-const taskArgs = (task, prompt) => task.args.map((arg) => arg === "{prompt}" ? prompt : arg);
 function ownLoginEnvironment() {
   const credentials = new Set(rows.map((row) => row.keyVariable).filter((name) => name && name !== "—"));
   const environment = {};
@@ -119,7 +122,7 @@ export async function installedAgents() {
 export async function testAgent(agent) {
   const row = rows.find((candidate) => candidate.name === agent?.name);
   if (!row || !agent.installed) return { answered: false, reason: "agent is not installed" };
-  const result = await invoke(row.command, taskArgs(row.task, "Reply with one word: ok."), ownLoginEnvironment());
+  const result = await invoke(row.command, row.task.args, ownLoginEnvironment(), "Reply with one word: ok.");
   if (!result.ok) return { answered: false, reason: (result.stderr || result.error?.message || `exit ${result.status}`).trim() };
   let answer;
   try {

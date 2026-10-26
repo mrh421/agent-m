@@ -82,7 +82,7 @@ built into MOD-job-runner.
 | Kind | Serves | Participant needs | Preconditions | Recipes | Checks | Reviewers | Steps | Review · writer | Draft it expects |
 |---|---|---|---|---|---|---|---|---|---|
 | `derive-requirements` | UC-005 | draft text | | `source-excerpt`, `spec-with-queues`, `chapters-for-requirements` | `requirement-form`, `candidate-classes` | | | `person` · `queue-entries` | candidates: name, rule, check, what it constrains, source passage — and the source of a rule it points to, where that is not the job's —, class |
-| `change-requirements` | UC-019, UC-012, UC-049 | draft text | | `instruction`, `conversation`, `draft?`, `named-requirements`, `spec-with-queues`, `chapters-for-requirements` | `requirement-form`, `candidate-classes` | | | `person` · `queue-entries` | the same |
+| `change-requirements` | UC-019, UC-012, UC-049 | draft text | `person-source` | `instruction`, `conversation`, `draft?`, `named-requirements`, `spec-with-queues`, `chapters-for-requirements` | `requirement-form`, `candidate-classes` | | | `person` · `queue-entries` | the same |
 | `derive-use-cases` | UC-007 | draft text | `rests-on-accepted` | `chosen-requirements`, `use-cases`, `chapters-for-requirements` | `document-schema`, `graph-checks`, `candidate-classes` | | | `none` · `open-files` | files |
 | `change-use-case` | UC-019, UC-049 | draft text | | `instruction`, `conversation`, `draft?`, `use-case-with-neighbours`, `chapters-for-requirements` | `document-schema`, `graph-checks`, `identifier-kept` | | | `person` · `open-files` | files |
 | `derive-architecture` | UC-022 | draft text | `architecture-ready` | `whole-spec`, `accepted-use-cases`, `chapters-for-architecture` | `document-schema`, `graph-checks`, `candidate-classes` | `review-architecture` × 1 | `due-diligence` | `person` · `open-files` | files |
@@ -106,7 +106,7 @@ built into MOD-job-runner.
 | `check-for-persons` | UC-038 | draft text | | `draft` | | | | `none` · `return-draft` | findings |
 | `draft-replies` | UC-039 | draft text | | `reply-inputs` | | | | `none` · `mail-drafts` | one reply per mail of a closed issue; or, with the parameter `question` — the person's point to ask —, one question to the reporter of a listed mail of an open issue (UC-039 1a) |
 | `check-resource` | UC-040 | run code and tests | | `resource-check` | | | | `none` · `return-draft` | what answered |
-| `converse` | UC-049 | draft text | | `page`, `conversation`, `instruction`, `chapters-for-page?` | `document-schema`, `graph-checks` | | | `person` · `return-draft` | the answer, and the edits the participant proposed |
+| `converse` | UC-049 | draft text | | `page`, `conversation`, `instruction`, `chapters-for-page?` | `document-schema`, `graph-checks` | | | `person` · `proposed-edits` | the answer, the edits the participant proposed, and the hand-over it proposes |
 
 **The tools**, `tools.md`, a register read with MOD-documents. A tool's description and the schema of its arguments are
 data, kept here once like a kind's prompt; the module that owns what a tool does offers its strategy (MOD-job-runner's
@@ -118,10 +118,12 @@ data, kept here once like a kind's prompt; the module that owns what a tool does
 | `read-file` | read the repository | read one file of the product | MOD-job-runner |
 | `search-files` | read the repository | find the lines that hold a text in the product's files below a path — a file, or a folder —, at most 200 files a search | MOD-job-runner |
 | `propose-edit` | draft text | propose the new text of one document below `docs/`, held for a person | MOD-job-runner |
-| `hand-over` | draft text | propose to hand work the tab cannot do — running code or tests, changing code, reaching the web — to a job of a kind with a participant, on the drafter's route to CI or a Bridge, with the task in its words; the person's click lets it go on | MOD-job-runner |
+| `hand-over` | draft text | hand work on to the kind of the catalogue that owns it — a change of requirements, a use case or the architecture — or that does what the tab cannot — running code or tests, changing code, reaching the web —, naming what it works on, with the task in its words; it goes on without a further click, and what it drafts is a proposal (UC-049 4a) | MOD-job-runner |
 
 Each row also holds the description the drafter reads and the JSON schema of its arguments. `converse` names all five,
-with a `tool_limit` of 30; `change-requirements`, `change-use-case` and `change-architecture` name the three that read
+with a `tool_limit` of 30, and its draft may hold, beside `answer` and `edits`, a `handOver` of the tool's arguments,
+`{ kind, works_on, task }`, so that a drafter offered no tools — a coding agent, or an endpoint without *use tools* —
+proposes a hand-over in its answer as the tool would hold it; `change-requirements`, `change-use-case` and `change-architecture` name the three that read
 and `hand-over`, since their draft is their answer and a change of them may still be handed to CI (UC-019 6b). A tool's capability is besides *use tools*, which a drafter must declare to be offered
 any tool at all.
 
@@ -129,7 +131,8 @@ For a kind of `review: person`, the click that lets the result go on is the one 
 (UC-005, UC-022), *Save* (UC-023), *Save plan* (UC-045), *Add to backlog* (UC-032) — each through MOD-job-runner's
 `writeResult`, which runs the kind's steps and its writer on the draft as the person left it —, *Save* of a draft of the
 conversation (UC-019, UC-049), which saves the draft as UC-018 saves an edit, so that the kind's writer writes a change by prompt only
-where nobody attends (UC-019 6b), and *Write tests*
+where nobody attends (UC-019 6b, UC-049 4f) — for `converse`, `proposed-edits` (MOD-job-runner), which writes the
+edits as a pull request —, and *Write tests*
 (UC-026), which starts a job of `write-tests` whose parameters carry the cases as the person left them, for its recipe
 `draft`. Test generation is two kinds because the person decides on the cases between proposing and writing them. Inside
 a run nobody attends (UC-043): `propose-tests` ends with its cases in its job's record, and `write-tests` follows it
@@ -143,7 +146,8 @@ latter for tests that pass before any code exists (UC-024, UC-034); for `write-t
 
 A job of `change-requirements` takes as its parameter `source` the own source of the person who starts it — the linked
 register entry that MOD-source-register's `personSource` names for their account —, so that every requirement it drafts
-names that person among its sources (`THE PERSON WHO PROMPTS IS A SOURCE`).
+names that person among its sources (`THE PERSON WHO PROMPTS IS A SOURCE`); its precondition `person-source`
+(MOD-spec-changes) keeps a job without one from starting, wherever it runs.
 
 A follow-up asked for on the review pages' route `draft` hands `change-requirements`, `change-use-case` and
 `change-architecture` the conversation's draft as it stands as their `draft`, so that the participant changes that

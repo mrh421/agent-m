@@ -57,7 +57,7 @@ test("the page of the route mail holds a mail's text only for a participant at a
   const f = await mailWorld();
   await mailRouteRead(f);
   const subject = subjectOf("mail", f.w);
-  assert.equal(subject.kind, "converse");
+  assert.equal(subject.kind, undefined, "a subject names no kind: the bar runs converse on every page");
   assert.deepEqual([...subject.refuses].sort(), ["hand-over", "propose-edit"]);
   const text = pageFor(subject, LOCAL);
   assert.ok(text.includes(f.fresh.id), "the identifier");

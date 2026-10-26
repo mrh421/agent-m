@@ -34,7 +34,7 @@ const ONE_DEFINITION = "ONE DEFINITION, THREE DRIVERS";
 // the draft it expects. A ~ stands where the module file writes a backtick.
 const TABLE_TEXT = `
 | ~derive-requirements~ | UC-005 | draft text | | ~source-excerpt~, ~spec-with-queues~, ~chapters-for-requirements~ | ~requirement-form~, ~candidate-classes~ | | | ~person~ · ~queue-entries~ | candidates: name, rule, check, what it constrains, source passage — and the source of a rule it points to, where that is not the job's —, class |
-| ~change-requirements~ | UC-019, UC-012, UC-049 | draft text | | ~instruction~, ~conversation~, ~draft?~, ~named-requirements~, ~spec-with-queues~, ~chapters-for-requirements~ | ~requirement-form~, ~candidate-classes~ | | | ~person~ · ~queue-entries~ | the same |
+| ~change-requirements~ | UC-019, UC-012, UC-049 | draft text | ~person-source~ | ~instruction~, ~conversation~, ~draft?~, ~named-requirements~, ~spec-with-queues~, ~chapters-for-requirements~ | ~requirement-form~, ~candidate-classes~ | | | ~person~ · ~queue-entries~ | the same |
 | ~derive-use-cases~ | UC-007 | draft text | ~rests-on-accepted~ | ~chosen-requirements~, ~use-cases~, ~chapters-for-requirements~ | ~document-schema~, ~graph-checks~, ~candidate-classes~ | | | ~none~ · ~open-files~ | files |
 | ~change-use-case~ | UC-019, UC-049 | draft text | | ~instruction~, ~conversation~, ~draft?~, ~use-case-with-neighbours~, ~chapters-for-requirements~ | ~document-schema~, ~graph-checks~, ~identifier-kept~ | | | ~person~ · ~open-files~ | files |
 | ~derive-architecture~ | UC-022 | draft text | ~architecture-ready~ | ~whole-spec~, ~accepted-use-cases~, ~chapters-for-architecture~ | ~document-schema~, ~graph-checks~, ~candidate-classes~ | ~review-architecture~ × 1 | ~due-diligence~ | ~person~ · ~open-files~ | files |
@@ -58,7 +58,7 @@ const TABLE_TEXT = `
 | ~check-for-persons~ | UC-038 | draft text | | ~draft~ | | | | ~none~ · ~return-draft~ | findings |
 | ~draft-replies~ | UC-039 | draft text | | ~reply-inputs~ | | | | ~none~ · ~mail-drafts~ | one reply per mail |
 | ~check-resource~ | UC-040 | run code and tests | | ~resource-check~ | | | | ~none~ · ~return-draft~ | what answered |
-| ~converse~ | UC-049 | draft text | | ~page~, ~conversation~, ~instruction~, ~chapters-for-page?~ | ~document-schema~, ~graph-checks~ | | | ~person~ · ~return-draft~ | the answer, and the edits the participant proposed |
+| ~converse~ | UC-049 | draft text | | ~page~, ~conversation~, ~instruction~, ~chapters-for-page?~ | ~document-schema~, ~graph-checks~ | | | ~person~ · ~proposed-edits~ | the answer, the edits the participant proposed, and the hand-over it proposes |
 `;
 
 // The names a cell lists: the text of each ~…~ in it, or, without any, its comma-separated words; none for "—" or blank.

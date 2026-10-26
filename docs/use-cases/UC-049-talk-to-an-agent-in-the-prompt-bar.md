@@ -53,7 +53,7 @@ enters the repository the way every proposal does.
 
 - **Author** — writes to an endpoint or a CLI session, and decides on what comes back.
 - **Endpoint** — a model endpoint configured in this browser (UC-003), called by this tab or through the Bridge its
-  configuration names. It works in this tab and spawns jobs for what the tab cannot do (4a).
+  configuration names. It works in this tab and hands on what another kind of job owns or the tab cannot do (4a).
 - **CLI session** — a coding agent that a Bridge paired with this browser offers (UC-044), working on git in its working
   folder (UC-011, step 3).
 - **GitHub** — hosts the product repository and runs GitHub Actions (a GitLab server for a GitLab product).
@@ -81,7 +81,9 @@ enters the repository the way every proposal does.
    next sprint" — and presses **Send**. That click is the decision to send.
 3. Agent M gives the endpoint or CLI session, with the message, the page as context: the view, the product, the version
    shown and the artifact open on it — a requirement or a group of them, a use case, an architecture file, a backlog
-   item, a test, a job — with its current text; on a page without an open artifact, the view and what it lists. It adds
+   item, a test, a job — with its current text; on a page without an open artifact, the view and what it lists. The page
+   is context only: every message is the same conversation, on every page, and what the endpoint or CLI session may do
+   does not depend on the page. It adds
    the system prompt from
    the repository's single definition: that context, Agent M's rules for what it drafts — everything is a
    proposal; a change of the SPEC is saved as a queue entry —, the chapters of the book *Vibe Coding* for the kind of work
@@ -97,7 +99,7 @@ enters the repository the way every proposal does.
    | *run code and tests* | run a command | CI, a Bridge |
    | *reach the web* | fetch a web page | CI, a Bridge |
    | always | give the answer | everywhere |
-   | always, in the tab | hand the task to GitHub Actions (4a) | the tab |
+   | always | hand a change of requirements, a use case or the architecture, or work the tab cannot do, to the kind of job that owns it (4a) | everywhere |
 
    - **A model endpoint that can use tools** works in a loop that runs in this tab: it asks for a tool, Agent M carries
      the call out and returns its result, until the endpoint gives its answer. The tab reads the product through the
@@ -106,7 +108,8 @@ enters the repository the way every proposal does.
    - **A CLI session** receives the message through its Bridge and works on git with its own tools in its working
      folder (UC-011, step 3).
 5. The answer appears in the conversation. An edit it proposed opens in the editor of UC-018 as its
-   difference against the current text; a change of requirements or of a use case is checked and shown as UC-019 describes.
+   difference against the current text; a change of requirements, of a use case or of the architecture it handed on
+   (4a) is checked and shown as UC-019 describes.
 6. The author answers — the endpoint or CLI session receives the conversation so far — or presses **Save**, one click,
    and UC-018 continues at step 5: a use case or an architecture file is committed as open, a change of the SPEC becomes
    a queue entry. The commit names the Agent M version, the endpoint or CLI session and the model; it names no message
@@ -148,18 +151,26 @@ sequenceDiagram
   identifier only.
 - **3c. The page shows settings.** The context names the settings and whether each is stored; it never carries a stored
   token, key or password.
-- **4a. The work needs what the tab cannot do** — run code or tests, change code, reach the web. An endpoint hands its
-  task to GitHub Actions; this is how it spawns a job:
-  1. For a kind of the product's workflow, the hand-over names a participant of the instance's list that holds the
-     kind's role (UC-017), and the job goes to that participant, never to the endpoint itself. For any other kind, the
-     job is the endpoint's own, and its configuration names the CI secret that holds its key (UC-003).
-  2. Agent M commits the record of a job in the product repository that names who does it, the page and the commit it
+- **4a. The work belongs to another kind of job, or needs what the tab cannot do.** A change of requirements, of a use
+  case or of the architecture belongs to the kind that owns it, with its checks and its impact list (UC-019, UC-023);
+  running code or tests, changing code and reaching the web need what the tab cannot do. The endpoint or CLI session
+  hands the work on, naming the kind, what it works on and the task in its words. The author's message is the request:
+  the hand-over goes on without a further click. Nothing it starts accepts anything; only an approval record accepts.
+  1. Where the kind's result waits for the author and the endpoint or CLI session can do the kind — a kind other than
+     the conversation itself —, it runs in this tab at once, on the page's context. Its draft is shown as UC-019 describes, and the author saves it (step 6).
+  2. Any other kind is spawned as a job; the conversation itself handed on is the endpoint's own job. For a kind of the product's workflow, the hand-over names a participant of the
+     instance's list that holds the kind's role (UC-017), and the job goes to that participant, never to the endpoint
+     itself; where the product's start rules keep it from starting, the conversation names the reasons and nothing is
+     queued. For any other kind, the job is the endpoint's own, and its configuration names the CI secret that holds
+     its key (UC-003).
+  3. Agent M commits the record of a job in the product repository that names who does it, the page and the commit it
      read, and none of the conversation's messages; it starts the product's job workflow (UC-010) with the task as the
      workflow's input. The agent in the workflow reaches the endpoint with the key from that CI secret, and writes with
      the author's token from a CI secret.
-  3. The prompt bar says *waiting for GitHub Actions* with the run's address and its state, until the run has ended.
-  4. The run's answer appears in the conversation, with the commits it made: artifacts committed as open, a change of
-     code as a pull request. In most cases that ends the conversation.
+  4. The prompt bar says *waiting for GitHub Actions* with the run's address and its state, until the run has ended.
+  5. The run's answer appears in the conversation, with what it wrote, as the job's record lists it: a change of
+     requirements as an open entry of a SPEC change queue, a use case or an architecture file committed as open, an
+     edit of another document or a change of code as a pull request. In most cases that ends the conversation.
 - **4b. The tab is closed or loses its connection** while the endpoint or CLI session works. The conversation is gone. A
   run in GitHub Actions, or an agent on a Bridge, ends with what it has committed; the job's record shows it (UC-036).
 - **4c. The product has no job workflow or no CI secrets yet.** Nothing is handed over; the conversation says what is
@@ -168,6 +179,13 @@ sequenceDiagram
   The run fails and names the reason and the routes that would work: a self-hosted runner, or a Bridge (UC-011).
 - **4e. The endpoint or CLI session asks for content it may not have** — a source whose licence does not allow its
   processing place. The tool refuses and says why; it continues without it.
+- **4f. The conversation runs on GitHub Actions** — the endpoint's own job, which the bar spawns for an endpoint that
+  runs only there. Nobody attends the run, so what the endpoint proposes is written at once, as proposals: an edit of a
+  document as a pull request; a hand-over whose kind's result waits for a person, other than the conversation itself, and which works on no item of the
+  backlog or step of the plan, runs in the same run, by that kind's definition, and its writer writes as 4a.5 says. A
+  hand-over of any other kind is not run there, since its start rules and its role are decided where a person starts
+  it; the record says so. The job's record lists every result. The review pages show what was written for acceptance
+  (UC-006, UC-008), each architecture file with its impact list.
 - **5a. The author presses Stop.** The loop in the tab ends and nothing is written; a run in GitHub Actions is cancelled
   and commits nothing more (UC-036).
 - **6a. The author discards a proposed edit.** Nothing is written.
@@ -190,5 +208,6 @@ sequenceDiagram
 - With recording off, no message of the conversation was written to a repository; with it on, every message the SPEC
   allows to be written is in the conversation record of the repository of its page. Beyond that, only what the author
   saved, or what a handed-over run committed, was written — as open artifacts, queue entries or pull requests.
+- Nothing was accepted by the endpoint, the CLI session or a job they started: none of them writes an approval record.
 - Every message went only to the endpoint or CLI session named above the prompt bar, with the processing place shown
   there.

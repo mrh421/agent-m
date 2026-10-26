@@ -263,7 +263,7 @@ test("choosing current again draws the default branch editable", async () => {
 // guards: UC-020; THE BROWSER SHOWS ANY RELEASED VERSION
 // given: the route rendered at main (the params keep ref main), v2026.1.0 chosen, OLD REQUIREMENT opened
 // input: route.subject(params, context) with the context the route was drawn with
-// expect: kind "converse", no draft route, title "OLD REQUIREMENT at v2026.1.0", a key holding ref=v2026.1.0, and a page text holding "Version: v2026.1.0" and "Old rule."
+// expect: no kind of its own (the bar runs converse on every page), no draft route, title "OLD REQUIREMENT at v2026.1.0", a key holding ref=v2026.1.0, and a page text holding "Version: v2026.1.0" and "Old rule."
 test("the subject of a chosen tag is about the version shown, not the ref the caller handed", async () => {
   const context = { product: { address: "https://github.com/acme/library", host: tagged() } };
   const target = document.createElement("div");
@@ -273,7 +273,7 @@ test("the subject of a chosen tag is about the version shown, not the ref the ca
   await until(() => names(target)[0] === "OLD REQUIREMENT");
   find(target, (node) => node.localName === "button" && node.textContent === "OLD REQUIREMENT")[0].dispatchEvent(new Event("click"));
   const subject = route.subject(mainParams, context);
-  assert.equal(subject.kind, "converse");
+  assert.equal(subject.kind, undefined, "a subject names no kind: the bar runs converse on every page");
   assert.equal(subject.draftRoute, null);
   assert.equal(subject.title, "OLD REQUIREMENT at v2026.1.0");
   assert.ok(subject.key.includes("ref=v2026.1.0"), subject.key);

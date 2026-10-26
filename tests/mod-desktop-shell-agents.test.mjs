@@ -94,7 +94,7 @@ test("TST-407001: composition offers only selected installed agents with their f
       agents: [{ name: "claude", version: "2.1.300", ready: true, loggedIn: true }],
       missing: [{ name: "opencode" }],
     }, "failure node: only the ticked installed agent is offered; the missing supported agent is named");
-    assert.equal(machine.calls().some((line) => /codex .*Reply with one word/.test(line)), false,
+    assert.equal(machine.calls().some((line) => /codex exec\b/.test(line)), false,
       "failure node: an installed but unticked agent is never given an agent task");
   });
 });

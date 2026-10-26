@@ -661,7 +661,8 @@ test("draft — the route a subject names shows the draft kept for that subject"
   const fake = fakeProduct();
   const base = await draw(fake, "use-case", { id: "UC-007" });
   const subject = base.subject();
-  keepDraft(base.context, { subject: subject.key, kind: subject.kind, params: { ...subject.paramsFor({ name: "drafter-a" }), instruction: "add error handling" },
+  // The draft's kind is the one the conversation handed the change on to (MOD-prompt-bar): a subject names none.
+  keepDraft(base.context, { subject: subject.key, kind: "change-use-case", params: { ...subject.paramsFor({ name: "drafter-a" }), instruction: "add error handling" },
     result: resultOf({ files: [draft7()] }, { rounds: [ROUND_ONE] }) });
   const { name, params } = routeOfFragment(subject.draftRoute);
   assert.equal(name, "draft");

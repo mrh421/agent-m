@@ -290,12 +290,12 @@ test("the specification and the gaps share the graph of a version", async () => 
 // guards: UC-020; UC-049
 // given: the gaps drawn at main for the product https://github.com/acme/library
 // input: route.subject for the key "gaps" at main, with the context the route was drawn with
-// expect: kind "converse", no draft route, title "Gaps", a key holding key=gaps and ref=main, and a page text holding "Gaps", the address, "Version: main" and the list title "Requirements realised by no use case"
+// expect: no kind of its own (the bar runs converse on every page), no draft route, title "Gaps", a key holding key=gaps and ref=main, and a page text holding "Gaps", the address, "Version: main" and the list title "Requirements realised by no use case"
 test("the subject of the gaps page is the page, titled Gaps", async () => {
   const context = { product: { address: ADDRESS, host: hostOf() } };
   await render(context.product.host, gapsParams, context);
   const subject = route.subject(gapsParams, context);
-  assert.equal(subject.kind, "converse");
+  assert.equal(subject.kind, undefined, "a subject names no kind: the bar runs converse on every page");
   assert.equal(subject.draftRoute, null);
   assert.equal(subject.title, "Gaps");
   assert.ok(subject.key.includes("key=gaps") && subject.key.includes("ref=main"), subject.key);

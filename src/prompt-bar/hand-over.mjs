@@ -3,11 +3,11 @@
 // backlog or a step of the plan the product's facts for the scope `work`, to ask MOD-work-plans' startable for each item or step of the product's plan it works on, with the proposed
 // participant as the only participant, so that startable's own check of the implementing role (MOD-product-process' holdsRole) is the check of this participant: this file repeats no
 // rule of the work plans. A hand-over that works on no item or step — an endpoint's own job among them, which works on the repository's web address — reads no facts. queue prepares
-// the job of the kind the participant named and hands it over with MOD-runtimes' handOverJob; the bar calls it only on a person's click.
+// the job of the kind the participant named and hands it over with MOD-runtimes' handOverJob; the bar calls it once the participant's answer proposes it, the person's Send being the request (UC-049 4a).
 //
 // Module: MOD-prompt-bar
 //
-// NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED; A JOB GOES ONLY TO A HOLDER OF ITS ROLE; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK. assess writes and queues nothing. The task's
+// NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED; A JOB GOES ONLY TO A HOLDER OF ITS ROLE; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK — the click is the Send whose answer proposed the hand-over. assess writes and queues nothing. The task's
 // words reach no record and no commit through this file: they are the `instruction` of the job prepared in memory and the `task` handOverJob carries to the run.
 // Readings of the module file this file takes (the pull request names them):
 //   - an item or step of the plan is named by its identifier `ITM-<n>`, as the backlog's items and the plan's steps are; a hand-over whose `works_on` names none works on nothing
@@ -25,7 +25,7 @@
 import { approvalStrategies } from "../approvals/index.mjs";
 import { editStrategies } from "../artifact-edits/index.mjs";
 import { newJobId } from "../job-ledger/index.mjs";
-import { prepareJob } from "../job-runner/index.mjs";
+import { handOverParams, prepareJob } from "../job-runner/index.mjs";
 import { productFacts } from "../progress-measures/index.mjs";
 import { resourceStrategies } from "../resource-list/index.mjs";
 import { reuseStrategies } from "../reuse-facts/index.mjs";
@@ -107,18 +107,6 @@ export async function assess({ handOver, participant, instance, page, instanceSn
   return { reasons, route: taken?.route ?? null, routeText, needsWorkflow, snapshot, head: snapshot.commit, instanceSnapshot, participants };
 }
 
-// The parameters the job rests on, from what it works on by name: use cases (`useCases`, and `useCase` where it is one), plan steps (`steps`: the names the product's plan holds as a file under docs/plan/) and
-// backlog items (`items`: the other ITM names), and requirements (`requirements`); any other identifier is in the record's `works_on` only.
-function paramsOf(worksOn, snapshot) {
-  const useCases = worksOn.filter((name) => /^UC-\d+$/.test(name));
-  const planned = worksOn.filter((name) => PLANNED.test(name));
-  const steps = planned.filter((name) => snapshot.paths.some((path) => path.startsWith(`docs/plan/${name}-`)));
-  const items = planned.filter((name) => !steps.includes(name));
-  const requirements = worksOn.filter((name) => !/^[A-Z]+-[A-Za-z0-9-]+$/.test(name) && !/^https?:\/\//.test(name));
-  return { ...(requirements.length ? { requirements } : {}), ...(useCases.length ? { useCases } : {}), ...(useCases.length === 1 ? { useCase: useCases[0] } : {}),
-    ...(items.length ? { items } : {}), ...(steps.length ? { steps } : {}) };
-}
-
 /**
  * queue({ handOver, participant, assessment, store, instance, page, ofProduct, conversation }) -> Promise<{ id: string, path: string, commit: string, person: string }> — prepares the job of
  * the kind the participant named, with the task as its instruction, and hands it over on the route `assessment` found, as the person's commit on the head `assessment` read
@@ -135,7 +123,7 @@ export async function queue({ handOver, participant, assessment, store, instance
   const agentM = { version: commit, commit };
   const worksOn = worksOnOf(handOver);
   // For the subject's own kind, `source` is the person's own source that the subject's paramsFor gave: the one parameter beside what the hand-over works on, so that no message and no page text enters the job's record.
-  const params = { ...(source === undefined ? {} : { source }), ...paramsOf(worksOn, snapshot) };
+  const params = { ...(source === undefined ? {} : { source }), ...handOverParams(worksOn, snapshot) };
   const inputs = { product: { address: page.address, snapshot, host: page.host }, instance: { snapshot: instanceSnapshot, host: instance.host }, participants,
     places: { ...(await placesOf(instanceSnapshot, page.address)), mailbox: null }, gates: [], person, agentM, jobId: id };
   const prepared = await prepareJob(handOver.kind, tabContext({ kind: null, params: { ...params, instruction: handOver.task }, ...inputs }), { drafter: participant, reviewers: [] });

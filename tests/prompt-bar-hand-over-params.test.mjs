@@ -221,14 +221,14 @@ test("a hand-over of change-use-case on several use cases or on none is refused 
 // TST-626003 · level: unit · module: MOD-prompt-bar
 // guards: UC-019
 // given: the product of TST-626001
-// input: queue of change-requirements on the requirement EXPORT IS A PDF
-// expect: the job is queued and its record's parameters are exactly { requirements: ["EXPORT IS A PDF"] } — what MOD-spec-changes' recipe named-requirements reads — with none of source, resource, kind,
-//   entry and part; no request was made
-test("a hand-over of change-requirements on a requirement is queued with the parameter requirements", async () => {
+// input: queue of change-requirements on the requirement EXPORT IS A PDF, with no source of the person (works_on cannot give one)
+// expect: refused at preparation by the kind's own precondition person-source (MOD-spec-changes): NotStartable, its finding under THE PERSON WHO PROMPTS IS A SOURCE; nothing was queued — no
+//   commit —; no request was made
+test("a hand-over of change-requirements without the person's own source is refused by the kind's precondition, and nothing is queued", async () => {
   const it = await handsOver({ kind: "change-requirements", works_on: [REQUIREMENT] });
-  assert.equal(it.refusal, undefined, it.refusal?.message);
-  assert.deepEqual(paramsOfRecord(it), { requirements: [REQUIREMENT] });
-  neverGiven(paramsOfRecord(it));
+  assert.equal(it.refusal?.name, "NotStartable", it.refusal?.message);
+  assert.deepEqual(it.refusal.findings.map((each) => each.rule), ["THE PERSON WHO PROMPTS IS A SOURCE"]);
+  assert.equal(it.product.attempts.length, 0);
   assert.deepEqual(requests, []);
 });
 

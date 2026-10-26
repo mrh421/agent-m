@@ -33,6 +33,7 @@ uses:
   - MOD-job-runner.Prepared
   - MOD-job-runner.JobResult
   - MOD-job-runner.Strategies
+  - MOD-job-runner.handOverParams
   - MOD-approvals.approvalStrategies
   - MOD-spec-changes.specStrategies
   - MOD-artifact-edits.editStrategies
@@ -94,10 +95,10 @@ It belongs to the Site (ARC-038). Its one responsibility is the conversation of 
 bottom of every main and review page, the only place where a person writes to an endpoint or a CLI session. It offers
 what this browser's configuration reaches — its model endpoints, and the CLI sessions its Bridges offer —, each named
 with the place where it processes data (`THE PAGE NAMES WHERE IT SENDS`); it holds the conversation in the browser tab;
-it sends each message as a job of the kind the page's subject names, with the page as its context, run in this tab
-without a job record; it shows the answer, and leads a draft to the review page that shows it; it shows a hand-over the
-participant proposes, queues it only on the person's click and only where Process's start rules let it start, and
-follows it until it has ended; and, where the instance switches recording on, it appends every message to a conversation
+it sends each message as a job of its one kind, `converse`, on every page, with the page as its context only, run in
+this tab without a job record; it shows the answer, and leads a draft to the review page that shows it; it carries out
+a hand-over the participant proposes without a further click — in this tab where the kind's result waits for the person,
+else queued where Process's start rules let it start — and follows a queued one until it has ended; and, where the instance switches recording on, it appends every message to a conversation
 record (`A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON`, `A RECORDED CONVERSATION IS KEPT WHERE IT
 WAS HELD`).
 
@@ -108,11 +109,12 @@ uses neither the frame nor a view (`MODULES DEPEND ON EACH OTHER WITHOUT A CYCLE
 ## Parts
 
 - `index.mjs` — the interface.
-- `bar.mjs` — the bar: the selector, the input, *Send* — *Spawn job* for an endpoint that runs through GitHub Actions — and *Stop*, the conversation, the waiting for a handed-over job.
+- `bar.mjs` — the bar: the selector, the input, *Send* — *Spawn job* for an endpoint that runs through GitHub Actions — and *Stop*, the conversation, a hand-over carried out, the waiting for a queued one.
 - `offer.mjs` — the endpoints and CLI sessions offered, read from this browser's configuration, and the place each is
   named with.
-- `send.mjs` — preparing and running a message as a job in this tab.
-- `hand-over.mjs` — a proposed hand-over assessed against the start rules, and queued on the person's click.
+- `send.mjs` — preparing and running a message, or a hand-over of a kind whose result waits for the person, as a job in
+  this tab.
+- `hand-over.mjs` — a proposed hand-over assessed against the start rules, and queued.
 - `follow.mjs` — a handed-over job followed by its record and its live state, its log, and *Stop*.
 - `record.mjs` — the conversation record and the recording switch.
 - `conversation.schema.md`, `recording.schema.md` — the schemas of the two files it owns, in the schema language of
@@ -160,20 +162,25 @@ IN THE REPOSITORY`).
 
 ## Interfaces
 
-- `Subject` — `{ key: string, title: string, kind: string, entry: string | null, paramsFor: (participant: Participant) ->
+- `Subject` — `{ key: string, title: string, entry: string | null, paramsFor: (participant: Participant) ->
   Record<string, unknown>, draftRoute: string | null, withhold: ((text: string) -> string | null) | null, refuses:
   string[] }`: what a message on the page
   shown is about, given by the route that shows it (MOD-site-frame's `Route.subject`), or by the frame for a route that
-  gives none. `key` names the subject, so that a draft is shown only for the subject it was drafted on; `title` is what
-  the bar and the record say the message was about; `kind` is the kind of MOD-job-catalogue a message runs — `converse`
-  unless the route names another, such as `change-requirements` on a requirement; `entry` the menu entry of the page
+  gives none. A subject is context only: it never chooses the kind a message runs, which is always `converse`, nor what
+  the participant may do beyond what `refuses` takes away (UC-049 step 3). `key` names the subject, so that a draft is
+  shown only for the subject it was drafted on; `title` is what
+  the bar and the record say the message was about; `entry` the menu entry of the page
   shown, as MOD-site-frame's `Route` gives it, which the frame sets on every subject, `null` for a route out of the menu; `paramsFor` gives the
-  kind's parameters for the participant chosen — the target and its version, and `page`, the page as the participant may see it, so that a
+  context for the participant chosen — `page`, the page as the participant may see it, so that a
   page of mail gives a mail's text only to a participant the mailbox allows and that does not write to the repository,
   and its `MAIL-` identifier to any other (UC-049 3b), and a page of settings names each setting and whether it is stored,
-  never its value (UC-049 3c); `draftRoute` the route of the review pages that shows a draft of this subject, `null` where
-  the kind's answer is text only; `withhold` what a message on this page must not be recorded for, with the reason;
-  `refuses` the tools of the kind that are not offered on this page — on a page of mail, `propose-edit` and
+  never its value (UC-049 3c); where an artifact is open, the parameters by which a kind names it — `requirements`,
+  `useCase`, `target` — and its `version`; `source`, the person's own source, where the product links one; and, on the
+  review pages' `draft`, the conversation's draft as `draft`. It throws nothing for a missing source: a kind that
+  needs one refuses by its own precondition. `draftRoute` the route of the review pages that shows a draft of this
+  subject, or `null` where the subject gives none, and the bar then leads to the review pages' `draft` for its `key`;
+  `withhold` what a message on this page must not be recorded for, with the reason;
+  `refuses` the tools that are not offered on this page — on a page of mail, `propose-edit` and
   `hand-over`, so that nothing of a mail reaches a participant that writes or a file (UC-049 3b).
 - `Message` — `{ at: Date, from: "person" | "participant", who: string, text: string, subject: string }`.
 - `ConversationDraft` — `{ subject: string, kind: string, participant: string, params: Record<string, unknown>, result:
@@ -198,18 +205,18 @@ IN THE REPOSITORY`).
   - for a CLI session, the type *CLI agent*, and its model, capabilities, context and place as
     `session:<bridge>:<agent>` declares them, and the route `bridge <bridge> agent <agent>`.
 
-  Of those offered it offers, for the page shown, only each that can do the subject's kind: `eligible` judges them
-  against the `needs` of `kindOf`'s definition of that kind, so that the offer follows the subject (UC-019 2). Where
-  some are offered and none can do the kind, it says so, names the capabilities the kind needs, and links the route
-  `endpoints` through `go` (UC-019 3a). Beside this browser's endpoints, and after them, it still offers the participants of
+  Of those offered it offers only each that can do `converse`: `eligible` judges them against the `needs` of `kindOf`'s
+  definition of that kind (UC-019 2). Where some are offered and none can do it, it says so, names the capabilities it
+  needs, and links the route `endpoints` through `go` (UC-019 3a). Beside this browser's endpoints, and after them, it still offers the participants of
   the instance's list that this browser reaches, other than an endpoint offered already, until the offer of CLI sessions
   is built. With one offered, it names it; with several, a small selector above the input
   chooses, each named with its processing place. A folded *What is this?* explains the bar. An endpoint that names the
   CI secret of its key and no Bridge runs through GitHub Actions, whether or not this browser keeps its key: while it is
   chosen, the button reads *Spawn job* instead of *Send*, and that click — the person's — makes the message the task of
-  a job that is the endpoint's own (UC-049 4a.1), of the subject's kind, spawned with `spawnEndpointJob` and followed as
-  a hand-over is; nothing is sent from the tab. For every other one it reads *Send*. On *Send* — the decision to
-  send — it asks the subject for the kind and the parameters, adds the person's words as `instruction`, the conversation
+  a job that is the endpoint's own (UC-049 4f), of the kind `converse`, spawned with `spawnEndpointJob` and followed as
+  a queued hand-over is; nothing is sent from the tab, and what the job proposes is written in its run
+  (MOD-workflow-entries). For every other one it reads *Send*. On *Send* — the decision to
+  send — it asks the subject for the parameters, adds the person's words as `instruction`, the conversation
   so far as `conversation`, the subject's `entry` as `entry` and its `refuses` as `refuses`, prepares the job with
   MOD-job-runner's `prepareJob` in a context from MOD-runtimes' `tabContext` — so that the message reaches the participant
 after Agent M's `AGENTS.md`, as MOD-job-runner composes every input (`EVERY MODEL READS AGENT M'S AGENTS.MD FIRST`) —,
@@ -223,16 +230,23 @@ and sends nothing while the job does not
   and again on a moved head; a message the subject withholds, or whose commit the host refuses for a stored secret, is
   appended as withheld and sent; a message whose record cannot be appended for any other reason is not sent, and the bar
   says why (`A RECORDED CONVERSATION IS KEPT WHERE IT WAS HELD`). It runs the job with `runOnTab` and no job record,
-  attended, and shows the answer: the text, the rounds and the findings the loop left, and, for a draft, *Review the
-  draft*, which keeps the `ConversationDraft` and goes to the subject's `draftRoute`; with recording on, the
+  attended, and shows the answer: the text, the rounds and the findings the loop left, and, for a draft — edits the
+  participant proposed —, *Review the draft*, which keeps the `ConversationDraft` and goes to the subject's
+  `draftRoute`, or, where the subject gives none, to the review pages' `draft` for the subject's `key`; with recording on, the
   participant's answer is appended as the result of the same *Send*. *Stop* aborts the job in the tab (UC-049 5a). A
-  hand-over the participant proposed (UC-049 4a) is shown with its kind, what it works on, its task, the participant
-  with its processing place and the route it would take, which `routesFor` gives; *Hand over* is the decision. For the
-  subject's own kind, the hand-over's job takes, beside what the hand-over works on, only the `source` that the
-  subject's `paramsFor` gives for the participant — no other parameter, so that no message and no page text enters the
-  job's record (`A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON`); where the subject finds no own
-  source of the person, `paramsFor` refuses by name, `NoPersonSource`, and so does the hand-over, with nothing queued
-  (`THE PERSON WHO PROMPTS IS A SOURCE`). For a kind of the product's workflow, it is queued only for a participant of
+  hand-over the participant proposed (UC-049 4a) is shown with its kind, what it works on and its task, and goes on at
+  once: the person's *Send* was the request, and no further click is asked for. Where the kind is not `converse` itself, its
+  `review` is `person` and `eligible` finds the participant able to do it, it runs in this tab, attended, as a message runs, prepared with
+  `prepareJob` for that kind: its parameters are the subject's `paramsFor` less `page`, with what MOD-job-runner's
+  `handOverParams` gives for what it works on, its task as `instruction`, the conversation so far, the subject's
+  `entry` and `refuses`; nothing is written, and its result is kept as the `ConversationDraft` of that kind, which
+  *Review the draft* leads to (UC-049 4a.1); the person saves it there (UC-019 steps 8, 9). A finding that keeps it from
+  starting — a change of requirements without the person's own source among them (`THE PERSON WHO PROMPTS IS A
+  SOURCE`) — is named, and nothing runs. Any other hand-over is shown with the participant, its processing place and the
+  route it would take, which `routesFor` gives, and queued at once where nothing keeps it from starting (UC-049 4a.2).
+  Its job takes, beside what the hand-over works on, only the `source` that the subject's `paramsFor` gives — no other
+  parameter, so that no message and no page text enters the job's record (`A CONVERSATION IS WRITTEN TO A REPOSITORY
+  ONLY WHEN RECORDING IS ON`). For a kind of the product's workflow, it is queued only for a participant of
   the instance's list that the hand-over names, never for the endpoint or CLI session itself, and, for a hand-over that
   works on an item of the backlog or a step of the plan (`ITM-<n>`), only when
   MOD-work-plans' `startable`, on the item states `itemStates` derives from the facts MOD-progress-measures'
@@ -300,8 +314,8 @@ and sends nothing while the job does not
 
 ## Files
 
-It reads the instance's `docs/participants.md` and `docs/conversation-recording.md`, and the files the subject's kind
-reads, through the job runner. With recording on, it writes, through the host of the page's repository, the conversation
+It reads the instance's `docs/participants.md` and `docs/conversation-recording.md`, and the files `converse` and a
+kind run in the tab by a hand-over read, through the job runner. With recording on, it writes, through the host of the page's repository, the conversation
 records under `docs/conversations/`. It keeps the conversation in the tab's values of MOD-browser-store.
 
 ## Uses
@@ -319,9 +333,10 @@ records under `docs/conversations/`. It keeps the conversation in the tab's valu
 - MOD-participant-list.Participant — the shape an endpoint or a CLI session is handed to the job runner in;
   MOD-participant-list.participantSchema, MOD-participant-list.participantsOf — the participants a hand-over of a kind
   of the product's workflow is checked against; MOD-participant-list.eligible, MOD-job-catalogue.kindOf — which of the
-  offered can do the subject's kind.
+  offered can do `converse`, and whether the participant can do a handed-over kind in this tab.
 - MOD-job-runner.prepareJob, MOD-job-runner.Prepared, MOD-job-runner.JobResult — a message prepared and checked to fit,
-  and its result; MOD-job-runner.Strategies — the type of `handOverStrategies`.
+  and its result; MOD-job-runner.Strategies — the type of `handOverStrategies`; MOD-job-runner.handOverParams — the
+  parameters a hand-over's job takes for what it works on.
 - MOD-approvals.approvalStrategies, MOD-spec-changes.specStrategies, MOD-artifact-edits.editStrategies,
   MOD-source-register.sourceStrategies, MOD-reuse-facts.reuseStrategies, MOD-resource-list.resourceStrategies,
   MOD-work-plans.workStrategies, MOD-run-planner.runStrategies, MOD-product-process.processStrategies,

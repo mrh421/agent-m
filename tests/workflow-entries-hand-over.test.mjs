@@ -45,6 +45,7 @@ const entries = await import("../src/workflow-entries/main.mjs").catch((error) =
 const { runEntry } = entries;
 const REAL_GIT = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim();
 const REAL_SLEEP = spawnSync("sh", ["-c", "command -v sleep"], { encoding: "utf8" }).stdout.trim();
+const REAL_CAT = spawnSync("sh", ["-c", "command -v cat"], { encoding: "utf8" }).stdout.trim();
 
 // ---------------------------------------------------------------- the fixtures
 
@@ -203,6 +204,7 @@ async function world({ records = [], agent = "ok", probe = refuse, baseMessage =
   const event = JSON.stringify({ type: "text", part: { text: JSON.stringify({ draft: { decision: "passed", reason: ANSWER }, answers: [] }) } });
   script(bin, "opencode", `case "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';;
 run) printf 'RUN %s\\n' "$*" >> ${calls}
+${REAL_CAT} >> ${calls}; printf '\\n' >> ${calls}
 printf 'CONFIG %s\\n' "$OPENCODE_CONFIG_CONTENT" >> ${calls}
 ${agent === "ok" ? `printf '%s\\n' '${event}' '{"type":"step_finish","part":{"tokens":{"input":11,"output":7}}}'`
   : agent === "quoting" ? `printf 'agent started with: %s\\nagent stopped: internal error 17 while asking: %s\\n' "$*" '${TASK}' >&2; exit 1`

@@ -168,10 +168,11 @@ It keeps nothing but what is on the screen. It owns these formats:
   under the route's `entry`. The entry of the page shown is the one the menu marks and the one the subject carries.
   `menuOf` counts only `entry` as served: a page whose `entryShown` names an entry that no loaded route lists is marked
   under an entry the menu shows as *not built yet*. `subject`, MOD-prompt-bar's type, says what a message in
-  the prompt bar is about while the route is shown — a route showing a requirement, a use case or an architecture file
-  names its change kind and its target; a route of mail or of settings says what of its page a participant may be given.
-  Whichever gives the subject, the frame sets its `entry` to the entry of the page shown. A route that gives none, or whose
-  `subject` gives `null` for these parameters, has the frame's default: the kind `converse`, the route's title, and as the page the route's title, the menu entry of the page shown, the product, and the text the route has drawn, which holds no stored secret, since a stored
+  the prompt bar is about while the route is shown, as context only — a route showing a requirement, a use case or an
+  architecture file names it and its version; a route of mail or of settings says what of its page a participant may be given.
+  Whichever gives the subject, the frame sets its `entry` to the entry of the page shown, and where its `paramsFor` gives
+  no `page`, the frame's default `page` stands beside what it gives. A route that gives none, or whose
+  `subject` gives `null` for these parameters, has the frame's default: the route's title, and as the page the route's title, the menu entry of the page shown, the product, and the text the route has drawn, which holds no stored secret, since a stored
   secret is shown only in a hidden field (`A STORED SECRET IS HIDDEN UNTIL SHOWN`).
 - `ViewContext` — what every route is given: `{ page: "main" | "review" | "bridge", instance: { repository: string,
   host: Host }, product: ProductContext | null, store: Store, go(route: string, params?: Record<string, string>) -> void }`

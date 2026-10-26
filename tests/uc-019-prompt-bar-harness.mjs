@@ -34,6 +34,8 @@ export const INSTANCE = "akmaier/agent-m", SOURCE = "SRC-author";
 export const LOAN = "A LOAN HAS A DUE DATE", SHELF = "A BOOK IS SHELVED";
 export const CHANGED = "A DUE DATE IS VISIBLE", CONFLICT = "A DUE DATE MAY BE HIDDEN";
 export const INSTRUCTION = "Make the due date visible.";
+// The first sentence of the conversation's prompt (src/job-catalogue/kinds/converse/prompt.md), by which a request of the bar's one kind is known.
+const CONVERSE_PROMPT = "You answer a person's message about the page they are looking at";
 export const CURRENT_RULE = "Every loan states its due date.";
 const txt = (...lines) => `${lines.join("\n")}\n`;
 export const SPEC = txt("# Lending tool", "", "## Lending", "", `**${LOAN}** *(SRC-policy)*`, CURRENT_RULE,
@@ -89,14 +91,45 @@ export async function scenario({ owner = "akmaier", linked = true, answers = [dr
     return typeof value === "string" ? value : JSON.stringify(value && Object.hasOwn(value, "draft") ? value : { draft: value, answers: [] });
   };
   const response = (value) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
+  const handOnRequests = [];
+  let asked = null;
+  const strings = (value) => (typeof value === "string" ? [value] : value && typeof value === "object" ? Object.values(value).flatMap(strings) : []);
+  const textOfRequest = (body) => strings(body).join("\n");
+  const next = () => answers[Math.min(answerNumber, answers.length - 1)];
+  const conversational = (value) => typeof value === "string" || (value && typeof value === "object" && (Object.hasOwn(value, "draft") ? conversational(value.draft) : ["answer", "edits", "handOver"].some((key) => Object.hasOwn(value, key))));
+  const handsOn = (body) => textOfRequest(body).includes(CONVERSE_PROMPT) && !conversational(next());
+  // The kind the change is handed on to: by the scripted draft's shape where it is a value, else by the page shown; what it works on comes from the page's subject.
+  const handOverOf = (body) => {
+    const value = next(), shown = typeof value === "function" ? null : (value && Object.hasOwn(value, "draft") ? value.draft : value);
+    const files = Array.isArray(shown?.files) ? shown.files.map((file) => file.path) : [];
+    const hash = globalThis.location?.hash ?? "";
+    const kind = Array.isArray(shown?.candidates) ? "change-requirements" : files.some((path) => path.startsWith("docs/architecture/")) || /^#(decision|module)\//.test(hash)
+      ? "change-architecture" : files.length > 0 || /^#use-case\//.test(hash) ? "change-use-case" : "change-requirements";
+    const task = /## The person's message\n\n(?:### [^\n]*\n\n)?([^]*?)\n\n## /.exec(textOfRequest(body))?.[1] ?? "";
+    return { answer: `Handed on to ${kind}.`, handOver: { kind, works_on: [], task } };
+  };
   const handler = async (url, init) => {
     if (url.origin === "https://fixture-endpoint.example.test") {
-      endpointRequests.push({ url: url.href, body: JSON.parse(init.body), headers: init.headers });
+      const body = JSON.parse(init.body);
+      // Every message of the bar is the conversation (MOD-prompt-bar: the one kind `converse`). Where the scenario scripts a change's draft — or a function — for its next
+      // answer, the participant first hands the change on to the kind that owns it, as UC-049 4a says; that answer is kept apart (`handOnRequests`), and the scripted
+      // answers and `endpointRequests` remain those of the change.
+      if (handsOn(body)) {
+        handOnRequests.push({ url: url.href, body, headers: init.headers });
+        return response({ choices: [{ message: { content: JSON.stringify({ draft: handOverOf(body), answers: [] }) } }], usage: { prompt_tokens: 10, completion_tokens: 5 } });
+      }
+      endpointRequests.push({ url: url.href, body, headers: init.headers });
       return response({ choices: [{ message: { content: answerText() } }], usage: { prompt_tokens: 10, completion_tokens: 5 } });
     }
     if (url.origin === "http://127.0.0.1:9418") {
       bridgeRequests.push({ url: url.href, method: init.method, body: init.body && JSON.parse(init.body), headers: init.headers });
-      if (init.method === "POST" && url.pathname === "/v1/ask") return response({ ask: "fixture-ask" });
+      if (init.method === "POST" && url.pathname === "/v1/ask") { asked = JSON.parse(init.body); return response({ ask: "fixture-ask" }); }
+      // Through the Bridge as through the endpoint: the conversation hands a scripted change on first.
+      if (init.method === "GET" && url.pathname === "/v1/ask/fixture-ask" && asked && handsOn(asked)) {
+        const handing = asked;
+        asked = null;
+        return response({ state: "done", text: JSON.stringify({ draft: handOverOf(handing), answers: [] }), usage: { inputTokens: 10, outputTokens: 5 }, error: null });
+      }
       if (init.method === "GET" && url.pathname === "/v1/ask/fixture-ask") return response({ state: "done", text: answerText(), usage: { inputTokens: 10, outputTokens: 5 }, error: null });
       return new Response(JSON.stringify({ error: "not-found" }), { status: 404 });
     }
@@ -138,7 +171,7 @@ export async function scenario({ owner = "akmaier", linked = true, answers = [dr
   if (bridge) writeSetting(store, "bridge:release-bridge", { address: "http://127.0.0.1:9418", token: "fixture-pairing-token" });
   const named = encodeURIComponent(address);
   fragment = hash ?? `#trace/key=specification/ref=main/product=${named}`;
-  const s = { product, instance, repo, address, store, location, endpointRequests, bridgeRequests, chapter: readOriginal(`${chapterFolder}08_requirements-engineering.md`) };
+  const s = { product, instance, repo, address, store, location, endpointRequests, bridgeRequests, handOnRequests, chapter: readOriginal(`${chapterFolder}08_requirements-engineering.md`) };
   await startPage({ page: "review", views: [tracePages, reviewPages], menuViews: [] });
   await rest(s);
   s.body = document.body;

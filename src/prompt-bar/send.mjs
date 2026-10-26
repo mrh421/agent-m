@@ -1,7 +1,8 @@
 // MOD-prompt-bar, send.mjs — preparing and running a message as a job in this tab (docs/architecture/MOD-prompt-bar.md: Parts,
-// Interfaces: startPromptBar). A message is the job of the kind its page's subject names, with the subject's parameters and the person's
-// words, the conversation so far, the subject's menu entry and the tools it refuses; it is prepared with MOD-job-runner's prepareJob in a
-// MOD-runtimes tabContext and run with runOnTab, without a job record.
+// Interfaces: startPromptBar). A message is a job of the bar's one kind, `converse`, whatever the page, with the subject's parameters as its
+// context and the person's words, the conversation so far, the subject's menu entry and the tools it refuses; a hand-over the tab runs is a
+// job of the kind it names, prepared the same way; each is prepared with MOD-job-runner's prepareJob in a MOD-runtimes tabContext and run
+// with runOnTab, without a job record.
 //
 // Module: MOD-prompt-bar
 //
@@ -11,7 +12,7 @@
 
 import { readSetting } from "../browser-store/index.mjs";
 import { bridgeAt, settingsOf } from "../bridge-client/index.mjs";
-import { prepareJob } from "../job-runner/index.mjs";
+import { handOverParams, prepareJob } from "../job-runner/index.mjs";
 import { runOnTab, tabContext } from "../runtimes/index.mjs";
 import { readParticipants } from "./offer.mjs";
 import { readDocument } from "../documents/index.mjs";
@@ -76,7 +77,28 @@ export function connectionsOf(participant, store) {
  * `context` and `connections` to run it with, the `participants` of the register, whether the instance `recording` is on now, the
  * `person`, and the repository `page` the conversation is held on ({ address, host, snapshot }). Throws what the hosts and prepareJob throw.
  */
-export async function prepareMessage({ subject, participant, instruction, conversation, store, instance, product }) {
+export function prepareMessage({ subject, participant, instruction, conversation, store, instance, product }) {
+  return prepareIn(BAR_KIND, () => ({ ...subject.paramsFor(participant), instruction, conversation, entry: subject.entry, refuses: subject.refuses }),
+    { participant, store, instance, product });
+}
+
+/** The one kind every message of the bar runs, on every page (MOD-prompt-bar, Responsibility; UC-049 step 3). */
+export const BAR_KIND = "converse";
+
+/**
+ * prepareHandOver({ handOver, subject, participant, conversation, store, instance, product }) -> Promise<Ready> — a hand-over { kind, works_on, task } prepared to run in this
+ * tab as a message is (UC-049 4a.1): of its kind, its parameters the subject's paramsFor less `page`, with what MOD-job-runner's handOverParams gives for what it works on, its
+ * task as `instruction`, the conversation so far, the subject's entry and refuses. Writes nothing; throws what prepareMessage throws.
+ */
+export function prepareHandOver({ handOver, subject, participant, conversation, store, instance, product }) {
+  return prepareIn(handOver.kind, (snapshot) => {
+    const { page: _page, ...context } = subject.paramsFor(participant);
+    return { ...context, ...handOverParams(handOver.works_on, snapshot), instruction: String(handOver.task ?? ""), conversation, entry: subject.entry, refuses: subject.refuses };
+  }, { participant, store, instance, product });
+}
+
+// A job of `kind` prepared in this tab's context, its parameters `paramsOf(snapshot of the page's repository)`; the Ready of prepareMessage.
+async function prepareIn(kind, paramsOf, { participant, store, instance, product }) {
   const instanceSnapshot = await defaultSnapshot(instance.host);
   const page = product
     ? { address: product.address, host: product.host, snapshot: await defaultSnapshot(product.host) }
@@ -85,12 +107,12 @@ export async function prepareMessage({ subject, participant, instruction, conver
   const person = personOf(store, page.snapshot, product !== null, instanceSnapshot);
   const commit = instanceSnapshot.commit ?? "unknown";
   const inputs = {
-    params: { ...subject.paramsFor(participant), instruction, conversation, entry: subject.entry, refuses: subject.refuses },
+    params: paramsOf(page.snapshot),
     product: page, instance: { snapshot: instanceSnapshot, host: instance.host }, participants,
     places: { ...(await placesOf(instanceSnapshot, page.address)), mailbox: null }, gates: [], person, agentM: { version: commit, commit }, jobId: null,
   };
   // The kind's definition is the job's own: prepareJob reads it by name, and the context that runs the job carries it.
-  const prepared = await prepareJob(subject.kind, tabContext({ kind: null, ...inputs }), { drafter: participant, reviewers: [] });
+  const prepared = await prepareJob(kind, tabContext({ kind: null, ...inputs }), { drafter: participant, reviewers: [] });
   return { prepared, context: tabContext({ kind: prepared.kind, ...inputs }), connections: connectionsOf(participant, store), participants, person, page,
     recording: await recordingOf(instanceSnapshot) };
 }

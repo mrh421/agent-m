@@ -23,6 +23,7 @@ export { estimate, prepareJob } from "./prepare.mjs";
 export { runJob, writeResult } from "./loop.mjs";
 export { driverPrompt } from "./driver-prompt.mjs";
 export { provenanceLines, roundsText } from "./provenance.mjs";
+export { handOverParams, refusedEdit } from "./tools.mjs";
 
 /**
  * The plug-in contract: the recipes, checks, preconditions, steps and writers a module offers, each under its name. A

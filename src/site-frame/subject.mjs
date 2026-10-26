@@ -25,22 +25,26 @@ export function entryShownOf(route, params) {
  * subjectOf({ route, params, context, drawn }) -> Subject — the subject of the route shown with these `params` and `context`; `drawn()` is
  * the `textContent` of what the route has drawn. The route's own `subject(params, context)` where it gives one — a route's `subject` may give `null` —, else the default: `key`
  * the route's fragment (its name with its parameters as the fragment writes them, without the leading `#`) with the chosen product's
- * address as the fragment writes it, none for the instance — the same route on another product is another subject —, `title` the route's title, `kind` `converse`,
+ * address as the fragment writes it, none for the instance — the same route on another product is another subject —, `title` the route's title,
  * `paramsFor` giving `{ page }` — the route's title, the label of the menu entry of the page shown (none for a route out of the menu), the chosen product's
- * address or the instance's, and what the route has drawn, one per line —, `draftRoute` and `withhold` `null`, `refuses` `[]`.
+ * address or the instance's, and what the route has drawn, one per line —, `draftRoute` and `withhold` `null`, `refuses` `[]`. A route's own subject whose `paramsFor` gives no `page` has this default `page` beside what it gives: a subject
+ * is context only, and the bar's one kind reads its page (MOD-prompt-bar, Subject).
  */
 export function subjectOf({ route, params, context, drawn }) {
   const entry = entryShownOf(route, params);
   const own = typeof route.subject === "function" ? route.subject(params, context) : null;
-  if (own !== null) return { ...own, entry };
   const label = labelOf(entry);
   const address = context.product?.address ?? `https://github.com/${context.instance.repository}`;
+  const page = () => [route.title, ...(label === undefined ? [] : [label]), address, drawn()].join("\n");
+  if (own !== null) {
+    const { kind: _kind, ...subject } = own;
+    return { ...subject, entry, paramsFor: (participant) => { const given = own.paramsFor(participant); return "page" in given ? given : { page: page(), ...given }; } };
+  }
   return {
     key: fragmentOf(route.name, context.product ? { ...params, product: context.product.address } : params).slice(1),
     title: route.title,
-    kind: "converse",
     entry,
-    paramsFor: () => ({ page: [route.title, ...(label === undefined ? [] : [label]), address, drawn()].join("\n") }),
+    paramsFor: () => ({ page: page() }),
     draftRoute: null,
     withhold: null,
     refuses: [],

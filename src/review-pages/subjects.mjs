@@ -1,12 +1,13 @@
 // subjects.mjs — the subject each route gives the prompt bar (MOD-review-pages, Parts: flow.mjs, "the subject each of its routes gives the prompt bar"; MOD-site-frame, Route.subject;
-// MOD-prompt-bar, Subject). The page of a file (`<k>/id=<id>`), its editor, a requirement's editor and a new requirement's give a subject that names the descriptor's change kind
-// and the target, and `draft/subject=<key>` as the draft route; every other page of a kind has no subject of its own: the route gives `null`, and the frame's default stands (MOD-site-frame, Route.subject).
+// MOD-prompt-bar, Subject). The page of a file (`<k>/id=<id>`), its editor, a requirement's editor and a new requirement's give a subject that names the target and its
+// version as context — the bar runs `converse` on every page —, and `draft/subject=<key>` as the draft route; every other page of a kind has no subject of its own: the route gives `null`, and the frame's default stands (MOD-site-frame, Route.subject).
 //
 // Module: MOD-review-pages
 //
 // A subject is built by a route's `subject(params, context)`, which is synchronous, and its `paramsFor` too; what they need from the repository — the file's blob, the SPEC section's
 // blob, the person's own source — is read when the route is drawn (`remember`) and kept for the context it was drawn in, which the frame hands to both. Nothing is written.
-// THE PERSON WHO PROMPTS IS A SOURCE: a change of requirements carries the person's own source, and without one its parameters are refused, naming the missing step (UC-019 4b).
+// THE PERSON WHO PROMPTS IS A SOURCE: a requirement's subject carries the person's own source where the product links one; without one, a change of requirements refuses by its
+// own precondition (UC-019 4b), not the subject.
 
 import { statuses } from "../approvals/index.mjs";
 import { personAccount, personSource } from "../source-register/index.mjs";
@@ -101,11 +102,6 @@ export async function remember(where, kind, params) {
   here.facts = facts === null ? null : { ...facts, source: facts.source ? await ownSource(where) : undefined };
 }
 
-function missingSource() {
-  return Object.assign(new Error("The author has no personal source linked to this product. Register the person as a source (#library) and link that source to the product (#sources), then ask again."),
-    { name: "NoPersonSource" });
-}
-
 /**
  * subjectOf(kind, params, context) -> Subject | null — what a message in the prompt bar is about while the route of `kind` is shown with these `params` in this `context`; `null` for a page that
  * names no file or requirement the product holds, which has the frame's default.
@@ -115,11 +111,8 @@ export function subjectOf(kind, params, context) {
   const facts = here?.facts ?? null;
   if (facts !== null) {
     const key = keyOf(kind.route, facts.parts, context);
-    return { key, title: facts.title, kind: kind.change.kind, entry: kind.entry,
-      paramsFor: () => {
-        if (facts.source === null) throw missingSource();
-        return { ...facts.params, ...(facts.source === undefined ? {} : { source: facts.source }) };
-      },
+    return { key, title: facts.title, entry: kind.entry,
+      paramsFor: () => ({ ...facts.params, ...(typeof facts.source === "string" ? { source: facts.source } : {}) }),
       draftRoute: `draft/subject=${encoded(key)}`, withhold: null, refuses: [] };
   }
   return null;

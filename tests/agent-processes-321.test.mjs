@@ -120,13 +120,16 @@ const CONTEXT_FINDINGS = [
 const occurrences = (text, value) => text.split(value).length - 1;
 
 async function contextTasks(t, extra, verify) {
-  for (const [name, prefix] of [["claude", ["-p"]], ["codex", ["exec"]], ["opencode", ["run", "--format", "json"]]]) {
+  for (const [name, prefix] of [["claude", ["-p"]], ["codex", ["exec", "-"]], ["opencode", ["run", "--format", "json"]]]) {
     await t.test(name, async () => {
       const folder = realpathSync(fixture()), record = join(folder, "tasks.jsonl");
       try {
         executable(folder, name, `
           import { appendFileSync } from "node:fs";
-          appendFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() }) + "\\n");
+          let stdin = "";
+          process.stdin.setEncoding("utf8");
+          for await (const chunk of process.stdin) stdin += chunk;
+          appendFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), stdin, cwd: process.cwd() }) + "\\n");
           process.stdout.write(${JSON.stringify(name === "opencode" ? JSON.stringify({ type: "text", part: { text: "fixture answer" } }) + "\n" : "fixture answer\n")});
         `);
         const agent = { ...CLAUDE, name };
@@ -137,8 +140,8 @@ async function contextTasks(t, extra, verify) {
           assert.equal(calls.length, expectedCalls, "one send starts one fixture task");
           const call = calls.at(-1);
           assert.equal(call.cwd, folder);
-          assert.deepEqual(call.argv.slice(0, -1), prefix, "the register's task arguments reach the fixture");
-          const text = call.argv.at(-1);
+          assert.deepEqual(call.argv, prefix, "the register's task arguments reach the fixture");
+          const text = call.stdin;
           assert.equal(occurrences(text, CONTEXT_INPUT.prompt), 1, "ordinary prompt reaches the coding agent once");
           assert.equal(occurrences(text, CONTEXT_PART.text), 1, "recipe parts already in prompt are not added again");
           return text;
@@ -196,14 +199,17 @@ test("TST-398019: coding agents receive canonical correction findings exactly on
 // guards: ONE DEFINITION, THREE DRIVERS; UC-010; UC-011
 // given: controlled Claude and OpenCode executables on PATH: Claude emits a text final answer without usage and OpenCode emits published raw JSON text and step-finish usage events.
 // input: a DriverInput whose prompt has already been assembled and whose workdir is the fixture folder.
-// expect: each send gives the agent the unchanged prompt in that workdir and streams output; Claude returns null for unreported usage and OpenCode maps its reported token counts while leaving undocumented currencyless cost null.
+// expect: each send gives the agent the unchanged prompt on its standard input in that workdir and streams output; Claude returns null for unreported usage and OpenCode maps its reported token counts while leaving undocumented currencyless cost null.
 test("TST-321001: agent driver streams answers with reported or null usage", async () => {
   const folder = fixture();
   const record = join(folder, "record.json");
   try {
     executable(folder, "claude", `
       import { writeFileSync } from "node:fs";
-      writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() }));
+      let stdin = "";
+      process.stdin.setEncoding("utf8");
+      for await (const chunk of process.stdin) stdin += chunk;
+      writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), stdin, cwd: process.cwd() }));
       process.stdout.write("final answer\\n");
     `);
     executable(folder, "opencode", `
@@ -218,7 +224,8 @@ test("TST-321001: agent driver streams answers with reported or null usage", asy
 
     assert.deepEqual(result, { text: "final answer", usage: null });
     assert.deepEqual(JSON.parse(readFileSync(record, "utf8")), {
-      argv: ["-p", INPUT.prompt],
+      argv: ["-p"],
+      stdin: INPUT.prompt,
       cwd: folder,
     });
     assert.equal(output.join(""), "final answer\n");
@@ -246,7 +253,10 @@ test("TST-321002: local and CI invocations keep credentials out of command argum
     executable(folder, "claude", `
       import { appendFileSync } from "node:fs";
       const target = process.env.CI === "true" ? ${JSON.stringify(ciRecord)} : ${JSON.stringify(localRecord)};
-      appendFileSync(target, JSON.stringify({ argv: process.argv.slice(2), key: process.env.ANTHROPIC_API_KEY ?? null }) + "\\n");
+      let stdin = "";
+      process.stdin.setEncoding("utf8");
+      for await (const chunk of process.stdin) stdin += chunk;
+      appendFileSync(target, JSON.stringify({ argv: process.argv.slice(2), stdin, key: process.env.ANTHROPIC_API_KEY ?? null }) + "\\n");
       process.stdout.write("ok\\n");
     `);
     await withEnvironment({ CI: undefined, GITHUB_ACTIONS: undefined, ANTHROPIC_API_KEY: "local-parent-key" }, () =>
@@ -255,11 +265,13 @@ test("TST-321002: local and CI invocations keep credentials out of command argum
       withPath(folder, () => driver({ ...CLAUDE, loggedIn: false }, folder, "ANTHROPIC_API_KEY").send({ ...INPUT, workdir: folder })));
 
     assert.deepEqual(JSON.parse(readFileSync(localRecord, "utf8")), {
-      argv: ["-p", INPUT.prompt],
+      argv: ["-p"],
+      stdin: INPUT.prompt,
       key: null,
     });
     assert.deepEqual(JSON.parse(readFileSync(ciRecord, "utf8")), {
-      argv: ["-p", INPUT.prompt],
+      argv: ["-p"],
+      stdin: INPUT.prompt,
       key: "ci-secret-fixture",
     });
   } finally {

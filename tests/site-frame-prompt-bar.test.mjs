@@ -62,7 +62,7 @@ const FILES = {
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 // Answers the API of github.com for the two repositories (one commit each, "c-<name>", on the branch main) and the model endpoint ep1
-// with the draft `{ answer: "ok" }`. Every request is kept with its Authorization header.
+// with the draft `{ answer: "ok", edits: [docs/notes.md] }` — an edit, so that the answer is a draft to review. Every request is kept with its Authorization header.
 let requests = [];
 const seen = [];
 registerStrategies("tests/site-frame-prompt-bar.test.mjs", { recipes: { "chapters-for-page": async (context, params) => { seen.push(params); return []; } } });
@@ -74,7 +74,7 @@ function installNetwork() {
     const address = String(url);
     requests.push({ url: address, authorization: init?.headers?.Authorization ?? null, body: String(init?.body ?? "") });
     if (address === "https://models.example/v1/chat/completions") {
-      return reply({ choices: [{ message: { content: JSON.stringify({ draft: { answer: "ok" }, answers: [] }) } }], usage: { prompt_tokens: 10, completion_tokens: 5 } });
+      return reply({ choices: [{ message: { content: JSON.stringify({ draft: { answer: "ok", edits: [{ path: "docs/notes.md", text: "# Notes\n" }] }, answers: [] }) } }], usage: { prompt_tokens: 10, completion_tokens: 5 } });
     }
     const api = /^https:\/\/api\.github\.com\/repos\/(acme\/[a-z]+)(\/.*)?$/.exec(address);
     const files = api ? FILES[api[1]] : null;
@@ -220,7 +220,7 @@ test("TST-506003 a route that gives no subject has the default: its key, its tit
 // guards: UC-049
 // given: the route alpha (entry requirements, title "Title of alpha") whose subject gives null for the parameters {} and its own subject (key "own", title "Own", kind change-use-case, entry "tests") for {"id":"7"}; the route beta (entry null) whose subject gives null; the context of the instance acme/instance, and one of the product https://github.com/acme/widget
 // input: subjectOf of the frame for alpha with {} and the text "drawn text" on the instance; for alpha with {} on the widget; for beta with {"q":"1"}; for alpha with {"id":"7"}
-// expect: alpha with {} on the instance is the default — key "alpha", title "Title of alpha", kind converse, entry "requirements", draftRoute null, withhold null, refuses [], its page "Title of alpha\nRequirements\nhttps://github.com/acme/instance\ndrawn text"; on the widget the key "alpha/product=https%3A%2F%2Fgithub.com%2Facme%2Fwidget" and the address https://github.com/acme/widget in the page; beta is the default with entry null and a page of its title, the address and the drawn text (no line for a menu entry); alpha with {"id":"7"} is the route's own subject, key "own", kind change-use-case, with its entry set to "requirements"
+// expect: alpha with {} on the instance is the default — key "alpha", title "Title of alpha", no kind, entry "requirements", draftRoute null, withhold null, refuses [], its page "Title of alpha\nRequirements\nhttps://github.com/acme/instance\ndrawn text"; on the widget the key "alpha/product=https%3A%2F%2Fgithub.com%2Facme%2Fwidget" and the address https://github.com/acme/widget in the page; beta is the default with entry null and a page of its title, the address and the drawn text (no line for a menu entry); alpha with {"id":"7"} is the route's own subject, key "own", without the kind change-use-case it names — a subject is context only —, with its entry set to "requirements" and the default page beside its parameters, which give none
 test("TST-555002 a route whose subject gives null for these parameters has the frame's default, menu label included", () => {
   const context = (product) => ({ instance: { repository: "acme/instance" }, product: product ? { address: WIDGET } : null });
   const alpha = { name: "alpha", entry: "requirements", title: "Title of alpha",
@@ -228,7 +228,7 @@ test("TST-555002 a route whose subject gives null for these parameters has the f
   const beta = { name: "beta", entry: null, title: "Title of beta", subject: () => null };
   const instance = subjectOf({ route: alpha, params: {}, context: context(false), drawn: () => "drawn text" });
   assert.deepEqual({ key: instance.key, title: instance.title, kind: instance.kind, entry: instance.entry, draftRoute: instance.draftRoute, withhold: instance.withhold, refuses: instance.refuses },
-    { key: "alpha", title: "Title of alpha", kind: "converse", entry: "requirements", draftRoute: null, withhold: null, refuses: [] });
+    { key: "alpha", title: "Title of alpha", kind: undefined, entry: "requirements", draftRoute: null, withhold: null, refuses: [] });
   assert.equal(instance.paramsFor({}).page, "Title of alpha\nRequirements\nhttps://github.com/acme/instance\ndrawn text");
   const widget = subjectOf({ route: alpha, params: {}, context: context(true), drawn: () => "drawn text" });
   assert.equal(widget.key, `alpha/product=${encoded(WIDGET)}`);
@@ -237,7 +237,8 @@ test("TST-555002 a route whose subject gives null for these parameters has the f
   assert.equal(out.entry, null);
   assert.equal(out.paramsFor({}).page, "Title of beta\nhttps://github.com/acme/instance\ndrawn text");
   const own = subjectOf({ route: alpha, params: { id: "7" }, context: context(false), drawn: () => "drawn text" });
-  assert.deepEqual({ key: own.key, kind: own.kind, entry: own.entry }, { key: "own", kind: "change-use-case", entry: "requirements" });
+  assert.deepEqual({ key: own.key, kind: own.kind, entry: own.entry }, { key: "own", kind: undefined, entry: "requirements" });
+  assert.equal(own.paramsFor({}).page, "Title of alpha\nRequirements\nhttps://github.com/acme/instance\ndrawn text", "a route's own subject without a page has the default page beside it");
 });
 
 // TST-506007 · level: unit · module: MOD-site-frame
@@ -306,7 +307,7 @@ test("TST-506005 a route out of the menu gives the bar the entry null, whichever
 
 // TST-506006 · level: unit · module: MOD-site-frame
 // guards: UC-049; EVERY STEP EXPLAINS ITSELF
-// given: a browser that keeps the product https://github.com/acme/widget; the route alpha (entry requirements) whose subject names the draft route beta; an endpoint that answers {"answer":"ok"}
+// given: a browser that keeps the product https://github.com/acme/widget; the route alpha (entry requirements) whose subject names the draft route beta; an endpoint that answers {"answer":"ok"} with an edit
 // input: the review page at #alpha/product=<the widget>: Send "draft it", press "Review the draft"; then the review page at #alpha (the instance): Send "again", press "Review the draft"
 // expect: the bar holds a folded explanation (a details of class explain with the summary "What is this?"); the register was read with the instance's token (Authorization "Bearer github_pat_INSTANCE") and, on the product's page, the product acme/widget was read with its own token ("Bearer github_pat_WIDGET") after Send; the draft kept in the tab is for the subject "alpha"; the fragment becomes #beta/product=<the widget>; on the instance's page no request goes to acme/widget and the fragment becomes #beta
 test("TST-506006 the bar is handed the instance as connected, the chosen product, explain and the navigation that keeps the product", async () => {

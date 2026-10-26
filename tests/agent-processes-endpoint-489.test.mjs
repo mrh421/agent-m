@@ -37,7 +37,10 @@ async function fixture(work) {
   const script = join(bin, "opencode-fixture.mjs");
   writeFileSync(script, `
     import { appendFileSync } from "node:fs";
-    const call = { argv: process.argv.slice(2), cwd: process.cwd(), config: process.env.OPENCODE_CONFIG_CONTENT ?? null,
+    let stdin = "";
+    process.stdin.setEncoding("utf8");
+    for await (const chunk of process.stdin) stdin += chunk;
+    const call = { argv: process.argv.slice(2), stdin, cwd: process.cwd(), config: process.env.OPENCODE_CONFIG_CONTENT ?? null,
       hasNamedKey: process.env.ITM489_FIXTURE_KEY === "constructed-itm489-key" };
     appendFileSync(${JSON.stringify(record)}, JSON.stringify(call) + "\\n");
     process.stdout.write(JSON.stringify({ type: "text", part: { text: JSON.stringify(call) } }) + "\\n");
@@ -97,7 +100,7 @@ test("TST-489002: endpoint options and the named key reference reach the coding 
       const call = JSON.parse(result.text);
       assert.equal(calls().length, 1, "one send starts one controlled task");
       assert.equal(call.cwd, workdir);
-      assert.equal(call.argv.filter((arg) => arg === INPUT.prompt).length, 1, "the complete task reaches the fixture once");
+      assert.equal(call.stdin, INPUT.prompt, "the complete task reaches the fixture once, on its standard input");
       assert.equal(call.hasNamedKey, true, "the fixture inherits the named CI key");
       const config = JSON.parse(call.config ?? "{}");
       if (process.env.AGENT_M_489_FAULT_CHILD) console.log("TST489-input " + JSON.stringify({ id: "TST-489002", endpoint, call }));

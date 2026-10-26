@@ -19,7 +19,7 @@ person_decides:
 steps:
 gate_points:
 review: person
-writer: return-draft
+writer: proposed-edits
 limit: 5
 tools:
   - list-files
@@ -31,5 +31,7 @@ tool_limit: 30
 ---
 ## Purpose
 
-Answers a person's message about the page they are looking at, in the conversation so far: the answer, and the edits the
-participant proposes to documents below `docs/`, which a person may save.
+Answers a person's message about the page they are looking at, in the conversation so far: the answer, the edits the
+participant proposes to documents below `docs/`, which a person may save, and the hand-over of work another kind owns or
+the tab cannot do, which goes on without a further click (UC-049 4a). Where nobody attends the job, its edits are written
+as a pull request (UC-049 4f).

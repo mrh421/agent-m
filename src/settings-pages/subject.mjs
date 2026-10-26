@@ -1,4 +1,4 @@
-// The subject the Settings page gives the prompt bar (MOD-settings-pages, Interfaces: "Each route gives the prompt bar its subject, of the kind `converse` (UC-049 3c): the page
+// The subject the Settings page gives the prompt bar (MOD-settings-pages, Interfaces: "Each route gives the prompt bar its subject (UC-049 3c): the page
 // names each setting and whether it is stored ... never a value"). One line per setting this browser can keep, with whether it is stored; a value is never read into a line.
 //
 // Module: MOD-settings-pages
@@ -30,7 +30,7 @@ const RECORDS = ["notified", "browser", "mailbox-sign-in"];
 const named = (info) => info.label !== undefined && !RECORDS.includes(info.key) && !/^(last-test|acknowledged):/.test(info.key);
 
 /**
- * settingsSubject(context, drawn) -> Subject — of the kind `converse`; its page is the title, the menu entry's label, the address of the page, the text the page has drawn (`drawn()`;
+ * settingsSubject(context, drawn) -> Subject — context only; its page is the title, the menu entry's label, the address of the page, the text the page has drawn (`drawn()`;
  * an input's value is no text, so no stored secret is in it) and one line `<setting>: stored` or `<setting>: not set` for each setting.
  */
 export function settingsSubject(context, drawn = () => "") {
@@ -38,7 +38,6 @@ export function settingsSubject(context, drawn = () => "") {
   return {
     key: context.product ? `settings/product=${encodeURIComponent(context.product.address)}` : "settings",
     title: "Settings",
-    kind: "converse",
     entry: "settings",
     paramsFor: () => ({
       page: ["Settings", "Settings", address, drawn(), ...listSettings(context.store).filter(named).map((info) => lineOf(info, context.store)).map(({ name, stored }) => `${name}: ${stored ? "stored" : "not set"}`)].join("\n"),

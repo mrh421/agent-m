@@ -10,6 +10,8 @@ import { applyMoves, hierarchy, parseGroupFile } from "../group-document/index.m
 import { parseSpec, requirementFindings } from "../spec-document/index.mjs";
 import { isTestFile, testDeclarations, testFindings } from "../test-document/index.mjs";
 import { finding } from "../text-tools/index.mjs";
+import { provenanceLines } from "./provenance.mjs";
+import { refusedEdit } from "./tools.mjs";
 import { graphFindings, selfSufficiencyFindings, traceGraph } from "../trace-graph/index.mjs";
 
 const part = (name, text) => ({ name, text, size: 0, sources: [], required: true });
@@ -232,6 +234,26 @@ export const builtins = {
   writers: {
     // Writes nothing; hands the result to the caller.
     "return-draft": async (result) => ({ commits: [], files: [], pullRequest: null, shown: result.draft, notes: [] }),
+    // The edits of a conversation's job nobody attends (UC-049 4f): those refusedEdit does not refuse, in one commit on a new branch agent-m/<job> from the commit the
+    // job read, and a pull request of it into the default branch — never a commit on the default branch; a refused one named in a note. None: nothing written.
+    "proposed-edits": async (result, context) => {
+      const edits = Array.isArray(result.draft?.edits) ? result.draft.edits.filter((edit) => typeof edit?.path === "string" && typeof edit?.text === "string") : [];
+      const notes = [], files = [];
+      for (const { path, text } of edits) {
+        const why = refusedEdit(path);
+        if (why) notes.push(`${path} is not written: ${why.replace(/^refused: /, "")}`);
+        else files.push({ path, text });
+      }
+      if (files.length === 0) return { commits: [], files: [], pullRequest: null, shown: result.draft, notes };
+      const host = context.product.host;
+      const lines = provenanceLines({ agentM: context.agentM, jobId: context.jobId, kind: context.kind.name, participant: result.drafter, rounds: result.rounds?.length ?? 0 });
+      const branch = `agent-m/${context.jobId ?? "conversation"}`;
+      const { commit } = await host.commitFiles({ branch, expectedHead: context.product.snapshot.commit, files,
+        message: `propose ${files.map((file) => file.path).join(", ")}\n\n${lines.join("\n")}` });
+      const { defaultBranch } = await host.repositoryInfo();
+      const opened = await host.openPullRequest({ branch, base: defaultBranch, title: `${context.jobId ?? "conversation"}: ${context.kind.name}`, body: lines.join("\n") });
+      return { commits: [commit], files: files.map((file) => file.path), pullRequest: opened.url, shown: result.draft, notes };
+    },
   },
 };
 

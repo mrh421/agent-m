@@ -11,7 +11,7 @@
 
 import { appendToRecord, jobCost, jobState, newJobId, recordsNewestFirst, startRecord, takeJob } from "../job-ledger/index.mjs";
 import { kindOf } from "../job-catalogue/index.mjs";
-import { prepareJob, provenanceLines, runJob } from "../job-runner/index.mjs";
+import { handOverParams, prepareJob, provenanceLines, runJob } from "../job-runner/index.mjs";
 import { endpointDriver, testEndpoint } from "../endpoint-calls/index.mjs";
 import { agentDriver, installedAgents } from "../agent-processes/index.mjs";
 import { participantSchema, participantsOf } from "../participant-list/index.mjs";
@@ -96,6 +96,49 @@ function endpointOf(text) {
   return { kind: read.kind, baseUrl: read.baseUrl, model: read.model };
 }
 
+// A kind that only reads and drafts text — its needs hold draft text and nothing but draft text and read the repository — runs through Agent M's own job runner
+// calling the endpoint (MOD-endpoint-calls' endpointDriver); any other through opencode (MOD-workflow-entries, onDispatch).
+const READS_AND_DRAFTS = new Set(["draft text", "read the repository"]);
+const readsAndDrafts = (kind) => kind.needs.includes("draft text") && kind.needs.every((need) => READS_AND_DRAFTS.has(need));
+
+// What a writer's outcome lists in the job's end: its commits, files and pull request, and its notes.
+const resultsOf = (outcome) => (outcome ? [...outcome.commits, ...outcome.files, ...(outcome.pullRequest ? [outcome.pullRequest] : []), ...outcome.notes.map((note) => `note: ${note}`)] : []);
+
+// An item of the backlog or a step of the plan, by its identifier.
+const PLANNED = /^ITM-\d+$/;
+
+// The hand-over a job's draft holds (UC-049 4f), run in the same run with the same participant and driver where its kind's result waits for a person and it works on no item
+// of the backlog or step of the plan: its parameters the job's source, those handOverParams gives for what it works on, and its task as instruction; run unattended, so that its
+// writer writes at once. -> the lines the job's end lists: what its writer wrote, or `not run: <kind> — <why>`.
+async function handedOver(handOver, context, participant, driver, record) {
+  const worksOn = [handOver.works_on].flat().filter(Boolean).map(String);
+  const notRun = (why) => [`not run: ${handOver.kind} — ${why}`];
+  let kind;
+  try {
+    kind = await kindOf(handOver.kind);
+  } catch (error) {
+    return notRun(error?.message ?? String(error));
+  }
+  if (kind.name === context.kind.name) return notRun("it is this conversation itself, which a hand-over does not start again");
+  if (kind.review !== "person") return notRun("its result does not wait for a person, so it is started from the dashboard, by its start rules, for a holder of its role");
+  const planned = worksOn.filter((name) => PLANNED.test(name));
+  if (planned.length > 0) return notRun(`it works on ${planned.join(", ")} of the plan, whose start rules are checked where a person starts it`);
+  const params = { ...(typeof record.params?.source === "string" ? { source: record.params.source } : {}), ...handOverParams(worksOn, context.product.snapshot),
+    instruction: String(handOver.task ?? "") };
+  const nested = { ...context, kind, params };
+  try {
+    const prepared = await prepareJob(kind.name, nested, { drafter: participant, reviewers: [], limit: record.limit });
+    if (prepared.blocking.length > 0 || prepared.notFitting.length > 0) {
+      return notRun(prepared.blocking.map((found) => `${found.what} [${found.rule}]`).join("; ") || "the job does not fit its participant");
+    }
+    const result = await runJob(prepared, { drafter: driver, reviewers: [] }, { attended: false, context: nested });
+    const lines = resultsOf(result.written);
+    return lines.length > 0 ? lines : [`${handOver.kind}: no change`];
+  } catch (error) {
+    return notRun(error?.message ?? String(error));
+  }
+}
+
 // The task, trimmed, must not appear in a run's PR text or new branch commit messages. Without a PR, compare the reported branch at one
 // pinned commit against the job's pre-run snapshot by complete commit identities, including merge-side history. -> { branch, where } or null.
 async function refusedBranch(host, written, task, baseCommit) {
@@ -158,10 +201,13 @@ async function runJobOf(env, composed, participants, row, handOver = null) {
       throw Object.assign(new Error(prepared.blocking.map((found) => found.what).join("; ") || "the job does not fit its participant"), { name: "NotStartable" });
     }
     endpoint = handOver?.endpoint ? endpointOf(handOver.endpoint) : null;
-    const driver = endpoint ? await opencodeDriver(participant, endpoint, secretName, job.productDir ?? instance.checkout)
-      : await driverOf(participant, record.params ?? {}, secretName, job.keys[secretName], instance.checkout);
+    const driver = !endpoint ? await driverOf(participant, record.params ?? {}, secretName, job.keys[secretName], instance.checkout)
+      : readsAndDrafts(context.kind) ? endpointDriver({ name: "hand-over", ...endpoint, key: job.keys[secretName] ?? null }, participant)
+        : await opencodeDriver(participant, endpoint, secretName, job.productDir ?? instance.checkout);
     const result = await runJob(prepared, { drafter: driver, reviewers: [] }, { attended: false, context });
     outcome = result.written;
+    // What the participant handed on is run in the same run, and its results join the job's (UC-049 4f).
+    const passed = result.draft?.handOver ? await handedOver(result.draft.handOver, context, participant, driver, record) : [];
     // On the agent's machine the branch is not on the server yet: the writing machine refuses a result whose commits or pull request hold the task (result.mjs).
     if (handOver && !composed.result) {
       const refused = await refusedBranch(product.host, outcome, handOver.task, context.product.snapshot.commit);
@@ -169,9 +215,10 @@ async function runJobOf(env, composed, participants, row, handOver = null) {
     }
     if (handOver) leaveAnswer(env, record.id, answerOf(outcome?.shown ?? result.draft));
     const handedBack = context.kind.writer === "return-draft";
-    const made = outcome ? [...outcome.commits, ...(handOver ? [...outcome.files, ...(outcome.pullRequest ? [outcome.pullRequest] : [])] : [])] : [];
-    ended = { state: "done", results: handOver ? (made.length > 0 ? [...made, ...outcome.notes.map((note) => `note: ${note}`)] : handedBack ? [] : ["no change"])
-        : handedBack ? [] : outcome && outcome.commits.length > 0 ? [...outcome.commits, ...outcome.notes.map((note) => `note: ${note}`)] : ["no change"],
+    const made = outcome ? [...outcome.commits, ...(handOver || outcome.pullRequest ? [...outcome.files, ...(outcome.pullRequest ? [outcome.pullRequest] : [])] : [])] : [];
+    // A result is one item of the end's list, in which a comma separates items: a comma of a note or a reason becomes a semicolon.
+    const listed = [...made, ...[...(outcome?.notes ?? []).map((note) => `note: ${note}`), ...passed].map((line) => line.replaceAll(",", ";"))];
+    ended = { state: "done", results: listed.length > 0 ? listed : handedBack ? [] : ["no change"],
       draft: handOver ? null : handedBack ? (outcome?.shown ?? result.draft) : null, rounds: result.rounds, usage: usageOf(result.usage), reason: null,
       stoppedBecause: result.stoppedBecause, drafter: result.drafter };
   } catch (error) {
@@ -182,6 +229,9 @@ async function runJobOf(env, composed, participants, row, handOver = null) {
       const probe = await testEndpoint({ name: "hand-over", ...endpoint, key: job.keys[secretName] ?? null });
       reason = probe.works ? `the agent failed (exit code ${error.exitCode}) working with the endpoint ${endpoint.baseUrl} (${endpoint.model}): ${said}`
         : `the run failed against the endpoint ${endpoint.baseUrl} (${endpoint.model}): ${probe.diagnosis.reason} — ${probe.diagnosis.message}. The routes that would work: a self-hosted runner, or a Bridge.`;
+    } else if (endpoint && error?.name === "EndpointFailed" && error.diagnosis) {
+      // The job runner called the endpoint itself (a kind that only reads and drafts): its own diagnosis is the reason (UC-049 4d).
+      reason = `the run failed against the endpoint ${endpoint.baseUrl} (${endpoint.model}): ${error.diagnosis.reason} — ${error.diagnosis.message}. The routes that would work: a self-hosted runner, or a Bridge.`;
     }
     ended = { ...ended, reason: handOver ? hidden(reason) : reason };
   }

@@ -362,7 +362,7 @@ test("the route gives the prompt bar a subject that holds a mail's identifier an
   const target = await read(await open(w));
   const subject = route().subject({}, { page: "main", instance: { repository: INSTANCE }, store: w.store, product: null });
   assert.ok(subject, "a subject");
-  assert.equal(subject.kind, "converse");
+  assert.equal(subject.kind, undefined, "a subject names no kind: the bar runs converse on every page");
   assert.deepEqual([...subject.refuses].sort(), ["hand-over", "propose-edit"]);
   const page = String(subject.paramsFor({ name: "any" }).page);
   assert.ok(page.includes(mail.id), "the identifier");

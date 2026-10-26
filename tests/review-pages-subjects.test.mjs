@@ -1,5 +1,5 @@
 // MOD-review-pages' routes give the prompt bar their subject (ITM-507), as the accepted text of docs/architecture/MOD-review-pages.md and MOD-site-frame.md state it:
-// "`<k>/<id>` … Its subject for the prompt bar names the descriptor's change kind and the file as its target — the use case, or the architecture file —, with `draft` as its
+// "`<k>/<id>` … Its subject for the prompt bar names the file and its version — the use case, or the architecture file —, as context (MOD-prompt-bar's `Subject`), with `draft` as its
 // draft route", "`<k>/<id>/edit`, and `requirement/<name>/edit` and `requirements/new` for a requirement — whose subject for the prompt bar is the file, or the requirement
 // with `change-requirements`, as on the file's route", "For a change of requirements, the subject's parameters carry the person's own source, which `personSource` names among
 // the product's linked sources; without one, the prompt bar sends nothing and names the step that is missing (UC-004, UC-015, UC-019 4b)", and MOD-site-frame's Route.subject.
@@ -19,7 +19,7 @@
 //     identifier), the `requirements` of its proposal that the SPEC holds, and `source`. All carry `version`: the blob of the file, or of the SPEC section the named requirements stand in, as the
 //     page read it, which is the text the job reads.
 //   - A page that names no file — a list, Review all, a drafting page, an identifier the product does not hold — has no subject of its own: the route's subject gives `null`, and the
-//     frame's default stands (MOD-site-frame's Route.subject): the kind `converse`, its key the route's fragment, its title the route's title, no draft route, the page it has drawn.
+//     frame's default stands (MOD-site-frame's Route.subject): no kind of its own, its key the route's fragment, its title the route's title, no draft route, the page it has drawn.
 //   - The route `draft` (ITM-559) gives, while the conversation's draft for the subject its address names is kept in the tab, that draft's own subject: its `key`, its `kind`, its
 //     `draftRoute` `draft/subject=<the key, percent-encoded>`, no `withhold`, no `refuses`, and as its title the name of what it changes - the draft's `useCase` or `target`, else its
 //     `requirements` joined by ", ", else the route's title (the draft keeps no heading, and a subject reads nothing). Its parameters for a participant are the draft's parameters
@@ -41,7 +41,7 @@ const draftRouteOf = (key) => `draft/subject=${encodeURIComponent(key)}`;
 // guards: UC-049; UC-019; A PROMPTED USE-CASE CHANGE SEES ITS NEIGHBOURS
 // given: the page of the open use case UC-007 of a product; its editor
 // input: the subject of the route `use-case` with the id UC-007, and with the id UC-007 and the part edit
-// expect: for both the same subject — kind change-use-case, entry use-cases, title "UC-007 Derive use cases", key "use-case/id=UC-007/product=<the product's address, encoded>",
+// expect: for both the same subject — no kind of its own, entry use-cases, title "UC-007 Derive use cases", key "use-case/id=UC-007/product=<the product's address, encoded>",
 //   draftRoute "draft/subject=<that key, encoded>", no withhold, refuses []; its parameters for a participant {useCase: "UC-007", version: the blob of the file as it stands}
 test("use-case/<id> and its editor — the subject is the use case, with the change kind and the draft route", async () => {
   const fake = fakeProduct();
@@ -49,7 +49,7 @@ test("use-case/<id> and its editor — the subject is the use case, with the cha
   for (const params of [{ id: "UC-007" }, { id: "UC-007", edit: "1" }]) {
     const page = await draw(fake, "use-case", params);
     const subject = page.subject();
-    assert.equal(subject.kind, "change-use-case");
+    assert.equal(subject.kind, undefined, "a subject names no kind: the bar runs converse on every page");
     assert.equal(subject.entry, "use-cases");
     assert.equal(subject.title, "UC-007 Derive use cases");
     assert.equal(subject.key, key);
@@ -64,7 +64,7 @@ test("use-case/<id> and its editor — the subject is the use case, with the cha
 // guards: UC-049; UC-023
 // given: the pages of the architecture decision ARC-001 and of the module file MOD-reader
 // input: the subject of the route `decision` with the id ARC-001, and of the route `module` with the id MOD-reader and the part edit
-// expect: kind change-architecture and entry architecture for both; keys "decision/id=ARC-001/product=<address>" and "module/id=MOD-reader/product=<address>"; titles "ARC-001 Lending is a
+// expect: no kind of its own and entry architecture for both; keys "decision/id=ARC-001/product=<address>" and "module/id=MOD-reader/product=<address>"; titles "ARC-001 Lending is a
 //   desk" and "MOD-reader Reading a book"; their draft routes "draft/subject=<key, encoded>"; the parameters {target: "ARC-001", version: the file's blob} and {target: "MOD-reader",
 //   version: the file's blob}
 test("decision/<id> and module/<id> — the subject is the architecture file, with change-architecture", async () => {
@@ -73,7 +73,7 @@ test("decision/<id> and module/<id> — the subject is the architecture file, wi
   for (const [name, params, id, title, body] of cases) {
     const subject = (await draw(fake, name, params)).subject();
     const key = `${name}/id=${id}/product=${PRODUCT}`;
-    assert.equal(subject.kind, "change-architecture");
+    assert.equal(subject.kind, undefined, "a subject names no kind: the bar runs converse on every page");
     assert.equal(subject.entry, "architecture");
     assert.equal(subject.title, title);
     assert.equal(subject.key, key);
@@ -86,13 +86,13 @@ test("decision/<id> and module/<id> — the subject is the architecture file, wi
 // guards: UC-019; THE PERSON WHO PROMPTS IS A SOURCE
 // given: a product whose SPEC holds the requirement A LOAN HAS A DUE DATE in the section "## 1. Lending"; the instance's author github.com/alice, whose person source SRC-alice the product links
 // input: the subject of the route `requirement` with the name A LOAN HAS A DUE DATE
-// expect: kind change-requirements, entry requirements, title "A LOAN HAS A DUE DATE", key "requirement/name=<the name, encoded>/product=<address>", draftRoute "draft/subject=<key, encoded>";
+// expect: no kind of its own, entry requirements, title "A LOAN HAS A DUE DATE", key "requirement/name=<the name, encoded>/product=<address>", draftRoute "draft/subject=<key, encoded>";
 //   the parameters {requirements: ["A LOAN HAS A DUE DATE"], source: "SRC-alice", version: the blob of the section "## 1. Lending"}
 test("requirement/<name> — the subject is the requirement, with change-requirements and the person's own source", async () => {
   const fake = fakeProduct();
   const subject = (await draw(fake, "requirement", { name: LOAN })).subject();
   const key = `requirement/name=${encodeURIComponent(LOAN)}/product=${PRODUCT}`;
-  assert.equal(subject.kind, "change-requirements");
+  assert.equal(subject.kind, undefined, "a subject names no kind: the bar runs converse on every page");
   assert.equal(subject.entry, "requirements");
   assert.equal(subject.title, LOAN);
   assert.equal(subject.key, key);
@@ -104,13 +104,13 @@ test("requirement/<name> — the subject is the requirement, with change-require
 // guards: UC-019; THE PERSON WHO PROMPTS IS A SOURCE
 // given: the page of a new requirement in the section "## 1. Lending"
 // input: the subject of the route `requirements` with the section "## 1. Lending"
-// expect: kind change-requirements; title "New requirement in ## 1. Lending"; key "requirements/section=<the heading, encoded>/product=<address>"; draftRoute "draft/subject=<key, encoded>"; the parameters
+// expect: no kind of its own; title "New requirement in ## 1. Lending"; key "requirements/section=<the heading, encoded>/product=<address>"; draftRoute "draft/subject=<key, encoded>"; the parameters
 //   {requirements: [], section: "## 1. Lending", source: "SRC-alice", version: the blob of the section}
 test("requirements/new — the subject is the new requirement in its section, with the person's own source", async () => {
   const fake = fakeProduct();
   const subject = (await draw(fake, "requirements", { section: HEADING })).subject();
   const key = `requirements/section=${encodeURIComponent(HEADING)}/product=${PRODUCT}`;
-  assert.equal(subject.kind, "change-requirements");
+  assert.equal(subject.kind, undefined, "a subject names no kind: the bar runs converse on every page");
   assert.equal(subject.title, `New requirement in ${HEADING}`);
   assert.equal(subject.key, key);
   assert.equal(subject.draftRoute, draftRouteOf(key));
@@ -121,13 +121,13 @@ test("requirements/new — the subject is the new requirement in its section, wi
 // guards: UC-019; UC-006
 // given: the SPEC change entry 01 of a queue, which proposes the section "## 1. Lending" with both of its requirements
 // input: the subject of the route `spec-entry` with the id spec-2026-03-01_sample-01
-// expect: kind change-requirements, entry requirements, title "spec-2026-03-01_sample-01", key "spec-entry/id=spec-2026-03-01_sample-01/product=<address>", draftRoute "draft/subject=<key, encoded>";
+// expect: no kind of its own, entry requirements, title "spec-2026-03-01_sample-01", key "spec-entry/id=spec-2026-03-01_sample-01/product=<address>", draftRoute "draft/subject=<key, encoded>";
 //   the parameters {target: "spec-2026-03-01_sample-01", requirements: ["A LOAN HAS A DUE DATE", "A BOOK IS SHELVED"], source: "SRC-alice", version: the blob of the SPEC section "## 1. Lending", which the job reads}
 test("spec-entry/<id> — the subject is the entry, with the requirements of its proposal", async () => {
   const fake = fakeProduct();
   const subject = (await draw(fake, "spec-entry", { id: ENTRY_ID })).subject();
   const key = `spec-entry/id=${ENTRY_ID}/product=${PRODUCT}`;
-  assert.equal(subject.kind, "change-requirements");
+  assert.equal(subject.kind, undefined, "a subject names no kind: the bar runs converse on every page");
   assert.equal(subject.entry, "requirements");
   assert.equal(subject.title, ENTRY_ID);
   assert.equal(subject.key, key);
@@ -139,17 +139,14 @@ test("spec-entry/<id> — the subject is the entry, with the requirements of its
 // guards: UC-019; THE PERSON WHO PROMPTS IS A SOURCE
 // given: a product whose links file names no source, so that the instance's author has no personal source the product links
 // input: the subject of the route `requirement` with the name A LOAN HAS A DUE DATE, then its parameters for a participant
-// expect: the parameters are refused with an error named NoPersonSource whose message names the two steps — registering the person as a source (#library) and linking that source to the
-//   product (#sources); the subject of a use case of the same product still gives its parameters
-test("requirement/<name> — without a linked source of the person, the subject's parameters name the missing step", async () => {
+// expect: the parameters are given all the same, with the requirement and no source: a subject is context only, and a change of requirements refuses by its own precondition
+//   (MOD-spec-changes' person-source), which names the missing steps; the subject of a use case of the same product still gives its parameters
+test("requirement/<name> — without a linked source of the person, the subject's parameters give no source and refuse nothing", async () => {
   const fake = fakeProduct({ ...PRODUCT_FILES, "docs/sources.md": NO_LINKS });
   const subject = (await draw(fake, "requirement", { name: LOAN })).subject();
-  assert.throws(() => subject.paramsFor(participant), (error) => {
-    assert.equal(error.name, "NoPersonSource");
-    assert.match(error.message, /no personal source linked to this product/);
-    assert.match(error.message, /Register the person as a source \(#library\) and link that source to the product \(#sources\)/);
-    return true;
-  });
+  const given = subject.paramsFor(participant);
+  assert.deepEqual(given.requirements, [LOAN]);
+  assert.equal("source" in given, false);
   const useCase = (await draw(fake, "use-case", { id: "UC-007" })).subject();
   assert.deepEqual(useCase.paramsFor(participant), { useCase: "UC-007", version: blobOf(UC7) });
 });
@@ -173,7 +170,7 @@ test("use-case/<id> — the same route on the instance and on a product are two 
 // guards: UC-049
 // given: a product page of the route `use-case`
 // input: the route's own subject for the list (no part), for Review all (id=all), for the drafting page (id=draft) and for an identifier the product does not hold (UC-999); then the subject the frame gives for each, its `subjectOf` called with the route, the same parameters and context, and the text the route has drawn
-// expect: the route's own subject is null for each; the frame's is its default — kind converse, title "Use cases", no draft route, no withhold, refuses [], entry use-cases — with the key the route's fragment ("use-case", "use-case/id=all", …, each with "/product=<address>" after it), and as its page the lines "Use cases", "Use cases" (the menu entry's label), the product's address and what the route has drawn — for the list the rows "UC-007" and "UC-008"
+// expect: the route's own subject is null for each; the frame's is its default — no kind of its own, title "Use cases", no draft route, no withhold, refuses [], entry use-cases — with the key the route's fragment ("use-case", "use-case/id=all", …, each with "/product=<address>" after it), and as its page the lines "Use cases", "Use cases" (the menu entry's label), the product's address and what the route has drawn — for the list the rows "UC-007" and "UC-008"
 test("the other routes of a kind give null, and the frame's default subject stands", async () => {
   const fake = fakeProduct();
   const cases = [[{}, "use-case"], [{ id: "all" }, "use-case/id=all"], [{ id: "draft" }, "use-case/id=draft"], [{ id: "UC-999" }, "use-case/id=UC-999"]];
@@ -183,7 +180,7 @@ test("the other routes of a kind give null, and the frame's default subject stan
     assert.equal(page.subject(), null, `${fragment}: the route gives no subject of its own`);
     const subject = frameSubjectOf({ route: page.route, params, context: page.context, drawn: () => page.target.textContent });
     defaults.push(subject);
-    assert.equal(subject.kind, "converse", fragment);
+    assert.equal(subject.kind, undefined, fragment);
     assert.equal(subject.key, `${fragment}/product=${PRODUCT}`);
     assert.equal(subject.title, "Use cases");
     assert.equal(subject.entry, "use-cases");
@@ -198,7 +195,7 @@ test("the other routes of a kind give null, and the frame's default subject stan
   assert.match(list, /UC-007/);
   assert.match(list, /UC-008/);
   const file = await draw(fake, "use-case", { id: "UC-007" });
-  assert.equal(frameSubjectOf({ route: file.route, params: { id: "UC-007" }, context: file.context, drawn: () => "" }).kind, "change-use-case", "known positive: a file's page keeps its own subject");
+  assert.notEqual(frameSubjectOf({ route: file.route, params: { id: "UC-007" }, context: file.context, drawn: () => "" }).draftRoute, null, "known positive: a file's page keeps its own subject");
 });
 
 // TST-507009 · level: unit · module: MOD-review-pages
@@ -263,14 +260,14 @@ async function draftSubject(fake, { key = UC7_KEY, kind = "change-use-case", par
 // guards: UC-019; UC-049
 // given: the conversation's draft for the page of UC-007, kind change-use-case, prepared with {useCase: "UC-007", version: the blob of UC-007, instruction: "change it", conversation: []}, whose result holds one file
 // input: the subject of the route draft with the part subject=<that key>
-// expect: key "use-case/id=UC-007/product=<address>"; kind change-use-case; title "UC-007"; draftRoute "draft/subject=<that key, percent-encoded>"; withhold null; refuses [];
+// expect: key "use-case/id=UC-007/product=<address>"; no kind of its own; title "UC-007"; draftRoute "draft/subject=<that key, percent-encoded>"; withhold null; refuses [];
 //   its parameters for a participant exactly the draft's {useCase: "UC-007", version: the blob of UC-007, instruction: "change it", conversation: []} plus draft: the result as it was kept
 test("draft — the subject is the draft's: its key, kind and title, its own draft route, and the draft as it stands in its parameters", async () => {
   const fake = fakeProduct();
   const result = unusedFiles();
   const subject = (await draftSubject(fake, { result })).subject();
   assert.equal(subject.key, UC7_KEY);
-  assert.equal(subject.kind, "change-use-case");
+  assert.equal(subject.kind, undefined, "a subject names no kind: the bar runs converse on every page");
   assert.equal(subject.title, "UC-007");
   assert.equal(subject.draftRoute, draftRouteOf(UC7_KEY));
   assert.equal(subject.withhold, null);
@@ -282,7 +279,7 @@ test("draft — the subject is the draft's: its key, kind and title, its own dra
 // guards: UC-019; THE PERSON WHO PROMPTS IS A SOURCE
 // given: the conversation's draft for each of: the page of ARC-001 (change-architecture, prepared with target ARC-001 and its blob); the requirement A LOAN HAS A DUE DATE (change-requirements, prepared with requirements [LOAN], source SRC-alice and the blob of its section); a group of two requirements (change-requirements, requirements [LOAN, A BOOK IS SHELVED]); a document edit (converse, prepared with a page)
 // input: the subject of the route draft for each key
-// expect: the draft's own kind, key and draftRoute "draft/subject=<key, encoded>" for each; titles "ARC-001", "A LOAN HAS A DUE DATE", "A LOAN HAS A DUE DATE, A BOOK IS SHELVED" and, the draft naming nothing it changes, "The draft of the conversation"; its parameters the draft's own plus draft - the person's own source stays among those of the requirements
+// expect: no kind of its own (the draft keeps its kind, which the bar's hand-over runs), the draft's key and draftRoute "draft/subject=<key, encoded>" for each; titles "ARC-001", "A LOAN HAS A DUE DATE", "A LOAN HAS A DUE DATE, A BOOK IS SHELVED" and, the draft naming nothing it changes, "The draft of the conversation"; its parameters the draft's own plus draft - the person's own source stays among those of the requirements
 test("draft — the subject of an architecture, a requirements and a conversation draft keeps its kind, its target and its source", async () => {
   const fake = fakeProduct();
   const cases = [
@@ -295,7 +292,7 @@ test("draft — the subject of an architecture, a requirements and a conversatio
     const result = resultOf({ files: [] });
     const subject = (await draftSubject(fake, { key, kind, params, result })).subject();
     assert.equal(subject.key, key);
-    assert.equal(subject.kind, kind);
+    assert.equal(subject.kind, undefined, kind);
     assert.equal(subject.title, title, key);
     assert.equal(subject.draftRoute, draftRouteOf(key));
     assert.deepEqual(subject.paramsFor(participant), { ...params, instruction: "change it", conversation: [], draft: result }, key);
@@ -329,14 +326,14 @@ test("draft — its draft route is the form the subject that wrote it used, and 
 // guards: UC-049
 // given: a draft kept for the page of UC-007
 // input: the subject of the route draft shown with the key of another page, shown with no part subject, and, in the context of the draft, shown with the key of the draft after the draft was replaced by one for another page
-// expect: null in all three, and the frame takes its default for the route draft then - kind converse, no draft route, entry null - so that a draft is offered for review only on the subject it was drafted on
+// expect: null in all three, and the frame takes its default for the route draft then - no kind of its own, no draft route, entry null - so that a draft is offered for review only on the subject it was drafted on
 test("draft — without a draft for the subject its address names, the route gives none and the frame's default stands", async () => {
   const fake = fakeProduct();
   const other = `use-case/id=UC-008/product=${PRODUCT}`;
   const elsewhere = await draftSubject(fake, { shown: other });
   assert.equal(elsewhere.subject(), null);
   const frame = frameSubjectOf({ route: elsewhere.route, params: { subject: other }, context: elsewhere.context, drawn: () => "" });
-  assert.equal(frame.kind, "converse");
+  assert.equal(frame.kind, undefined);
   assert.equal(frame.draftRoute, null);
   assert.equal(frame.entry, null);
   assert.equal((await draftSubject(fake, { shown: null })).subject(), null);

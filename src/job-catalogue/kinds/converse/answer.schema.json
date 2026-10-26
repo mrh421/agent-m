@@ -21,6 +21,28 @@
           "text"
         ]
       }
+    },
+    "handOver": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "works_on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "task": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "works_on",
+        "task"
+      ]
     }
   },
   "required": [

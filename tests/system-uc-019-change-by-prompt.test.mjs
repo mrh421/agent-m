@@ -24,6 +24,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { lineDiff } from "../src/text-tools/index.mjs";
+import { buttonsNamed, until } from "./review-pages-draft-world.mjs";
 import { LOAN, UC7, UC7_PATH, UC8, UC8_PATH, all, barOf, changed, conversationRecords, goTo, keptDraft, messageLines, namedButton, onUseCase, one, press, recordTexts, rest, review, scenario,
   send, sentText, statusOf, useCaseSection, useCases } from "./uc-019-prompt-bar-harness.mjs";
 
@@ -389,7 +390,7 @@ test("TST-377015: UC-019 6c an unusable answer is named, its raw text folded, an
 // guards: UC-019
 // given: the register of an instance with one participant that can draft text (drafter) and one that cannot (observer), and the page of UC-007
 // input: read what the bar offers; then, in an instance whose only participant is observer, put the cursor in the bar's input, read what the page says and press its link
-// expect: the bar offers drafter only; with no participant able to draft, the bar says that no participant can do change-use-case and that it needs "draft text", offers no participant and no Send to choose, and its link opens the route participants (UC-017's page)
+// expect: the bar offers drafter only; with no participant able to draft, the bar says that no participant can do converse — the bar's one kind — and that it needs "draft text", offers no participant and no Send to choose, and its link opens the route participants (UC-017's page)
 test("TST-377010: UC-019 2 and 3a the bar offers only participants that can draft text", async () => {
   const s = await scenario({ extraFiles: useCases });
   await onUseCase(s);
@@ -406,7 +407,7 @@ test("TST-377010: UC-019 2 and 3a the bar offers only participants that can draf
   await rest(none);
   assert.equal(all(barOf(none), "span", "participant").length + all(barOf(none), "select", "participant").length, 0, "no participant is offered");
   const said = barOf(none).textContent;
-  assert.match(said, /No participant of this instance can do change-use-case: it needs draft text\./);
+  assert.match(said, /No participant of this instance can do converse: it needs draft text\./);
   assert.doesNotMatch(said, /observer/);
   await press(none, namedButton(barOf(none), "Set up participants"));
   assert.match(none.location.hash, /^#participants/);
@@ -479,15 +480,16 @@ test("TST-377012: UC-019 8 a follow-up instruction repeats steps 5 to 7 and give
 // level: system
 // module: MOD-prompt-bar; MOD-runtimes
 // guards: UC-019; UC-049; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON
-// given: the page of a use case with UC-007 and UC-008 in the product, recording off; the participant answers with a hand-over of the kind change-use-case on UC-007 with the task HANDED_TASK
-// input: the author presses Send on MESSAGE; then a click a script makes on Hand over; then the author's own click on Hand over
-// expect: the bar shows Kind: change-use-case, Works on: UC-007, the task, and a button Hand over; after the script's click nothing is written; after the author's click exactly one job record is written, for the kind change-use-case on UC-007 with the route "ci hosted",
+// given: the page of a use case with UC-007 and UC-008 in the product, recording off; the participant answers with a hand-over of the kind derive-use-cases — whose result does not wait for the
+//   author, so that the tab does not run it (UC-049 4a.2) — on the requirement A LOAN HAS A DUE DATE with the task HANDED_TASK
+// input: the author presses Send on MESSAGE — no further click
+// expect: the bar shows Kind: derive-use-cases, Works on: the requirement, the task, and no button Hand over; exactly one job record is written, for the kind derive-use-cases on the requirement with the route "ci hosted",
 // and it holds neither the author's message nor the participant's answer nor the words of the task; exactly one start of agent-m-jobs.yml on main carries the task byte for byte, and no conversation record exists
 const HANDED_TASK = "Add the alternative flow 2b to UC-007: when the service fails, Agent M reports the error and writes nothing.";
 const MESSAGE = "please run the correction loop for this change on GitHub Actions";
 const ANSWER = "This is work for GitHub Actions, where the correction loop runs.";
-test("TST-377013: UC-019 6b the author hands the work to GitHub Actions from the bar", async () => {
-  const proposal = { answer: ANSWER, handOver: { kind: "change-use-case", works_on: ["UC-007"], task: HANDED_TASK } };
+test("TST-377013: UC-019 6b the work the tab does not run is handed to GitHub Actions from the bar, without a further click", async () => {
+  const proposal = { answer: ANSWER, handOver: { kind: "derive-use-cases", works_on: [LOAN], task: HANDED_TASK } };
   // The register gives the drafter the route "endpoint fixture secret FIXTURE_KEY", which a hand-over takes as "ci hosted"; the product answers its pull requests with [] and records each start of the workflow.
   const rows = read("docs/participants.md").split("\n");
   const register = `${rows.slice(0, rows.findIndex((line) => line.startsWith("|---")) + 1).join("\n")}\n`
@@ -502,24 +504,20 @@ test("TST-377013: UC-019 6b the author hands the work to GitHub Actions from the
     return served(url, init);
   };
   await goTo(s, `#use-case/product=${encodeURIComponent(s.address)}`);
-  await send(s, MESSAGE, { participant: "drafter" });
-  const hand = one(barOf(s), "section", "hand-over");
-  for (const line of ["Kind: change-use-case", "Works on: UC-007", `Task: ${HANDED_TASK}`]) assert.ok(hand.textContent.includes(line), `${line} in ${hand.textContent}`);
-  const button = namedButton(barOf(s), "Hand over");
-  button.dispatchEvent(new Event("click"));
-  await rest(s);
-  assert.equal(s.product.writes.length, 0, "a click a script makes writes nothing");
-  assert.equal(starts.length, 0, "a click a script starts no workflow");
   // The bar follows the handed-over job by a poll every 15 seconds until its record has an end; the fixture's record has none, so the test lets that timer not hold the process.
   const setTimer = globalThis.setTimeout;
   globalThis.setTimeout = (callback, delay, ...more) => { const timer = setTimer(callback, delay, ...more); if (delay >= 10000) timer.unref?.(); return timer; };
   try {
-    button.dispatchEvent(Object.defineProperty(new Event("click"), "isTrusted", { value: true }));
+    await send(s, MESSAGE, { participant: "drafter" });
+    await until(() => recordTexts(s).length > 0 || /Nothing was queued/.test(statusOf(s).textContent), "the hand-over goes on");
     await rest(s);
   } finally { globalThis.setTimeout = setTimer; }
+  const hand = one(barOf(s), "section", "hand-over");
+  for (const line of ["Kind: derive-use-cases", `Works on: ${LOAN}`, `Task: ${HANDED_TASK}`]) assert.ok(hand.textContent.includes(line), `${line} in ${hand.textContent}`);
+  assert.equal(buttonsNamed(barOf(s), "Hand over").length, 0, "no click is asked for");
   const records = recordTexts(s);
   assert.equal(records.length, 1, `one job record: ${statusOf(s).textContent}`);
-  for (const line of ["kind: change-use-case", "route: ci hosted", "  - UC-007"]) assert.ok(records[0].includes(line), `${line} in ${records[0]}`);
+  for (const line of ["kind: derive-use-cases", "route: ci hosted", `  - ${LOAN}`]) assert.ok(records[0].includes(line), `${line} in ${records[0]}`);
   for (const words of [MESSAGE, ANSWER, HANDED_TASK, "correction loop"]) assert.ok(!records[0].includes(words), `the record holds no ${words}`);
   assert.doesNotMatch(records[0], /^conversation:[ \t]*\S/m, "the record names no conversation");
   assert.equal(s.product.writes.length, 1, "one commit: the job record");

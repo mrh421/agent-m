@@ -157,7 +157,7 @@ test("TST-974003 where no holder may start the item, the reasons are shown and n
 // guards: UC-036; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // given: a failed job that ran in a tab (its record's route is tab, taken by the tab)
 // input: the route job drawn; the person's click on Retry; the route's subject for the parameters of the go() it made
-// expect: nothing is queued or written; go("job", { id, product, retry: "implement-item" }) was called once; the route's subject for those parameters is the Subject of the bar: kind implement-item, key retry:<id>, no menu entry, and as parameters those of the record ({ item: "ITM-0900" }); the route's subject for the parameters of an ordinary page is null
+// expect: nothing is queued or written; go("job", { id, product, retry: "implement-item" }) was called once; the route's subject for those parameters is the Subject of the bar, context only (it names no kind: the bar runs converse, which hands the retry on): key retry:<id>, no menu entry, and as parameters those of the record ({ item: "ITM-0900" }) beside a page that names the job and its kind implement-item; the route's subject for the parameters of an ordinary page is null
 test("TST-974004 a job that ran in a tab opens the prompt bar with its kind and parameters, and queues nothing", async () => {
   use(4);
   const { seen, context } = world(jobIn("failed", { route: "tab" }));
@@ -168,8 +168,10 @@ test("TST-974004 a job that ran in a tab opens the prompt bar with its kind and 
   assert.deepEqual(seen.trees, []);
   assert.deepEqual(context.went, [["job", { id: ID, product: "https://github.com/alice/product", retry: "implement-item" }]]);
   const subject = job.subject(context.went[0][1], context);
-  assert.deepEqual([subject.kind, subject.key, subject.entry], ["implement-item", `retry:${ID}`, null]);
-  assert.deepEqual(subject.paramsFor({ name: "dev-cli" }), { item: "ITM-0900" });
+  assert.deepEqual([subject.kind, subject.key, subject.entry], [undefined, `retry:${ID}`, null]);
+  const { page, ...params } = subject.paramsFor({ name: "dev-cli" });
+  assert.deepEqual(params, { item: "ITM-0900" });
+  assert.ok(page.includes(ID) && page.includes("implement-item"), page);
   assert.equal(job.subject({ id: ID }, context), null);
 });
 

@@ -154,15 +154,17 @@ test("TST-558002 the draft route of an open group is draft/subject=<its key, enc
 // guards: UC-019; THE PERSON WHO PROMPTS IS A SOURCE
 // given: a requirement open on main; the known positive: the product links the person's source SRC-acme-person; then (a) the links file holds no row for the person, (b) the register holds only a person of another account, (c) the context has no instance, (d) the instance's Host fails
 // input: route.subject, then subject.paramsFor(participant), under a fetch spy
-// expect: known positive: { requirements: [LOAN], source: "SRC-acme-person" }; (a) to (d): the subject is still given (kind "change-requirements") and paramsFor throws an error named NoPersonSource whose message is exactly "The author has no personal source linked to this product. Register the person as a source (#library) and link that source to the product (#sources), then ask again."; no fetch is made
-test("TST-558003 without the person's source linked by the product, paramsFor refuses with NoPersonSource naming the two steps", async () => {
+// expect: known positive: the parameters hold requirements [LOAN] and source "SRC-acme-person"; (a) to (d): the subject is still given, names no kind, and paramsFor refuses nothing — it gives requirements [LOAN] and no
+//   source, since a subject is context only and a change of requirements refuses by its own precondition (MOD-spec-changes' person-source); no fetch is made
+test("TST-558003 without the person's source linked by the product, the subject gives the requirement and no source, and refuses nothing", async () => {
   const before = globalThis.fetch;
   const requests = [];
   globalThis.fetch = (...args) => { requests.push(args); throw new Error("a subject must not send a request"); };
   try {
     const positive = await shown();
     click(named(positive.target, LOAN));
-    assert.deepEqual(positive.subject().paramsFor(PARTICIPANT), { requirements: [LOAN], source: PERSON }, "known positive");
+    const known = positive.subject().paramsFor(PARTICIPANT);
+    assert.deepEqual([known.requirements, known.source], [[LOAN], PERSON], "known positive");
 
     const failing = { async readSnapshot() { throw Object.assign(new Error("unreachable"), { name: "Unreachable" }); }, async repositoryInfo() { throw Object.assign(new Error("unreachable"), { name: "Unreachable" }); } };
     const cases = {
@@ -176,12 +178,10 @@ test("TST-558003 without the person's source linked by the product, paramsFor re
       click(named(page.target, LOAN));
       assert.ok(named(page.target, LOAN).parentNode.parentNode.nextSibling.textContent.includes(LOAN), `${what}: the requirement opens`);
       const subject = page.subject();
-      assert.equal(subject.kind, "change-requirements", what);
-      assert.throws(() => subject.paramsFor(PARTICIPANT), (error) => {
-        assert.equal(error.name, "NoPersonSource", what);
-        assert.equal(error.message, STEPS, what);
-        return true;
-      }, what);
+      assert.equal(subject.kind, undefined, what);
+      const given = subject.paramsFor(PARTICIPANT);
+      assert.deepEqual(given.requirements, [LOAN], what);
+      assert.equal("source" in given, false, what);
     }
   } finally {
     globalThis.fetch = before;
@@ -193,17 +193,18 @@ test("TST-558003 without the person's source linked by the product, paramsFor re
 // guards: UC-019; THE PERSON WHO PROMPTS IS A SOURCE
 // given: the product's links file holds no row for the person; the group "1. Lending" opened
 // input: route.subject, then subject.paramsFor(participant); the same at the released version v1.0 with a requirement open (a subject that needs no source)
-// expect: the group's subject refuses with NoPersonSource and the message of TST-558003; at v1.0 the subject (kind "converse") gives its parameters, the single key "page", and does not refuse
-test("TST-558004 a group without the person's source refuses too, and a subject at a released version needs none", async () => {
+// expect: the group's subject gives the group's names as requirements and no source, and refuses nothing; at v1.0 the subject gives its parameters, the single key "page"; neither names a kind
+test("TST-558004 a group without the person's source gives no source and refuses nothing, and a subject at a released version gives its page", async () => {
   const page = await shown({ product: productHost({ links: linksText() }) });
   click(toggled(page.target, "1. Lending"));
   const group = page.subject();
-  assert.equal(group.kind, "change-requirements");
-  assert.throws(() => group.paramsFor(PARTICIPANT), (error) => error.name === "NoPersonSource" && error.message === STEPS);
+  assert.equal(group.kind, undefined);
+  assert.equal("source" in group.paramsFor(PARTICIPANT), false);
+  assert.ok(Array.isArray(group.paramsFor(PARTICIPANT).requirements));
 
   const released = await shown({ ref: "v1.0", product: productHost({ links: linksText() }) });
   click(named(released.target, LOAN));
   const subject = released.subject();
-  assert.equal(subject.kind, "converse");
+  assert.equal(subject.kind, undefined);
   assert.deepEqual(Object.keys(subject.paramsFor(PARTICIPANT)), ["page"]);
 });

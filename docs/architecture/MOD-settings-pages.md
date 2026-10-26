@@ -141,8 +141,8 @@ It keeps nothing but the screen and an unsaved form. Its formats are those of th
 
 ## Interfaces
 
-- `view: View` — its routes, and the strategies of `resourceStrategies`. Each route gives the prompt bar its subject, of
-  the kind `converse` (UC-049 3c): the page names each setting and whether it is stored, works or has expired, never a
+- `view: View` — its routes, and the strategies of `resourceStrategies`. Each route gives the prompt bar its subject
+  (UC-049 3c): the page names each setting and whether it is stored, works or has expired, never a
   value, so that a secret shown on *Show* is never part of what a participant is given:
   - `settings` — three sections — this browser, the instance, each product —, one line per setting with its state:
     works, with the date of the last successful test; expires on, from fourteen days before a token's recorded expiry;

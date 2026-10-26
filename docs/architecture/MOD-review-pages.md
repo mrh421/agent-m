@@ -152,7 +152,7 @@ ReviewKind = {
   schema: "useCase" | "decision" | "module" | null,                     // its schema among MOD-documents' artifactSchemas; null for a SPEC entry and a report
   marks: (text, context) -> Finding[],                                  // the editor's marks, from the artifact model
   draftKinds: string[],                                                 // kinds of MOD-job-catalogue that draft it
-  changeKinds: string[],                                                // the kind a message in the prompt bar runs on one of its files
+  changeKinds: string[],                                                // the kind that changes one of its files, to which a conversation hands a change
   save: "file" | "entry" | null,                                        // MOD-artifact-edits.saveFile, MOD-spec-changes.saveEntry, or never edited
   accept: "records" | "queue" | "release",                              // MOD-approvals.acceptShown, MOD-spec-changes.acceptEntries, MOD-release-evidence.acceptAndRelease
   groupKind: string | null,                                             // its group file, for arranging
@@ -192,8 +192,8 @@ ReviewKind = {
     names (`A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT`), in a box of its own that scrolls, opened with its
     first change in the middle of the box; its extra sections; beside an open file a job
     wrote, the notes of that job's end record — a realised name it removed, a use case that realises none (UC-007 4a,
-    4b); *Accept*, *Edit*. Its subject for the prompt bar names the descriptor's change kind and the file as its target —
-    the use case, or the architecture file —, with `draft` as its draft route. Without a token for GitHub, *Accept* and
+    4b); *Accept*, *Edit*. Its subject for the prompt bar names the file and its version — the use case, or the architecture
+    file —, as context (MOD-prompt-bar's `Subject`), with `draft` as its draft route. Without a token for GitHub, *Accept* and
     *Edit* open GitHub's prefilled pages, the text never in the
     address (`NO TEXT TRAVELS IN A URL`); for a GitLab product without a token, neither is offered, and the token's step
     is linked.
@@ -213,7 +213,7 @@ ReviewKind = {
     entry fits, it derives both as before. The stored lists are records of the repository, derived from that commit
     alone by `onMainChanged` (MOD-workflow-entries), never kept in the browser.
   - `<k>/<id>/edit`, and `requirement/<name>/edit` and `requirements/new` for a requirement — whose subject for the
-    prompt bar is the file, or the requirement with `change-requirements`, as on the file's route — the editor with live
+    prompt bar is the file, or the requirement, as on the file's route — the editor with live
     preview and the descriptor's marks, whose unsaved changes the route's `leave` keeps by the editor's `close` (UC-018
     7a); for a requirement, its SPEC section, a *Why* field and its impact list, saved as
     an entry of the person's open queue of the day (`A SPEC EDIT IS SAVED AS A PROPOSAL`); `requirements/new` with the four
@@ -230,10 +230,11 @@ ReviewKind = {
     left. *Save* saves the draft as an edit of UC-018 is saved — the files with one `saveFile`, in one commit (UC-019 8b),
     each section with `proposeSection` as an entry of the person's open queue of the day —, only on the text the job
     read, with GitHub's pages without a token, and with the job's provenance lines, which name no message of the
-    conversation (UC-019 step 9, 9a); *Discard* drops the draft. A further change is asked for in the prompt bar, which
-    sends the draft as it stands with the follow-up, and this route then shows the newer draft. For a change of
+    conversation (UC-019 step 9, 9a); *Discard* drops the draft. A further change is asked for in the prompt bar: the subject carries
+    the draft as it stands as `draft`, the conversation hands the change on to the draft's kind with it (UC-049 4a.1),
+    and this route then shows the newer draft. For a change of
     requirements, the subject's parameters carry the person's own source, which `personSource` names among the product's
-    linked sources; without one, the prompt bar sends nothing and names the step that is missing (UC-004, UC-015,
+    linked sources; without one, the change does not start and names the step that is missing (UC-004, UC-015,
     UC-019 4b). A draft of the kind `converse` — documents the participant proposed — is shown and saved the same way,
     each file with `saveFile` after its owner's schema found no error. A draft handed to CI or a Bridge arrives as an
     open file, a queue entry or a pull request instead.

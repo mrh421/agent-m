@@ -44,13 +44,14 @@ function computer({ claude = null, codex = null, opencode = null } = {}) {
   mkdirSync(bin);
   writeFileSync(calls, "");
   const log = `printf '%s\\n' "$0 $*" >> ${calls}`;
+  const input = `/bin/cat >> ${calls}; printf '\\n' >> ${calls}`;
   if (claude) {
     script(bin, "claude", `${log}\ncase "$*" in '--version') echo '2.1.300';; 'auth status') ${claude.loggedIn ? "echo '{\"authMethod\":\"claude.ai\"}'" : "exit 1"};; *) ${claude.answers === false ? "exit 2" : "echo ok"};; esac`);
   }
   if (codex) script(bin, "codex", `${log}\ncase "$*" in '--version') echo 'codex 1.2.3';; 'login status') echo 'Logged in';; *) echo ok;; esac`);
   if (opencode) {
     const events = `printf '%s\\n' '{"type":"text","part":{"text":"drafted in '"$(pwd)"'"}}' '{"type":"step_finish","part":{"tokens":{"input":11,"output":7}}}'`;
-    script(bin, "opencode", `${log}\ncase "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; run) ${opencode.gated ? `while [ ! -e ${gate} ]; do /bin/sleep 0.02; done` : ":"}; ${opencode.fails ? "echo boom >&2; exit 3" : events};; esac`);
+    script(bin, "opencode", `${log}\ncase "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; run) ${input}; ${opencode.gated ? `while [ ! -e ${gate} ]; do /bin/sleep 0.02; done` : ":"}; ${opencode.fails ? "echo boom >&2; exit 3" : events};; esac`);
   }
   const folders = { claude: join(root, "work-claude"), codex: join(root, "work-codex"), opencode: join(root, "work-opencode") };
   for (const folder of Object.values(folders)) mkdirSync(folder);

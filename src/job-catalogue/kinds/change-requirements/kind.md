@@ -9,6 +9,7 @@ needs:
   - draft text
 resources: none
 preconditions:
+  - person-source
 recipes:
   - instruction
   - conversation

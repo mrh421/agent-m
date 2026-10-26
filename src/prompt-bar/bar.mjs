@@ -7,7 +7,7 @@
 //
 // THE PAGE NAMES WHERE IT SENDS; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; ONE CLICK PER DECISION. Nothing is read from a participant's
 // route, written or sent while the bar is drawn: *Send* is the one click that sends a message, and the one that, with recording on, writes
-// the conversation record first; *Hand over* is the one click that queues a job, and only a click the browser marks as a person's (`isTrusted`)
+// the conversation record first, and the request of whatever its answer hands on; only a click the browser marks as a person's (`isTrusted`)
 // does. The conversation lives in the tab's values (MOD-browser-store): `prompt-bar:conversation`, a list of Messages; `prompt-bar:draft`, the
 // latest ConversationDraft; `prompt-bar:records`, the record each repository's part of the conversation is appended to; and `prompt-bar:job`,
 // the job handed over and followed while it runs ({ id, address }).
@@ -20,7 +20,7 @@ import { endpointsOffered, offeredAmong, placeOf, readParticipants, throughActio
 import { followJob } from "./follow.mjs";
 import { assess, queue, spawnEndpointJob, worksOnOf } from "./hand-over.mjs";
 import { appendToConversation, conversationPath, recordingOf } from "./record.mjs";
-import { defaultSnapshot, personOf, prepareMessage, runMessage, shown, whyNot } from "./send.mjs";
+import { BAR_KIND, defaultSnapshot, personOf, prepareHandOver, prepareMessage, runMessage, shown, whyNot } from "./send.mjs";
 
 const CONVERSATION = "prompt-bar:conversation";
 const DRAFT = "prompt-bar:draft";
@@ -208,27 +208,19 @@ export function startPromptBar(target, setup) {
         parts.push(set);
       }
       if (assessment.reasons.length) parts.push(el("ul", "start-reasons", ...assessment.reasons.map((each) => el("li", "reason", each))));
-      else if (assessment.route) {
-        const hand = button("queue", "Hand over");
-        hand.addEventListener("click", (event) => onHandOver(event, hand));
-        parts.push(hand);
-      }
       outcome.replaceChildren(...parts);
     };
-    // The click is checked again against the product as it stands then, and queues only when nothing keeps the work from starting.
-    async function onHandOver(event, hand) {
-      if (event?.isTrusted !== true || hand.disabled) return;
-      hand.disabled = true;
+    // Queued at once where nothing keeps the work from starting: the person's Send, whose answer proposed it, is the request (UC-049 4a.2).
+    async function queueNow(assessment) {
       try {
         const page = pageOf();
-        const fresh = await assess({ handOver, participant, instance, page });
-        if (fresh.reasons.length > 0 || fresh.route === null) { render(fresh); return; }
-        // For the subject's own kind the job takes the one parameter of the subject's paramsFor it lacks, the person's own `source` (THE PERSON WHO PROMPTS IS A SOURCE) — no other, so that no message
-        // and no page text enters the job's record (A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON); where the subject finds none, paramsFor refuses by name (NoPersonSource) and nothing is queued.
-        const source = handOver.kind === subject.kind ? subject.paramsFor(participant).source : undefined;
+        // The job takes the one parameter of the subject's paramsFor beside what it works on, the person's own `source` (THE PERSON WHO PROMPTS IS A SOURCE) where the subject gives one —
+        // no other, so that no message and no page text enters the job's record (A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON).
+        const source = subject.paramsFor(participant).source;
+        const fresh = assessment;
         const conversation = (await recordingOf(fresh.instanceSnapshot)) ? (readTabValue(store, RECORDS) ?? {})[page.address]?.path ?? null : null;
         const queued = await queue({ handOver, participant, assessment: fresh, store, instance, page, ofProduct: setup.product() !== null, conversation, source });
-        outcome.replaceChildren(el("p", "queued", `Queued as ${queued.id}.`));
+        outcome.append(el("p", "queued", `Queued as ${queued.id}.`));
         keepJob({ id: queued.id, address: page.address });
         follow({ id: queued.id, address: page.address });
         if (conversation !== null) {
@@ -242,11 +234,12 @@ export function startPromptBar(target, setup) {
         const findings = failure?.name === "NotStartable" && Array.isArray(failure.findings) ? failure.findings : [];
         outcome.append(problem(findings.length > 0 ? "Nothing was queued." : `Nothing was queued. ${said(failure)}`),
           ...(findings.length > 0 ? [el("ul", "reasons", ...findings.map((each) => el("li", "reason", shown(each))))] : []));
-        hand.disabled = false;
       }
     }
     try {
-      render(await assess({ handOver, participant, instance, page: pageOf() }));
+      const assessment = await assess({ handOver, participant, instance, page: pageOf() });
+      render(assessment);
+      if (assessment.reasons.length === 0 && assessment.route !== null) await queueNow(assessment);
     } catch (failure) {
       outcome.replaceChildren(problem(`It could not be checked whether this can start. ${said(failure)}`));
     }
@@ -259,28 +252,68 @@ export function startPromptBar(target, setup) {
       show(problem("The participant's answer could not be read. Nothing was changed."), raw);
       return null;
     }
-    const text = typeof draft.answer === "string" ? draft.answer
-      : subject.draftRoute !== null ? `A draft of ${subject.title} is ready to review.` : "";
+    const text = typeof draft.answer === "string" ? draft.answer : "";
     const left = [...result.remaining, ...result.forPerson];
     const parts = [el("p", "rounds", `Rounds: ${result.rounds.length}`)];
     if (left.length) parts.push(el("ul", "left", ...left.map((each) => el("li", "finding", shown(each)))));
-    if (draft.handOver) {
-      const { kind, task } = draft.handOver;
-      const section = el("section", "hand-over", el("h3", null, "The participant proposes handing this on"),
-        el("p", "kind", `Kind: ${kind}`), el("p", "works-on", `Works on: ${worksOnOf(draft.handOver).join(", ")}`), el("p", "task", `Task: ${task}`));
-      parts.push(section);
-      proposeHandOver(section, draft.handOver, participant, subject);
-    }
-    if (subject.draftRoute !== null) {
-      const review = button("review", "Review the draft");
-      review.addEventListener("click", () => {
-        writeTabValue(store, DRAFT, { subject: subject.key, kind: subject.kind, participant: participant.name, params: ready.prepared.params, result });
-        setup.go(subject.draftRoute);
-      });
-      parts.push(review);
-    }
+    // The edits the participant proposed are a draft, which the review pages show against the current text.
+    if (Array.isArray(draft.edits) && draft.edits.length > 0) parts.push(reviewButton(subject, ready.prepared.kind.name, participant, ready.prepared.params, result));
     status.append(...parts);
     return text;
+  }
+
+  // *Review the draft*: keeps the ConversationDraft in the tab and goes to the subject's draft route, or to the review pages' `draft` for the subject's key. The parameters kept are
+  // those of the job less `page`, so that the draft route's own page stands as the context of a follow-up.
+  function reviewButton(subject, kind, participant, params, result) {
+    const review = button("review", "Review the draft");
+    review.addEventListener("click", () => {
+      const { page: _page, ...kept } = params;
+      writeTabValue(store, DRAFT, { subject: subject.key, kind, participant: participant.name, params: kept, result });
+      setup.go(subject.draftRoute ?? `draft/subject=${encodeURIComponent(subject.key)}`);
+    });
+    return review;
+  }
+
+  // A hand-over the participant proposed, carried out without a further click (UC-049 4a): in this tab where its kind's result waits for the person and the participant can do the
+  // kind — prepared as a message is, its draft kept for *Review the draft* —, else queued where the start rules let it start (proposeHandOver).
+  async function handOn(handOver, participant, subject, conversation, signal) {
+    const section = el("section", "hand-over", el("h3", null, "The participant hands this on"),
+      el("p", "kind", `Kind: ${handOver.kind}`), el("p", "works-on", `Works on: ${worksOnOf(handOver).join(", ")}`), el("p", "task", `Task: ${handOver.task}`));
+    status.append(section);
+    let kind;
+    try {
+      kind = await kindOf(handOver.kind);
+    } catch (failure) {
+      section.append(problem(`Nothing was handed on. ${said(failure)}`));
+      return;
+    }
+    // The conversation itself handed on (the bar's own kind) goes on as a job, as a kind the tab cannot run does: the endpoint's own (UC-049 4a.2).
+    if (kind.name === BAR_KIND || kind.review !== "person" || eligible([participant], { capabilities: kind.needs }).eligible.length === 0) {
+      await proposeHandOver(section, handOver, participant, subject);
+      return;
+    }
+    let ready;
+    try {
+      ready = await prepareHandOver({ handOver, subject, participant, conversation, store, instance, product: setup.product() });
+    } catch (failure) {
+      section.append(problem(`Nothing was run. ${said(failure)}`));
+      return;
+    }
+    const reasons = whyNot(ready.prepared, offered);
+    if (reasons.length) {
+      section.append(problem("Nothing was run."), el("ul", "reasons", ...reasons.map((reason) => el("li", "reason", reason))));
+      return;
+    }
+    section.append(el("p", "running", `Running ${handOver.kind} in this tab…`));
+    running = { kind: handOver.kind, participant: participant.name, started: new Date() };
+    const result = await runMessage(ready, { signal });
+    if (result.stoppedBecause === "unusable" || !result.draft) {
+      section.append(problem("The answer could not be read. Nothing was changed."), el("details", "raw", el("summary", null, "The answer as received"), el("pre", null, result.raw ?? "")));
+      return;
+    }
+    const left = [...result.remaining, ...result.forPerson];
+    section.append(el("p", "rounds", `Rounds: ${result.rounds.length}`), ...(left.length ? [el("ul", "left", ...left.map((each) => el("li", "finding", shown(each))))] : []),
+      reviewButton(subject, handOver.kind, participant, ready.prepared.params, result));
   }
 
   async function onSend(event) {
@@ -329,7 +362,7 @@ export function startPromptBar(target, setup) {
       }
       keep([...earlier, { at: new Date(), from: "person", who, text: instruction, subject: subject.key }]);
       input.value = "";
-      running = { kind: subject.kind, participant: participant.name, started: new Date() };
+      running = { kind: BAR_KIND, participant: participant.name, started: new Date() };
       stop.disabled = false;
       const result = await runMessage(ready, { signal: controller.signal });
       const answered = showAnswer(result, ready, subject, participant);
@@ -343,6 +376,8 @@ export function startPromptBar(target, setup) {
             status.append(problem(`The answer could not be recorded: ${said(failure)}`));
           }
         }
+        // The hand-over the answer proposes goes on now, within the same Send: Stop ends it as it ends the message.
+        if (result.draft?.handOver) await handOn(result.draft.handOver, participant, subject, conversationOf(store), controller.signal);
       }
     } catch (failure) {
       show(controller.signal.aborted || failure?.name === "Cancelled" ? problem("Stopped. Nothing was written.") : problem(said(failure)));
@@ -373,7 +408,7 @@ export function startPromptBar(target, setup) {
       const who = personOf(store, instanceSnapshot, false) ?? "person";
       if (recordingOn) await record(page, who, { at: new Date(), who, page: subject.title, text: instruction, withheld: subject.withhold?.(instruction) ?? undefined });
       const conversationPath = recordingOn ? (readTabValue(store, RECORDS) ?? {})[page.address]?.path ?? null : null;
-      const spawned = await spawnEndpointJob({ kind: subject.kind, task: instruction, participant, store, instance, page, ofProduct: setup.product() !== null,
+      const spawned = await spawnEndpointJob({ kind: BAR_KIND, task: instruction, participant, store, instance, page, ofProduct: setup.product() !== null,
         conversation: conversationPath, source, instanceSnapshot });
       if (spawned.refused) {
         const parts = [problem(`Nothing was spawned: ${spawned.refused}.`)];
@@ -412,7 +447,7 @@ export function startPromptBar(target, setup) {
   // selector takes focus, and on *Send*. Where some are reached and none can, the bar says so, names what the kind needs and links the route
   // `participants` (UC-019 3a).
   async function judge() {
-    const kind = await kindOf(setup.subject().kind);
+    const kind = await kindOf(BAR_KIND);
     if (state.stopped) return;
     offered = eligible(reached, { capabilities: kind.needs }).eligible;
     // The participant talked to is kept in the tab (Data: the conversation), so that a reload or the next page offers it first again.

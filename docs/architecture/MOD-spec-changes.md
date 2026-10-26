@@ -80,7 +80,7 @@ history. It runs in the browser and in Node.
   classified candidates change, and the writer of classified candidates.
 - `accept.mjs` — accepting entries in their queue's order, and applying approvals without a token.
 - `history.mjs` — the history of a requirement.
-- `strategies.mjs` — the recipes and writer of `specStrategies`.
+- `strategies.mjs` — the recipes, the precondition and the writer of `specStrategies`.
 - **Taken over, outside this folder** (`CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT`; the count in `docs/measurements/2026-10-17_code-outside-every-module.md`). Each file goes as stated, in this module's own implementation jobs:
   - `tests/test_prompted_source.py`, `tests/test_artifact_provenance.py`, `tests/test_derivation_context.py`, `tests/test_prompted_change_context.py`: their headers name this module; one of only the old writer is rewritten on `applyApproved`.
 
@@ -213,6 +213,10 @@ earlier entry of the queue creates it.
     rule as the key — so that the job runner counts it (`NO REQUIREMENT IS LEFT OUT OF THE CONTEXT SILENTLY`);
   - recipe `chosen-requirements` — the requirements the person chose; without a choice, every requirement of the SPEC
     that no use case realises;
+  - precondition `person-source` — an error finding under `THE PERSON WHO PROMPTS IS A SOURCE` when the job's parameter
+    `source` names no source, naming the steps that are missing: registering the person as a source and linking that
+    source to the product (UC-019 4b); none otherwise, so that a change of requirements by prompt starts only with the
+    person's own source, wherever it runs;
   - writer `queue-entries` — writes the candidates by the result's classes, as the person left them, as a new queue of
     the SPEC each belongs in, where it stands being what it constrains (MOD-spec-document): a candidate classed as
     constraining the development process goes to a queue of the instance's SPEC, its class decided against that SPEC and

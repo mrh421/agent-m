@@ -1,7 +1,8 @@
 # Supported coding-agent register
 
 The supported local coding-agent CLIs. Every row supplies the exact invocation data used by this module; JSON cells keep
-each command's argument vector, interpretation and final-answer rule in data rather than in vendor-specific code.
+each command's argument vector, interpretation and final-answer rule in data rather than in vendor-specific code. A
+Task's arguments never hold the prompt: the agent reads it on its standard input.
 
 ```json
 {

@@ -40,6 +40,9 @@ uses:
   - MOD-repository-hosts.Snapshot
   - MOD-repository-hosts.Host
   - MOD-repository-hosts.readSnapshot
+  - MOD-repository-hosts.repositoryInfo
+  - MOD-repository-hosts.commitFiles
+  - MOD-repository-hosts.openPullRequest
 provides:
   - Strategies
   - Driver
@@ -62,6 +65,8 @@ provides:
   - provenanceLines
   - roundsText
   - sourcesOf
+  - handOverParams
+  - refusedEdit
 ---
 # MOD-job-runner The one runner of every job kind
 
@@ -105,10 +110,11 @@ It keeps the registry of strategies of the program it runs in, in memory, filled
 | `conversation` | recipe | the conversation so far, from the job's parameters, each message with who wrote it, as one part; none for the first message |
 | `page` | recipe | the page the person sees, as its route's subject gives it in the job's parameters (MOD-prompt-bar), as one part |
 | `list-files`, `read-file`, `search-files` | tool | the product's files at the commit the job read: the paths under a folder, one file's text, the lines that match a text in the files below the call's `path` — a search that would read more than 200 files is refused, naming their number, and reads none —; a path the context's `places.contents` names for a restricted source is refused unless that source allows the drafter's processing place (`RESTRICTED CONTENT GOES ONLY WHERE ITS SOURCE PERMITS`), and the refusal says why (UC-049 4e) |
-| `propose-edit` | tool | holds a new text for one document below `docs/` — added to the draft's `edits` — and writes nothing (`THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK`). It refuses, naming where the document is changed: `SPEC.md`, a use case, an architecture decision and a module file, which their pages change with their neighbours (`A PROMPTED REQUIREMENT CHANGE FOLLOWS THE DERIVATION RULES`, `A PROMPTED USE-CASE CHANGE SEES ITS NEIGHBOURS`, `THE ARCHITECTURE'S PARTICIPANTS RECEIVE THE WHOLE PROJECT`); every record — approval, gate, job, conversation and test result records, counter-proofs — (`A RECORD IS EVIDENCE, NOT A PROPOSAL`); every change queue under `docs/spec-freigaben/`; every test declaration, which test generation writes (`A TEST JOB RECEIVES THE CHAPTER ON TESTING`); a settings file whose change states a notice first — `docs/settings.md`, `docs/collaborators.md`, `docs/conversation-recording.md` (`SWITCHING PSEUDONYMISATION OFF STATES WHAT FOLLOWS`, `SWITCHING CONVERSATION RECORDING ON STATES WHAT FOLLOWS`); and every file outside `docs/`, since code, tests and workflows reach the default branch only by a pull request (`CODE ENTERS THE DEFAULT BRANCH THROUGH A PULL REQUEST WITH GREEN CI`), through `hand-over` |
-| `hand-over` | tool | holds a proposed hand-over — a kind of the catalogue with a participant, what it works on, and the task in the drafter's words — in the draft's `handOver`, and queues nothing: the prompt bar shows it, and the person's click *Hand over* lets it go on (MOD-runtimes' `handOverJob`) |
+| `propose-edit` | tool | holds a new text for one document below `docs/` — added to the draft's `edits` — and writes nothing (`THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK`). It refuses, naming where the document is changed — the rule `refusedEdit` states once: `SPEC.md`, a use case, an architecture decision and a module file, which their pages change with their neighbours (`A PROMPTED REQUIREMENT CHANGE FOLLOWS THE DERIVATION RULES`, `A PROMPTED USE-CASE CHANGE SEES ITS NEIGHBOURS`, `THE ARCHITECTURE'S PARTICIPANTS RECEIVE THE WHOLE PROJECT`); every record — approval, gate, job, conversation and test result records, counter-proofs — (`A RECORD IS EVIDENCE, NOT A PROPOSAL`); every change queue under `docs/spec-freigaben/`; every test declaration, which test generation writes (`A TEST JOB RECEIVES THE CHAPTER ON TESTING`); a settings file whose change states a notice first — `docs/settings.md`, `docs/collaborators.md`, `docs/conversation-recording.md` (`SWITCHING PSEUDONYMISATION OFF STATES WHAT FOLLOWS`, `SWITCHING CONVERSATION RECORDING ON STATES WHAT FOLLOWS`); and every file outside `docs/`, since code, tests and workflows reach the default branch only by a pull request (`CODE ENTERS THE DEFAULT BRANCH THROUGH A PULL REQUEST WITH GREEN CI`), through `hand-over` |
+| `hand-over` | tool | holds a proposed hand-over — a kind of the catalogue with a participant, what it works on, and the task in the drafter's words — in the draft's `handOver`, and runs or queues nothing itself: where a person attends, the prompt bar carries it out (MOD-prompt-bar); where nobody attends, the program that runs the job does (MOD-workflow-entries) (UC-049 4a, 4f) |
 | `draft` | recipe | the draft the job is handed: the draft under review, for a reviewing kind; the cases as the person left them, for `write-tests`; the conversation's draft as it stands, for a change kind's follow-up |
 | `return-draft` | writer | writes nothing; hands the result to the caller |
+| `proposed-edits` | writer | the edits of a `converse` job nobody attends (UC-049 4f): every edit of the draft's `edits` that `refusedEdit` does not refuse, in one commit on a new branch `agent-m/<job>` from the commit the job read, its message ending with the provenance lines, and a pull request of that branch into the default branch, titled with the job and the kind, its description the provenance lines — never a commit on the default branch (`A CI AGENT'S DRAFT ENTERS AS OPEN`, `CODE ENTERS THE DEFAULT BRANCH THROUGH A PULL REQUEST WITH GREEN CI`); an edit `refusedEdit` refuses is not written, and a note names it with the refusal; without an edit to write it writes nothing and hands the draft back |
 | `document-schema` | check | MOD-documents' `documentFindings` on every drafted document, read with the schema `artifactSchemaOf` names for its path; a path no schema's pattern matches is not judged here |
 | `candidate-classes` | check | MOD-documents' `classifyCandidates` of the drafted candidates against the existing artifacts the job's parts carry, each round: an error for a candidate the rule finds a duplicate of an existing artifact while its drafter classed it otherwise, naming that artifact (`EXACT DUPLICATES ARE FOUND WITHOUT A MODEL`), and for a change, a duplicate or a conflict that names no existing artifact or one no part carries (`A CANDIDATE IS NEW, A CHANGE, A DUPLICATE OR A CONFLICT`). The classes of the last round — the candidates of one key merged, naming every one they came from, and exact duplicates decided by rule — are the result's `classes`. A draft whose parts carry no artifact has nothing to classify |
 | `graph-checks` | check | MOD-trace-graph's `graphFindings` on the snapshot with the drafted files put in place of their paths, and its `selfSufficiencyFindings` there against the instance's repository, the `owner/name` of the context's instance, read in the snapshot's batches; a draft that holds no files has none and reads nothing |
@@ -208,7 +214,8 @@ ONLY WHEN RECORDING IS ON`).
   called directly, or through the Bridge its configuration names, the loop running in the program either way —, offering
   only the tools whose capability the drafter declares and that the job's parameter `refuses` does not name — the
   page's subject's (MOD-prompt-bar); a coding agent gets
-  `null` and works with its own tools.
+  `null` and works with its own tools. What a draft holds of a tool that `refuses` names — `edits` for `propose-edit`,
+  `handOver` for `hand-over` — is dropped from it, whether a tool held it or the answer gave it.
 - `driverPrompt(input: DriverInput) -> string` — the text a driver sends: the prepared `prompt` unchanged, followed by
   the current draft when `previous` is not null and the findings when any are present, each in MOD-text-tools'
   `formatFinding` form. It adds neither the recipe parts nor the output schema again: those already stand in the
@@ -345,6 +352,14 @@ ONLY WHEN RECORDING IS ON`).
 - `sourcesOf(context: JobContext, path: string) -> string[]` — the sources of every `context.places.contents` entry that
   names the path or a folder above it, once each: what a part holding that file carries (`RESTRICTED CONTENT GOES ONLY
   WHERE ITS SOURCE PERMITS`).
+- `handOverParams(worksOn: string[], snapshot: Snapshot) -> Record<string, unknown>` — the parameters a hand-over's job
+  takes for what it works on, by the keys the kinds' strategies read: `requirements` for the names that are
+  neither an identifier nor a web address, `useCases` for the use cases and `useCase` beside it for one alone, `steps` for the plan's steps — the
+  `ITM-<n>` the snapshot holds as a file under `docs/plan/` — and `items` for the other `ITM-<n>`; a key it would leave
+  empty is left out, and any other identifier is in the job's `works_on` only. Pure, but for reading the snapshot's
+  paths.
+- `refusedEdit(path: string) -> string | null` — why `propose-edit` refuses a document, naming where it is changed, as
+  the table under Data states; `null` for a document it holds; the writer `proposed-edits` reads it too, so that the rule stands once.
 - `provenanceLines(job: { agentM: { version: string, commit: string }, jobId: string | null, kind: string, participant:
   Participant, rounds: number }) -> string[]` — the trailer lines defined under Data; a job without a record — a
   conversation held in the tab — has no `Agent-M-Job` line.
@@ -356,8 +371,8 @@ ONLY WHEN RECORDING IS ON`).
 It reads the data files of MOD-job-catalogue through `kindOf`, its own `rounds.schema.md`, the instance's `AGENTS.md`
 through the instance's snapshot, for `test-declarations` the
 branch a coding participant reports, through the host, and for `group-rules` the group file and the items of its kind in
-the product's snapshot. It writes nothing itself: the writers write, and the route
-appends to the job's record.
+the product's snapshot. It writes nothing itself: the writers write — its own `proposed-edits` a branch `agent-m/<job>`
+and its pull request, through the product's host —, and the route appends to the job's record.
 
 ## Uses
 
@@ -380,3 +395,5 @@ appends to the job's record.
   `notFitting`.
 - `MOD-repository-hosts.Snapshot`, `MOD-repository-hosts.Host` — the types of the context.
 - `MOD-repository-hosts.readSnapshot` — the branch a coding participant reports, for `test-declarations`.
+- `MOD-repository-hosts.repositoryInfo`, `MOD-repository-hosts.commitFiles`, `MOD-repository-hosts.openPullRequest` — the
+  branch and the pull request of `proposed-edits`.

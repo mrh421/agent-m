@@ -32,6 +32,8 @@ const STAND_INS = {
   recipes: Object.fromEntries(["named-requirements", "spec-with-queues", "chapters-for-requirements"].map((name) => [name,
     async () => [part(`${name} part`, `the text of ${name}`)]])),
   checks: { [CHECK]: (draft) => checkFindings(draft) },
+  // The kind's precondition person-source (MOD-spec-changes), which these tests do not concern: it finds nothing.
+  preconditions: { "person-source": async () => null },
   writers: { "queue-entries": async () => ({ commits: [], files: [], pullRequest: null, shown: null, notes: [] }) },
 };
 for (const [category, strategies] of Object.entries(STAND_INS)) {
