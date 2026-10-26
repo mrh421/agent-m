@@ -50,6 +50,7 @@ the repository, run code and tests, use tools, reach the web.
 | developer-sonnet-i | CLI agent | claude-sonnet-5-5 | — | — | draft text, read the repository, write to the repository, run code and tests, use tools, reach the web | Anthropic, a provider in the USA | Claude Code on the Mac of `akmaier`, in a git worktree of its own; reached without the Agent M Bridge until it exists (ITM-102) |
 | qwen-local | model endpoint | qwen3.5:9b-128k | 131072 | — | draft text, read the repository, use tools | this machine | endpoint test-local |
 | mrh | person | — | — | — | draft text, read the repository, write to the repository, run code and tests, use tools, reach the web | — | the GitHub account `mrh421`, on the dashboard and on GitHub's own pages |
-| claude-bridge | CLI agent | claude-sonnet-5-5 | 200000 | — | draft text, read the repository, write to the repository, run code and tests, use tools | Anthropic, a provider in the USA | bridge Bridge agent claude |
+| claude-bridge | CLI agent | claude-opus-5-5 | 200000 | — | draft text, read the repository, write to the repository, run code and tests, use tools | Anthropic, a provider in the USA | bridge Bridge agent claude |
+| claude-bridge-sonnet | CLI agent | claude-sonnet-5-5 | 200000 | — | draft text, read the repository, write to the repository, run code and tests, use tools | Anthropic, a provider in the USA | bridge Bridge agent claude |
 
 `akmaier` accepts SPEC changes, use cases and architecture decisions under that account. Products assign these participants through `docs/role-assignments/`.
