@@ -166,8 +166,8 @@ IN THE REPOSITORY`).
   shown is about, given by the route that shows it (MOD-site-frame's `Route.subject`), or by the frame for a route that
   gives none. `key` names the subject, so that a draft is shown only for the subject it was drafted on; `title` is what
   the bar and the record say the message was about; `kind` is the kind of MOD-job-catalogue a message runs — `converse`
-  unless the route names another, such as `change-requirements` on a requirement; `entry` the menu entry of the route
-  shown, `Route.entry`, which the frame sets on every subject, `null` for a route out of the menu; `paramsFor` gives the
+  unless the route names another, such as `change-requirements` on a requirement; `entry` the menu entry of the page
+  shown, as MOD-site-frame's `Route` gives it, which the frame sets on every subject, `null` for a route out of the menu; `paramsFor` gives the
   kind's parameters for the participant chosen — the target and its version, and `page`, the page as the participant may see it, so that a
   page of mail gives a mail's text only to a participant the mailbox allows and that does not write to the repository,
   and its `MAIL-` identifier to any other (UC-049 3b), and a page of settings names each setting and whether it is stored,

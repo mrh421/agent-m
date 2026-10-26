@@ -20,7 +20,7 @@ import { startPromptBar } from "../prompt-bar/index.mjs";
 import { menuOf, labelOf, linkOf, foldMenu } from "./menu.mjs";
 import { siteFooter } from "./footer.mjs";
 import { routeOf, fragmentOf, productOf, chosenProduct, addressWriter, instanceHostFollowingStore, productHostFollowingStore } from "./routing.mjs";
-import { subjectOf } from "./subject.mjs";
+import { subjectOf, entryShownOf } from "./subject.mjs";
 import { notice, noticePlace, showTokenNotices, refusedNotice } from "./notices.mjs";
 
 export { schemaForm } from "./forms.mjs";
@@ -46,7 +46,10 @@ const PRL_LOGO_DARK = new URL("./brand/prl-lettered-white.png", import.meta.url)
 
 /**
  * One route of a view. `name` is the first part of the address's fragment, the rest are the `params` render is given; a
- * route's `entry` puts it under that entry of the menu, null keeps it out of the menu. `subject`, MOD-prompt-bar's type, says what a
+ * route's `entry` puts it under that entry of the menu, null keeps it out of the menu: it is the entry menuOf counts as served, and the one whose
+ * first route a fragment naming the entry shows. `entryShown`, for a route whose pages lie under more than one entry, names the menu entry of the
+ * page it shows for these `params`; its null means the route's `entry`. The entry of the page shown (subject.mjs entryShownOf) is the one the menu
+ * marks and the one the subject carries. `subject`, MOD-prompt-bar's type, says what a
  * message in the prompt bar is about while the route is shown; a route that gives none, or whose `subject` gives `null`, has the frame's default (subject.mjs). `leave` is asked
  * of the route shown before the frame shows another on a change of the address; `false` keeps the route and the frame puts its address back.
  * `unsaved` says, asking no one, whether the route shown holds changes that leaving it would discard; while it is true, closing or reloading the tab makes the browser ask first.
@@ -54,6 +57,7 @@ const PRL_LOGO_DARK = new URL("./brand/prl-lettered-white.png", import.meta.url)
  * instance's) at its default branch; the frame reads them with the snapshot's `readMany` before it calls `render`, and the route's own reads through the host find them.
  * @typedef {{ name: string, entry: "requirements" | "use-cases" | "architecture" | "implementation" | "tests" | "releases" |
  *   "maintenance" | "settings" | null, title: string,
+ *   entryShown?: (params: Record<string, string>) => Route["entry"],
  *   render(target: Element, context: ViewContext, params: Record<string, string>): Promise<void>,
  *   subject?: (params: Record<string, string>, context: ViewContext) => Subject | null,
  *   leave?: () => boolean,
@@ -354,8 +358,10 @@ async function startSite({ page, views }) {
     const byName = routes.find((candidate) => candidate.name === selected.name);
     const entryKey = labelOf(selected.name) ? selected.name : null;
     const route = byName ?? (entryKey ? routes.find((candidate) => candidate.entry === entryKey) : routes[0]) ?? null;
+    const routeParams = route === byName ? params : {};
     drawSelector(product?.address ?? null);
-    drawMenu(route?.entry ?? entryKey, product?.address ?? null);
+    // The menu marks the entry of the page shown; menuOf counts only the routes' `entry` as served.
+    drawMenu(route ? entryShownOf(route, routeParams) : entryKey, product?.address ?? null);
     const context = { page, instance, product, store,
       // The chosen product goes into the fragment unless the caller names a product; the empty product names the instance itself, and the fragment then holds none.
       go: (name, given = {}) => {
@@ -372,7 +378,7 @@ async function startSite({ page, views }) {
       return;
     }
     shownName = route.name;
-    shown = { route, params: route === byName ? params : {}, context, fragment };
+    shown = { route, params: routeParams, context, fragment };
     await readNamedFiles(route, shown.params, context, defaultBranches);
     try {
       await route.render(target, context, shown.params);

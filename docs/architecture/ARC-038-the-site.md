@@ -305,6 +305,18 @@ audit MOD-test-pages' route `tests-views`, the Tests entry's views.
   another without that use, as the release panel shows the audit.
 - **The Tests entry's views in the frame, beside the menu.** Rejected: the frame would carry one entry's views and
   their labels, and change whenever an entry's views change; it knows views only as the routes it is handed.
+- **One route per trace view, each with its own `entry`, so that the menu marks the entry of the view shown.** Rejected:
+  the addresses `#trace/key=…` that the Tests entry's views and the links of the site lead to would change, and the one
+  template method would be listed as five routes; the route's optional `entryShown` gives each page the entry its
+  descriptor already names, without a second copy (`DON'T REPEAT YOURSELF`).
+- **A route's `entry` either a value or a function of its params.** Rejected: `menuOf` counts the entries the loaded
+  routes serve, and a fragment naming an entry opens its first route, both without params, so a function could not be
+  evaluated there; one member would carry two meanings, the entry a route is listed under and the entry of a page it
+  shows (`LEAST ASTONISHMENT`).
+- **The entry of the page shown given by the route's `subject`.** Rejected: the subject says what a message in the
+  prompt bar is about, and the menu is marked on a route that gives no subject as well.
+- **A map of views to their entries in the frame.** Rejected: the frame would name views, which it knows only as the
+  routes it is handed, and change whenever a view is added.
 
 ## Consequences
 
@@ -316,6 +328,9 @@ audit MOD-test-pages' route `tests-views`, the Tests entry's views.
   tab.
 - Every page reads the repositories when it opens; a visitor without a token is limited by the network's rate limit,
   which the page names.
+- `menuOf` counts only a route's `entry` as served, so a page whose `entryShown` names another entry is marked under
+  that entry even where no loaded route lists it, and the menu then shows that entry as *not built yet*; this is the design's limit. On the review
+  pages it does not occur for the trace views: MOD-review-pages lists Architecture and MOD-test-pages lists Tests.
 - A view never computes a status of its own; anything it shows can be recomputed by the service that owns it.
 - The site can be opened from any fork's Pages address and shows that fork's instance.
 - Notifications arrive only while a page of the dashboard is open in that browser, and at most every five minutes; each

@@ -32,7 +32,7 @@ import { parseAddress, connect, HostError } from "../repository-hosts/index.mjs"
 import { watchForAcceptance } from "../notifications/index.mjs";
 import { storedOverview } from "../progress-measures/index.mjs";
 import { attachPromptBar, explain, pageStarted } from "./index.mjs";
-import { subjectOf } from "./subject.mjs";
+import { subjectOf, entryShownOf } from "./subject.mjs";
 import { foldMenu } from "./menu.mjs";
 import { fragmentOf, instanceHostFollowingStore, loadView, routeOf, productHostFollowingStore, tokenKeyOf } from "./routing.mjs";
 import { registerViews } from "./register.mjs";
@@ -745,11 +745,14 @@ function renderHow() {
 // ---------------------------------------------------------------- routing
 
 // THE MENU FOLLOWS THE PROCESS: the site's menu, each entry leading to the first of its views whose file is built; the entry of
-// the view shown is marked.
+// the page shown is marked.
 let available = null;
+// A route of a loaded view named as it is — #trace, #use-case/…, #decision — is under the entry of the page it shows, by the frame's rule (MOD-site-frame's
+// Route): its `entryShown(params)`, else its `entry`. Any other view of the app is under the menu entry that lists it.
+const loadedRoute = (kind) => [...loaded.values()].flatMap((view) => view.routes ?? []).find((route) => route.name === kind) ?? null;
 function markTab(kind) {
-  // A route of the review pages named as it is (#use-case/…, #decision) is under the menu entry its route names.
-  const entry = entryOf(kind || "uc") ?? reviewPages.routes.find((route) => route.name === kind)?.entry ?? null;
+  const route = loadedRoute(kind);
+  const entry = route ? entryShownOf(route, routeOf(location.hash).params) : entryOf(kind || "uc");
   document.querySelectorAll(".tabs [data-entry]").forEach((t) => t.classList.toggle("active", t.dataset.entry === entry));
 }
 async function renderTabs() {
@@ -999,7 +1002,7 @@ function startBar() {
 }
 
 // The subject of what the page shows (MOD-site-frame's subjectOf): a review route's own, with the review pages' context; for any other page, the default subject of
-// its menu entry, keyed by the fragment.
+// the menu entry of the page shown — for a route of a loaded view, the entry its `entryShown` gives, else its `entry` (markTab) —, keyed by the fragment.
 function barSubject() {
   const [kind, a, b] = location.hash.replace(/^#/, "").split("/");
   const context = reviewContext();
@@ -1011,8 +1014,11 @@ function barSubject() {
     const trace = tracePages.routes.find((candidate) => candidate.name === "trace");
     return subjectOf({ route: trace, params: specificationShown.params, context: specificationShown.context, drawn });
   }
-  const entry = MENU.find((candidate) => candidate.key === (kind || "uc") || candidate.views.includes(kind || "uc"));
-  return subjectOf({ route: { name: kind || "uc", title: entry?.label ?? document.title, entry: entry?.key ?? null }, params: routeOf(location.hash).params, context, drawn });
+  const params = routeOf(location.hash).params;
+  const loadedShown = loadedRoute(kind);
+  const entry = loadedShown ? MENU.find((candidate) => candidate.key === entryShownOf(loadedShown, params))
+    : MENU.find((candidate) => candidate.key === (kind || "uc") || candidate.views.includes(kind || "uc"));
+  return subjectOf({ route: { name: kind || "uc", title: entry?.label ?? document.title, entry: entry?.key ?? null }, params, context, drawn });
 }
 
 if (globalThis.document) start();

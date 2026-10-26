@@ -825,6 +825,9 @@ async function drawModules(target, context, host, ref, descriptor, earlier = nul
 export const route = {
   name: "trace",
   entry: "requirements",
+  // The entry of the page shown: the `entry` of the descriptor `key` names — the tests browser and the audit under Tests, the modules view under
+  // Architecture —, null, the route's `entry`, where `key` names none.
+  entryShown: (params = {}) => descriptorFor(params.key)?.entry ?? null,
   title: "Current requirements",
 
   subject: (params, context) => subjectOf({ title: descriptorFor(params.key)?.title ?? route.title, params, context, shown: drawn.get(context) ?? null }),

@@ -138,7 +138,10 @@ TraceView = {
 
 - `view: View` — the routes of the five trace views, `trace/<key>`, each with its version and filters in its `params`,
   and `trace/<key>/<row>` for an opened row, each with its subject for the prompt bar: the specification view's as its
-  descriptor says, every other view's the frame's default with the version shown among its page; its strategies are
+  descriptor says, every other view's the frame's default with the version shown among its page; its route's `entry` is
+  `requirements`, the entry it is listed under, and its `entryShown` the `entry` of the descriptor its `key` names, or `null`, the route's `entry`, where `key` names
+  no descriptor, so that
+  the tests browser and the audit are shown under Tests and the modules view under Architecture; its strategies are
   none, since it starts no job itself.
 
 ## Files

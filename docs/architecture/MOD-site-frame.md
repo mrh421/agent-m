@@ -100,7 +100,8 @@ It runs in a browser — the instance's pages, and the Bridge's window, which is
 - `routing.mjs` — views by the address's fragment, and the address of a route for a repository.
 - `notices.mjs`, `run-panel.mjs`, `decision.mjs`, `forms.mjs` — notices, the run panel, the dialog of a decision, the
   form built from a schema.
-- `subject.mjs` — the subject of the route shown, its own or the frame's default, with the route's menu entry.
+- `subject.mjs` — the subject of the route shown, its own or the frame's default, with the menu entry of the page shown,
+  the one the menu marks.
 - `look.css` — colours, fonts and the header, footer and menu of the lab's look: FAU blue `#04316a`, dark blue `#041e42`,
   metallic `#8c9fb1`, and their tints, for light and dark mode; and how a page reflows on a phone, one rule for every route
   (`EVERY PAGE SHARES ONE LOOK AND WORKS ON A PHONE`):
@@ -120,7 +121,7 @@ It runs in a browser — the instance's pages, and the Bridge's window, which is
 - `explanations.md` — the folded explanations, as data.
 - **Taken over, outside this folder** (`CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT`; the count in `docs/measurements/2026-10-17_code-outside-every-module.md`). Each file goes as stated, in this module's own implementation jobs:
   - `docs/index.html`: named here as the review pages' entry page, whose place the Pages site fixes; it loads `start.mjs` once the live dashboard's views are the modules' routes. It loads no library for Markdown, sanitising or diagrams: the app's Markdown is rendered with `renderArtifact`.
-  - `src/site-frame/dashboard-app.mjs`: the live page's app; its loading reads through `Snapshot.readMany`, the files a route shows in its first wave — for the specification, a product's `docs/sources.md` and the register's entries among them (`registerPaths`); its Markdown is rendered with `renderArtifact`, and it imports no library of the renderer's `vendor/`; removed once `docs/index.html` starts the site through `start.mjs`.
+  - `src/site-frame/dashboard-app.mjs`: the live page's app; its loading reads through `Snapshot.readMany`, the files a route shows in its first wave — for the specification, a product's `docs/sources.md` and the register's entries among them (`registerPaths`); its Markdown is rendered with `renderArtifact`, and it imports no library of the renderer's `vendor/`; for a route of a loaded view it shows, `#trace` among them, the entry it marks in the menu and gives the bar's subject is the entry of the page shown, by the same rule as on the frame's pages — the route's `entryShown`, else its `entry` —, in place of the lookup by view name of `src/site/menu.mjs`; removed once `docs/index.html` starts the site through `start.mjs`.
   - `docs/assets/dashboard/built.json`, `src/site/views.mjs`: removed with the app: `data-views` names the views.
   - `src/site/html.mjs`, `src/site/instance-repository.mjs`, `src/site/menu.mjs`: removed once their callers use `instanceOf` and `menuOf`.
   - `src/theme/lme.css`, `src/brand/`: removed: `look.css` and `brand/` hold them.
@@ -151,7 +152,8 @@ It keeps nothing but what is on the screen. It owns these formats:
   the strategy sets of the services whose job kinds its routes prepare or run in the tab (MOD-job-runner's
   `Strategies`).
 - `Route` — `{ name: string, entry: "requirements" | "use-cases" | "architecture" | "implementation" | "tests" |
-  "releases" | "maintenance" | "settings" | null, title: string, render(target: Element, context: ViewContext,
+  "releases" | "maintenance" | "settings" | null, entryShown?: (params: Record<string, string>) -> Route["entry"],
+  title: string, render(target: Element, context: ViewContext,
   params: Record<string, string>) -> Promise<void>, subject?: (params: Record<string, string>, context: ViewContext) ->
   Subject | null, leave?: () -> boolean, unsaved?: () -> boolean,
   reads?: (params: Record<string, string>, snapshot: Snapshot) -> Promise<string[]> }`. Before the frame shows another route on a change of the address, it asks the
@@ -159,11 +161,17 @@ It keeps nothing but what is on the screen. It owns these formats:
   person anything, whether the route shown holds changes that leaving it would discard; a route that gives none holds none. `reads` names the files the route will read, as paths of the `snapshot` it is given, the repository the route shows as the frame has read it for the page;
   the frame reads them with `readMany` before it calls `render`, a hundred to a batch (`A PAGE LOAD READS THE REPOSITORY IN BATCHES`), and keeps no list of files for any route. A route whose
   files depend on files it must read first reads those through `snapshot.readMany` itself, in `reads`. `name` is the first part of the address's fragment, the rest are its `params`; a route's `entry` puts it
-  under that entry of the menu, `null` keeps it out of the menu. `subject`, MOD-prompt-bar's type, says what a message in
+  under that entry of the menu, `null` keeps it out of the menu: it is the entry `menuOf` counts as served, and the one
+  whose first route a fragment naming the entry and no route shows. `entryShown` names the menu entry of the page the route
+  shows for these `params`, for a route whose pages lie under more than one entry; its `null` means the route's `entry`,
+  not a page out of the menu, so it never takes a route out of the menu; where a route gives none, the page shown is
+  under the route's `entry`. The entry of the page shown is the one the menu marks and the one the subject carries.
+  `menuOf` counts only `entry` as served: a page whose `entryShown` names an entry that no loaded route lists is marked
+  under an entry the menu shows as *not built yet*. `subject`, MOD-prompt-bar's type, says what a message in
   the prompt bar is about while the route is shown — a route showing a requirement, a use case or an architecture file
   names its change kind and its target; a route of mail or of settings says what of its page a participant may be given.
-  Whichever gives the subject, the frame sets its `entry` to the route's `entry`. A route that gives none, or whose
-  `subject` gives `null` for these parameters, has the frame's default: the kind `converse`, the route's title, and as the page the route's title, the menu entry, the product, and the text the route has drawn, which holds no stored secret, since a stored
+  Whichever gives the subject, the frame sets its `entry` to the entry of the page shown. A route that gives none, or whose
+  `subject` gives `null` for these parameters, has the frame's default: the kind `converse`, the route's title, and as the page the route's title, the menu entry of the page shown, the product, and the text the route has drawn, which holds no stored secret, since a stored
   secret is shown only in a hidden field (`A STORED SECRET IS HIDDEN UNTIL SHOWN`).
 - `ViewContext` — what every route is given: `{ page: "main" | "review" | "bridge", instance: { repository: string,
   host: Host }, product: ProductContext | null, store: Store, go(route: string, params?: Record<string, string>) -> void }`
@@ -175,7 +183,7 @@ It keeps nothing but what is on the screen. It owns these formats:
   address then holds none.
 - `PageSetup` — `{ page: "main" | "review" | "bridge", views: View[] }`.
 - `startPage(setup: PageSetup) -> Promise<void>` — draws the header, the menu, whose links carry the chosen product as
-  `menuOf` gives them, and the product selector, shows the notices, connects the instance and the chosen product, and renders the route the fragment names, again on every
+  `menuOf` gives them and in which the entry of the page shown is marked, and the product selector, shows the notices, connects the instance and the chosen product, and renders the route the fragment names, again on every
   change of the fragment. A route whose rendering fails is replaced in its place by `readProblem` of that failure, except
   a refused token, which is shown as a notice. While the route shown reports `unsaved` true, closing or reloading the tab
   makes the browser ask first, in the words the browser gives that question. A fragment that names no loaded route shows the first route of its menu entry, or says that
