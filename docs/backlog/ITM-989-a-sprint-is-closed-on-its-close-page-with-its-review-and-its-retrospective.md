@@ -35,7 +35,8 @@ the unfinished items' decisions, the retrospective with the sprint's numbers as 
 The route is not built: `src/implementation-pages/index.mjs:3`. The backlog route (ITM-681) leads to it for the person's
 team's running sprint. The page shows `sprintFacts` (ITM-986) and calls `closeSprint`, which already refuses a close
 without a retrospective or with an undecided item (`src/work-plans/saves.mjs:214-223`). The increment carries the folded
-*What is this?* of ITM-988.
+*What is this?* of ITM-988. After the close, for an increment not merged, the page offers *Give up increment* with a
+reason, through MOD-work-plans' `giveUpIncrement` (ITM-1232) (MOD-implementation-pages, the same route; UC-041 7b).
 
 ## Acceptance
 
@@ -43,7 +44,9 @@ without a retrospective or with an undecided item (`src/work-plans/saves.mjs:214
   - the page lists the increment with each item's pull request, requirements and tests, and the items not done with their
     reasons;
   - *Close sprint* is disabled, saying why, until the retrospective has an entry and every unfinished item a decision;
-  - one click commits through `closeSprint` with the feedback lines, the decisions and the retrospective as entered.
+  - one click commits through `closeSprint` with the feedback lines, the decisions and the retrospective as entered;
+  - for a closed sprint whose increment is not merged, *Give up increment* is offered, refused without a reason, and one
+    click commits through `giveUpIncrement`.
 - Counter-proof: a page that offers *Close sprint* without a retrospective entry fails.
 - The first commit holds only the tests, and CI is red on it. No stub is committed.
 - Only `src/implementation-pages/` and the tests that name MOD-implementation-pages change.

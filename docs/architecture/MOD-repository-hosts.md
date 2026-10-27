@@ -158,10 +158,11 @@ never a reviewed text (`NO TEXT TRAVELS IN A URL`), and never a credential (`A C
   Record<string, string> }`: a GitLab project's pipeline schedule, named by its description.
 - `WebLinks` — `{ newToken(name: string, description: string, days: number) -> string, tokens: string,
   projectTokens: string | null, secrets: string, newFile(path: string, record: string) -> string | null, editFile(path:
-  string) -> string, actions: string, run(id: string) -> string, commitRuns(commit: string) -> string, branch(name:
+  string) -> string, deleteFile(path: string) -> string | null, actions: string, run(id: string) -> string, commitRuns(commit: string) -> string, branch(name:
   string) -> string, file(path: string, ref: string) -> string, runners: string, pipelineSchedules: string | null,
   pagesSettings: string, fork: string | null, newRepository: string, branchProtection: string }`: the server's own
-  pages; a page the server does not offer is `null`. `commitRuns` is the page
+  pages; a page the server does not offer is `null`. `deleteFile` is the page that deletes one file from the default
+  branch, where the person commits the deletion — GitHub's `/delete/<branch>/<path>`; GitLab has none. `commitRuns` is the page
   of the runs or pipelines of one commit, `branch` the page of a branch's files, `file` the page that shows one file as it
   stands at a branch, a tag or a commit, to read and not to edit, `runners` the page on which a self-hosted
   runner is registered to the repository, which shows the command to run on its machine, `branchProtection` the page on

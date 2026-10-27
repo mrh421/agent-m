@@ -23,7 +23,7 @@ const SEARCH_LIMIT = 200;
  * offerTools(kind, drafter, context) -> Promise<{ use: ToolUse, held } | null> — the ToolUse of one exchange with the drafter, and what the
  * exchange holds. A drafter whose type is `model endpoint` and that declares `use tools`, for a kind that names tools, is offered the kind's
  * tools in its order, less every tool whose capability it does not declare, every tool no program registered — the browser registers none of
- * MOD-checkout-tools' — and every tool the job's parameter `refuses` names; any other drafter gets null. `limit` is the kind's `toolLimit`. `call` checks a call's arguments against the tool's schema with the runner's own
+ * MOD-checkout-tools' — and every tool the job's parameter `refuses` names; any other drafter gets null. `limit` is the kind's `toolLimit`, null where the kind states none. `call` checks a call's arguments against the tool's schema with the runner's own
  * `misfit`, and answers a tool not offered, or arguments the schema refuses, with a refusal.
  */
 export async function offerTools(kind, drafter, context) {

@@ -86,16 +86,15 @@ function answerFor(task, stdout) {
 function usageFor(task, stdout) {
   if (!task.usage) return null;
   const events = stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line));
-  const values = events.filter((event) => event.type === task.usage.eventType)
+  const reports = events.filter((event) => event.type === task.usage.eventType)
     .map((event) => valueAt(event, task.usage.path)).filter((value) => value && typeof value === "object");
-  const tokens = values.at(-1);
-  if (!tokens) return null;
-  return {
-    inputTokens: typeof tokens[task.usage.input] === "number" ? tokens[task.usage.input] : null,
-    outputTokens: typeof tokens[task.usage.output] === "number" ? tokens[task.usage.output] : null,
-    minutes: null,
-    cost: null,
+  if (!reports.length) return null;
+  // An agent that reports per step (opencode's step_finish) reports each step's own tokens: the job used their sum.
+  const total = (key) => {
+    const counts = reports.map((tokens) => tokens[key]).filter((count) => typeof count === "number");
+    return counts.length ? counts.reduce((sum, count) => sum + count, 0) : null;
   };
+  return { inputTokens: total(task.usage.input), outputTokens: total(task.usage.output), minutes: null, cost: null };
 }
 const agentConfiguration = (name) => rows.find((row) => row.name === name) ?? null;
 

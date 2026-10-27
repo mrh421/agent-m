@@ -1,14 +1,14 @@
 // spec-entries.mjs — the service the descriptor of the SPEC change entries names (MOD-review-pages, Parts): what the one review flow in flow.mjs
 // asks of a kind whose files are the entries of a change queue — their groups and states, one entry with its sections, and the acceptance through
-// MOD-spec-changes' acceptEntries. It draws no page of its own; flow.mjs does.
+// MOD-spec-changes' acceptEntries, and the rejection of one entry through its rejectEntry. It draws no page of its own; flow.mjs does.
 //
 // Module: MOD-review-pages
 //
 // A QUEUE IS ACCEPTED IN ITS ORDER; A STALE APPROVAL IS NOT APPLIED; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK. Every state comes from
-// MOD-spec-changes' queues and entryView; nothing is written here but by acceptEntries. An entry is addressed as spec-<queue folder>-<NN>, the form of
+// MOD-spec-changes' queues and entryView; nothing is written here but by acceptEntries and rejectEntry. An entry is addressed as spec-<queue folder>-<NN>, the form of
 // its approval record.
 
-import { queues, entryView, acceptEntries } from "../spec-changes/index.mjs";
+import { queues, entryView, acceptEntries, rejectEntry } from "../spec-changes/index.mjs";
 import { sectionText } from "../spec-document/index.mjs";
 import { blobSha } from "../text-tools/index.mjs";
 import { sourceSchemas } from "../source-register/index.mjs";
@@ -169,4 +169,7 @@ export const queueService = {
     }
     return { commit: result.commit, leftOut: [] };
   },
+
+  // The entry shown, rejected with the person's reason by rejectEntry: { commit }, or, without a token, GitHub's pages { fallback }.
+  reject: (where, shown, person, reason) => rejectEntry(where.host, shown, person, reason),
 };

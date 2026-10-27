@@ -282,8 +282,10 @@ async function openRun(state, section) {
     const admitted = eligible(participants, { capabilities: definition.needs }).eligible;
     Object.assign(state, { definition, participants, register, head, product });
     if (admitted.length === 0) {
-      const uc = el("a", "uc-017", "UC-017");
-      uc.setAttribute("href", "#use-case/id=UC-017");
+      // It leads to UC-017 only through the context's go, as the frame's button (MOD-test-pages; views.mjs does the same).
+      const uc = el("button", "uc-017 btn", "UC-017");
+      uc.setAttribute("type", "button");
+      uc.addEventListener("click", () => context.go("use-case", { id: "UC-017" }));
       form.append(el("p", "missing-capability", `No participant can run the levels: none declares ${definition.needs.join(", ")}. Declare it for a participant — `, uc, "."));
       return;
     }

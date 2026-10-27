@@ -39,7 +39,7 @@ function withFetch(t, fetchFn) {
 
 async function running(t, jobs) {
   const folder = await mkdtemp(join(tmpdir(), "agent-m-bridge-release-21-"));
-  const server = await serveBridge({ host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, {
+  const server = await serveBridge({ name: () => "lab-pc", host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, {
     jobs,
     mail: {},
     tunnels: {},

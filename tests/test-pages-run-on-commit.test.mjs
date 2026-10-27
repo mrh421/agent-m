@@ -127,8 +127,8 @@ const instanceHost = (register) => ({
 });
 
 async function page(options = {}) {
-  const { register = REGISTER, tokenStored = true } = options;
-  const context = { page: "main", instance: { repository: "alice/agent-m", host: instanceHost(register) }, store: null, go() {},
+  const { register = REGISTER, tokenStored = true, go = () => {} } = options;
+  const context = { page: "main", instance: { repository: "alice/agent-m", host: instanceHost(register) }, store: null, go,
     product: { address: PRODUCT, kind: "github", host: productHost(options), tokenStored } };
   const target = document.createElement("div");
   document.body.append(target);
@@ -299,7 +299,7 @@ test("run on this commit — where no participant can run the levels the missing
   assert.equal(runButton(form), undefined);
   const missing = byClass(form, "missing-capability")[0];
   assert.match(textOf(missing), /run code and tests/);
-  assert.deepEqual(byTag(missing, "a").map((link) => link.getAttribute("href")), ["#use-case/id=UC-017"]);
+  assert.deepEqual(byClass(missing, "uc-017").map(textOf), ["UC-017"]);
   assert.deepEqual(written, []);
 });
 
@@ -328,4 +328,19 @@ test("run on this commit — without a token the server's workflow page is linke
 test("run on this commit — the view hands resultStrategies and routeStrategies to the frame", () => {
   assert.ok(view.strategies.includes(resultStrategies), "resultStrategies");
   assert.ok(view.strategies.includes(routeStrategies), "routeStrategies");
+});
+
+// TST-1236002 · level: unit · module: MOD-test-pages
+// guards: EVERY PAGE SHARES ONE LOOK AND WORKS ON A PHONE; UC-028
+// given: a register in which no participant declares run code and tests; the context's go records each call
+// input: Run on this commit pressed; then a click on the link UC-017 of the text that names the missing capability
+// expect: the click calls go("use-case", { id: "UC-017" }) once; the link carries no address of its own (no href)
+test("TST-1236002 — run on this commit: the link to UC-017 leads through the context's go", async () => {
+  const went = [];
+  const form = await open(await page({ register: WRITERS_ONLY, go: (name, params) => went.push([name, params]) }));
+  const links = byClass(byClass(form, "missing-capability")[0], "uc-017");
+  assert.deepEqual(links.map(textOf), ["UC-017"], "known positive: the link UC-017 is drawn");
+  await trusted(links[0]);
+  assert.deepEqual(went, [["use-case", { id: "UC-017" }]]);
+  assert.equal(links[0].hasAttribute("href"), false, "the link sets no address itself");
 });

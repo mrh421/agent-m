@@ -299,6 +299,15 @@ per file, each naming the text you were shown, and a file that changed after it 
 change to the SPEC also replaces the SPEC section with the proposal, byte for byte, and adds the decision to the queue. In the
 book *Vibe Coding*: chapter 12, section 10.
 
+## rejecting
+
+Rejecting turns a proposal down, with the reason you type; without a reason nothing is written. The dashboard makes one commit
+under your own account, with your reason in its message, so Git records who rejected, when and why. A use case, an
+architecture decision or a module file goes back to the text it had when it was last accepted, or, if it was never accepted,
+leaves the repository. A SPEC change entry leaves its queue, with its rationale and its row of the queue's index; a queue
+whose last entry leaves goes with it. No approval record is written, and the SPEC is not touched. If the text changed after
+it was shown, nothing is written and the page shows it as it is now. The history of the repository keeps every rejected text.
+
 ## blob-sha
 
 A blob SHA is the number Git computes from the content of a file: the same text always gives the same SHA, and any change to
@@ -338,7 +347,8 @@ dashboard names the entry it waits for. In the book *Vibe Coding*: chapter 8, se
 With a token, a key you create on GitHub and store in this browser, the dashboard makes the commit for you, under your
 account. Without a token it cannot, so it opens GitHub's own page instead, prepared as far as GitHub allows: to accept,
 GitHub's page for a new file with the approval record filled in; to edit, GitHub's editor, with your edited text on the
-clipboard. The link carries at most the file's path and the record, never the text you reviewed. You press *Commit changes*
+clipboard; to reject, GitHub's page that deletes each file, or its editor with the text to paste, and your reason to use as
+the commit's message — one commit per page, since each of GitHub's pages changes one file. The link carries at most the file's path and the record, never the text you reviewed. You press *Commit changes*
 there, and the commit is yours as before; then reload the dashboard. Without write access to the repository, GitHub makes your
 commit a pull request, a proposal for the maintainers to review, and the change counts once a maintainer merges it. If the
 record does not arrive filled in, the dashboard shows it with a copy button and the exact path of the file. On a GitLab server

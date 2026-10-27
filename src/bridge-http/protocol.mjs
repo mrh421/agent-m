@@ -15,7 +15,7 @@ export const bridgeApi = {
     paused: 503,
   },
   routes: [
-    { method: "GET", path: "/v1/pair", answer: { bridge: { name: "string", version: "string", platform: "string" }, origin: "string" } },
+    { method: "GET", path: "/v1/pair", answer: { bridge: { name: "string", version: ["string", "null"], platform: "string" }, origin: "string" } },
     { method: "GET", path: "/v1/agents", answer: { agents: [{ name: "string", version: "string", ready: "boolean", loggedIn: "boolean" }], missing: [{ name: "string" }] } },
     { method: "POST", path: "/v1/jobs", request: { product: "string", record: "string", commit: "string", task: "string?" }, answer: { accepted: "string" } },
     { method: "GET", path: "/v1/jobs", answer: { jobs: [{ id: "string", product: "string", kind: "string", agent: "string", state: "string", started: "string", usage: "object" }] } },

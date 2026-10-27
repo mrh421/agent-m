@@ -27,7 +27,7 @@ function agents(folder, calls, signedIn) {
   const log = `IFS= read -r input || true; printf '%s|stdin=[%s]\\n' "$*" "$input" >> ${calls}`;
   command(folder, "claude", `${log}; case "$*" in '--version') echo 2.1.300;; 'auth status') ${signedIn.claude ? "echo '{\"authMethod\":\"claude.ai\"}'" : "exit 1"};; *) exit 64;; esac`);
   command(folder, "codex", `${log}; case "$*" in '--version') echo 'codex 1.2.3';; 'login status') ${signedIn.codex ? "echo 'Logged in'" : "exit 1"};; *) exit 64;; esac`);
-  command(folder, "opencode", `${log}; case "$*" in '--version') echo 0.9.1;; 'auth list') echo '${signedIn.opencode ? 1 : 0} credentials';; *) exit 64;; esac`);
+  command(folder, "opencode", `${log}; case "$*" in '--version') echo 0.9.1;; 'models') ${signedIn.opencode ? "echo opencode/big-pickle" : ":"};; *) exit 64;; esac`);
 }
 const NONE = { claude: false, codex: false, opencode: false };
 
@@ -67,7 +67,7 @@ test("TST-1002002: nothing asks for a password and no login step is started", as
     const found = await withPath(folder, () => installedAgents());
     const lines = readFileSync(calls, "utf8").trim().split("\n").sort();
     assert.deepEqual(lines, ["--version|stdin=[]", "--version|stdin=[]", "--version|stdin=[]",
-      "auth list|stdin=[]", "auth status|stdin=[]", "login status|stdin=[]"].sort());
+      "auth status|stdin=[]", "models|stdin=[]", "login status|stdin=[]"].sort());
     for (const line of lines) assert.doesNotMatch(line, /password|passwd|secret|token|--key|api[-_]?key/i);
     assert.equal(JSON.stringify(found).toLowerCase().includes("password"), false);
   } finally { rmSync(folder, { recursive: true, force: true }); }

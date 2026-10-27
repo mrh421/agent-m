@@ -67,7 +67,7 @@ FOR CHANGE`). It runs unchanged in a browser and in Node; it reads only its own 
 | `writer` | a strategy name | what writes the result |
 | `limit` | a number | the default number of correction rounds, fixed before the first round |
 | `tools` | tool names of `tools.md` | the tools its drafter may be offered, each only where the drafter declares its capability (MOD-job-runner's `ToolUse`) |
-| `tool_limit` | a number | the most tool calls of one exchange with the drafter |
+| `tool_limit` | a number, or left out | the most tool calls of one exchange with the drafter; left out, no number of calls ends the exchange |
 
 Its body is one section, `## Purpose`, saying in a paragraph what the kind does. The prompt is data: plain text with
 named places for the parts, never code. The answer's schema is a small JSON description — `type`, `properties`,
@@ -82,7 +82,7 @@ built into MOD-job-runner.
 | Kind | Serves | Participant needs | Preconditions | Recipes | Checks | Reviewers | Steps | Review · writer | Draft it expects |
 |---|---|---|---|---|---|---|---|---|---|
 | `derive-requirements` | UC-005 | draft text | | `source-excerpt`, `spec-with-queues`, `chapters-for-requirements` | `requirement-form`, `candidate-classes` | | | `person` · `queue-entries` | candidates: name, rule, check, what it constrains, source passage — and the source of a rule it points to, where that is not the job's —, class |
-| `change-requirements` | UC-019, UC-012, UC-049 | draft text | `person-source` | `instruction`, `conversation`, `draft?`, `named-requirements`, `spec-with-queues`, `chapters-for-requirements` | `requirement-form`, `candidate-classes` | | | `person` · `queue-entries` | the same |
+| `change-requirements` | UC-019, UC-012, UC-049 | draft text | `person-source` | `instruction`, `conversation`, `draft?`, `issue-context?`, `named-requirements`, `spec-with-queues`, `chapters-for-requirements` | `requirement-form`, `candidate-classes` | | | `person` · `queue-entries` | the same |
 | `derive-use-cases` | UC-007 | draft text | `rests-on-accepted` | `chosen-requirements`, `use-cases`, `chapters-for-requirements` | `document-schema`, `graph-checks`, `candidate-classes` | | | `none` · `open-files` | files |
 | `change-use-case` | UC-019, UC-049 | draft text | | `instruction`, `conversation`, `draft?`, `use-case-with-neighbours`, `chapters-for-requirements` | `document-schema`, `graph-checks`, `identifier-kept` | | | `person` · `open-files` | files |
 | `derive-architecture` | UC-022 | draft text | `architecture-ready` | `whole-spec`, `accepted-use-cases`, `chapters-for-architecture` | `document-schema`, `graph-checks`, `candidate-classes` | `review-architecture` × 1 | `due-diligence` | `person` · `open-files` | files |
@@ -127,13 +127,13 @@ proposes a hand-over in its answer as the tool would hold it; `change-requiremen
 and `hand-over`, since their draft is their answer and a change of them may still be handed to CI (UC-019 6b). The kinds
 that change code or run tests — `implement`, `refactor`, `fix-bug`, `write-tests`, `propose-tests`, `run-tests` and
 `check-resource` — name the seven tools of MOD-checkout-tools, `read`, `write`, `edit`, `bash`, `grep`, `glob` and
-`webfetch`, rows of `tools.md` too, with a `tool_limit` of 200, so that a model endpoint does their work in the job's
-checkout; only a program in Node registers those tools. A tool's capability is besides *use tools*, which a drafter must declare to be offered
-any tool at all.
+`webfetch`, rows of `tools.md` too, and no `tool_limit`, so that a model endpoint does their work in the job's
+checkout as a coding agent does, with no number of calls that ends it; only the Workflows register those tools. A
+tool's capability is besides *use tools*, which a drafter must declare to be offered any tool at all.
 
 For a kind of `review: person`, the click that lets the result go on is the one its use case names: *Write proposals*
-(UC-005, UC-022), *Save* (UC-023), *Save plan* (UC-045), *Add to backlog* (UC-032) — each through MOD-job-runner's
-`writeResult`, which runs the kind's steps and its writer on the draft as the person left it —, *Save* of a draft of the
+(UC-005, UC-022), *Save* (UC-023), *Save plan* (UC-045), *Add to backlog* (UC-032), *Save* of a change from an issue
+(UC-012) — each through MOD-job-runner's `writeResult`, which runs the kind's steps and its writer on the draft as the person left it —, *Save* of a draft of the
 conversation (UC-019, UC-049), which saves the draft as UC-018 saves an edit, so that the kind's writer writes a change by prompt only
 where nobody attends (UC-019 6b, UC-049 4f) — for `converse`, `proposed-edits` (MOD-job-runner), which writes the
 edits as a pull request —, and *Write tests*
@@ -151,7 +151,10 @@ latter for tests that pass before any code exists (UC-024, UC-034); for `write-t
 A job of `change-requirements` takes as its parameter `source` the own source of the person who starts it — the linked
 register entry that MOD-source-register's `personSource` names for their account —, so that every requirement it drafts
 names that person among its sources (`THE PERSON WHO PROMPTS IS A SOURCE`); its precondition `person-source`
-(MOD-spec-changes) keeps a job without one from starting, wherever it runs.
+(MOD-spec-changes) keeps a job without one from starting, wherever it runs. A job of `change-requirements` started from
+an issue takes as its parameter `issue` that issue's number, as `analyse-issue` and `fix-bug` do: its recipe
+`issue-context?` gives the issue with what it touches, and its writer names the issue as the origin of the queue it
+writes (UC-012 step 6); a job without the parameter `issue`, a change by prompt, gets no part of that recipe.
 
 A follow-up asked for on the review pages' route `draft` hands `change-requirements`, `change-use-case` and
 `change-architecture` the conversation's draft as it stands as their `draft`, so that the participant changes that
@@ -207,9 +210,11 @@ decisions, the module files, the further decisions.
 - `KindDefinition` — `{ name: string, serves: string[], participant: "one" | "none", needs: Capability[], resources: "none"
   | "product", preconditions: string[], recipes: { name: string, optional: boolean }[], checks: string[], personDecides:
   string[], reviewer: string | null, reviewers: number, steps: string[], gatePoints: ("before-write" | "before-merge" |
-  "question")[], review: "person" | "none", writer: string, limit: number, tools: string[], toolLimit: number, purpose:
-  string, prompt: string, answer: object | null }`: a definition as read, its prompt and the schema of its draft loaded with it; for a kind without a
-  participant, which has neither, `prompt` is `""` and `answer` is `null`.
+  "question")[], review: "person" | "none", writer: string, limit: number, tools: string[], toolLimit: number |
+  null, purpose: string, prompt: string, answer: object | null }`: a definition as read, its prompt and the schema of
+  its draft loaded with it; for a kind without a participant, which has neither, `prompt` is `""` and `answer` is
+  `null`. `toolLimit` is `null` wherever the definition leaves `tool_limit` out, whether or not it names tools; a kind
+  that names no tools has `tools` `[]`, offers none, and its `toolLimit` is never read.
 - `ToolDefinition` — `{ name: string, needs: Capability, description: string, input: object }`: one row of `tools.md`,
   its argument schema read from its JSON.
 - `toolsOf(names: string[]) -> Promise<ToolDefinition[]>` — the named tools, in the order named. Throws `UnknownTool {

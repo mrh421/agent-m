@@ -117,11 +117,11 @@ const sent = [];
 test.beforeEach(() => { sent.length = 0; globalThis.fetch = async (url) => { sent.push(String(url)); throw new Error("no network"); }; });
 test.afterEach(() => { globalThis.fetch = realFetch; });
 
-async function show(fake, { register = registerOf(WRITER_A, WRITER_B, CI_WRITER, DRAFTER) } = {}) {
+async function show(fake, { register = registerOf(WRITER_A, WRITER_B, CI_WRITER, DRAFTER), go = () => {} } = {}) {
   assert.ok(route, "the view offers the route generate");
   const target = document.createElement("div");
   document.body.append(target);
-  const context = { page: "main", instance: { repository: "alice/agent-m", host: fakeInstance(register) }, store: null, go() {}, product: { address: PRODUCT, kind: "github", host: fake.host } };
+  const context = { page: "main", instance: { repository: "alice/agent-m", host: fakeInstance(register) }, store: null, go, product: { address: PRODUCT, kind: "github", host: fake.host } };
   await route.render(target, context, {});
   return target;
 }
@@ -159,6 +159,8 @@ async function panelFor(target, name, person = "alice") {
   await until(() => byClass(target, "section", "run-panel").length === 1, "the run panel");
 }
 const runButtons = (root) => find(root, (node) => node.localName === "button" && node.textContent === "Run");
+// The links of a text to the use cases it names: the links and buttons whose text is a use case's identifier.
+const useCaseLinks = (root) => find(root, (node) => (node.localName === "a" || node.localName === "button") && /^UC-\d+$/.test(node.textContent));
 
 // ================================================================== the tests
 
@@ -216,8 +218,7 @@ test("generate — when the only participant is the implementer, release is said
   const said = byClass(target, "p", "release-needs-another");
   assert.equal(said.length, 1);
   assert.match(said[0].textContent, /other than the implementer/);
-  const links = find(said[0], (node) => node.localName === "a").map((node) => node.getAttribute("href"));
-  assert.deepEqual(links, ["#use-case/id=UC-017", "#use-case/id=UC-002"]);
+  assert.deepEqual(useCaseLinks(said[0]).map((node) => node.textContent), ["UC-017", "UC-002"]);
   setLevel(target, "release", false);
   await settle();
   assert.deepEqual(offeredNames(target), ["writer-a"]);
@@ -548,4 +549,21 @@ test("TST-1225004 — generate: each level's fold is the frame's explanation of 
     assert.deepEqual(find(row, (node) => node.localName === "details").map((fold) => fold.textContent), [framed], level);
   }
   assert.doesNotMatch(readFileSync(new URL("../src/test-pages/generate.mjs", import.meta.url), "utf8"), /"details"/, "the module builds no fold of its own");
+});
+
+// TST-1236001 · level: unit · module: MOD-test-pages
+// guards: EVERY PAGE SHARES ONE LOOK AND WORKS ON A PHONE; UC-026
+// given: the register holds only writer-a, the implementer of UC-002; release is chosen; the context's go records each call
+// input: the route generate, drawn; then a click on the link UC-017 and a click on the link UC-002 of the text that release needs another participant
+// expect: the clicks call go("use-case", { id: "UC-017" }) and go("use-case", { id: "UC-002" }), in that order; neither link carries an address of its own (no href)
+test("TST-1236001 — generate: the links to UC-017 and UC-002 lead through the context's go", async () => {
+  const went = [];
+  const target = await show(fakeProduct(withImplementer), { register: registerOf(WRITER_A), go: (name, params) => went.push([name, params]) });
+  const said = byClass(target, "p", "release-needs-another");
+  assert.equal(said.length, 1, "known positive: the text that release needs another participant is drawn");
+  const links = useCaseLinks(said[0]);
+  assert.deepEqual(links.map((node) => node.textContent), ["UC-017", "UC-002"]);
+  for (const node of links) click(node);
+  assert.deepEqual(went, [["use-case", { id: "UC-017" }], ["use-case", { id: "UC-002" }]]);
+  assert.deepEqual(links.filter((node) => node.hasAttribute("href")).map((node) => node.getAttribute("href")), [], "no link sets the address itself");
 });

@@ -87,12 +87,12 @@ test("TST-844204: with the author's entry in the register, the subject carries t
 // guards: THE PERSON WHO PROMPTS IS A SOURCE; A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the same product, and an instance whose register holds only SRC-bob, not the entry of its author github.com/alice; the reviewer's token is stored
 // input: open the SPEC-entry page of entry 07, then ask the route for the parameters of a message
-// expect: the register is read in one batch that names its one file (docs/sources/SRC-bob.md); the parameters are refused with the error NoPersonSource, which names the missing step
-test("TST-844205: with no entry of the author in the register, the batch names the one file and the parameters are refused", async () => {
+// expect: the register is read in one batch that names its one file (docs/sources/SRC-bob.md); the parameters are given without throwing and hold no `source` key — a kind that needs one refuses by its own precondition (MOD-prompt-bar, MOD-review-pages)
+test("TST-844205: with no entry of the author in the register, the batch names the one file and the parameters hold no source", async () => {
   const product = fakeGitHub(productWithLinks(10)), instance = fakeGitHub(instanceFiles({ withAuthor: false }), { repo: INSTANCE_REPO });
   await openPage(product, { id: ENTRY_ID }, { instance });
 
   assert.deepEqual(instance.namedPerQuery(), [1]);
   assert.deepEqual(instance.contentPaths(), []);
-  assert.throws(() => route.subject({ id: ENTRY_ID }, lastContext()).paramsFor({}), (failure) => failure.name === "NoPersonSource");
+  assert.equal(Object.hasOwn(route.subject({ id: ENTRY_ID }, lastContext()).paramsFor({}), "source"), false, "a missing source is no `source` key");
 });

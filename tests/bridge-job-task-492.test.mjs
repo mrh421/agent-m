@@ -6,7 +6,9 @@
 //
 // Deterministic, no network, no real agent: the fixture of tests/bridge-jobs-watch.test.mjs is the model — the instance and the product are bare
 // repositories in a temporary folder that git reaches through `url.<path>.insteadOf`; the agent is a fixture executable named opencode that
-// appends the arguments it was started with (its prompt) to a file outside the repositories and answers a fixed draft (with `files: []`, which converse's built-in checks read). The kind is converse,
+// appends the arguments it was started with and its standard input — its prompt, which MOD-agent-processes writes to the agent's standard
+// input, never as an argument — to a file outside the repositories, with shell builtins only (PATH holds only the fixture's bin), and answers a
+// fixed draft (with `files: []`, which converse's built-in checks read). The kind is converse,
 // whose recipes name `instruction`. Every expected value is stated in the test's own text.
 
 import assert from "node:assert/strict";
@@ -84,8 +86,8 @@ async function world(run) {
   script(bin, "git", `exec ${REAL_GIT} "$@"`);
   script(bin, "sleep", `exec ${REAL_SLEEP} "$@"`);
   const event = JSON.stringify({ type: "text", part: { text: JSON.stringify({ draft: { answer: "Done.", edits: [], files: [] }, answers: [] }) } });
-  script(bin, "opencode", `case "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';;
-run) printf 'RUN %s\\n' "$*" >> ${calls}
+  script(bin, "opencode", `case "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; models) echo opencode/big-pickle;;
+run) { printf 'RUN %s\\n' "$*"; while IFS= read -r l || [ -n "$l" ]; do printf '%s\\n' "$l"; done; } >> ${calls}
 printf '%s\\n' '${event}' '{"type":"step_finish","part":{"tokens":{"input":11,"output":7}}}';; esac`);
   const instance = repository(root, "instance", { "docs/participants.md": PARTICIPANTS });
   const first = git(instance.seed, "rev-parse", "HEAD");

@@ -190,7 +190,10 @@ export async function withWorkflow(s, { answers, inputs = null, token = "github_
     const environment = { GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: inputs ? "workflow_dispatch" : "push", ...(inputs ? { GITHUB_EVENT_PATH: eventPath } : {}), GITHUB_WORKSPACE: join(root, "ws"), GITHUB_SERVER_URL: "https://github.com", GITHUB_REPOSITORY: s.repo,
       GITHUB_REF_NAME: "main", GITHUB_SHA: product.commit, GITHUB_RUN_ID: "7", GITHUB_ACTOR: "akmaier", AGENT_M_RUNNER: runner, AGENT_M_PRODUCT_DIR: product.checkout,
       AGENT_M_TOKEN_NAME: "AGENT_M_TOKEN", AGENT_M_KEY_NAMES: "CI_KEY", AGENT_M_TOKEN: token, CI_KEY: key };
+    // A wait of a second or more — the retries of a failed endpoint request (MOD-endpoint-calls: 2 s doubled, at most 30 s) — is collapsed to none, so
+    // that the run's five retries finish within the child's timeout; the number of requests, not the time between them, is what a test reads.
     const script = `import {runEntry} from ${JSON.stringify(new URL("../src/workflow-entries/main.mjs", import.meta.url).href)};
+      const realSetTimeout=globalThis.setTimeout; globalThis.setTimeout=(callback,ms,...rest)=>realSetTimeout(callback,ms>=1000?0:ms,...rest);
       const answers=${JSON.stringify(answers.length === 0 && agent?.answer ? [agent.answer] : answers)},requests=[]; globalThis.fetch=async(url,init={})=>{if(!String(url).startsWith("https://fixture-endpoint.example.test/"))throw Error("uncontrolled request: "+url);requests.push({headers:init.headers,body:JSON.parse(init.body)});if(${JSON.stringify(fail)})throw new TypeError(${JSON.stringify(fail)});return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({draft:answers[Math.min(requests.length-1,answers.length-1)],answers:[]})}}]}),{status:200})};
       const status=await runEntry(${JSON.stringify(inputs ? "onDispatch" : "onRecordsChanged")},${JSON.stringify(environment)},{now:new Date("2026-10-19T12:01:00Z")});console.log(JSON.stringify({status,requests}));`;
     const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };

@@ -320,11 +320,12 @@ test("alternative 4c: a product without the job workflow gets nothing handed ove
 // guards: UC-049; AN UNSUPPORTED ENDPOINT SAYS SO
 // given: a hand-over to handy whose endpoint GitHub's runners cannot reach (the fixture's fetch fails in the run) and whose coding agent fails
 // input: the person's click on Hand over; the run (the real entry on fixture checkouts); the next poll
-// expect: the run ends failed and its record names the reason — the run failed against the endpoint, why, and the routes that would work: a self-hosted runner, or a Bridge —; the bar shows the end as failed with that reason (flow: UC-049 alternative 4d)
+// expect: the endpoint received exactly 6 requests — the first and five retries of the network error —; the run ends failed and its record names the reason — the run failed against the endpoint, why, and the routes that would work: a self-hosted runner, or a Bridge —; the bar shows the end as failed with that reason (flow: UC-049 alternative 4d)
 test("alternative 4d: when GitHub's runners cannot reach the endpoint the run fails and names the reason and the routes that would work", async () => {
   const { s, w, clock, done } = await handedOver();
   const [path, record] = queuedRecord(s);
-  await withWorkflow(s, { answers: [], inputs: w.dispatches[0].inputs, files: { [path]: record }, agent: { fail: "connection refused" }, fail: "fetch failed" }, async ({ status, git, product }) => {
+  await withWorkflow(s, { answers: [], inputs: w.dispatches[0].inputs, files: { [path]: record }, agent: { fail: "connection refused" }, fail: "fetch failed" }, async ({ status, requests, git, product }) => {
+    assert.equal(requests.length, 6, "the network error is sent once and retried five times (MOD-endpoint-calls)");
     assert.equal(status.outcome, "failed");
     const after = git(product.origin, "show", `main:${path}`);
     assert.match(after, /state: failed/);

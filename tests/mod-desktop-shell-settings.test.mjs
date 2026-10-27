@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import Module from "node:module";
 import { tmpdir } from "node:os";
@@ -58,6 +58,22 @@ test("TST-291001: MOD-desktop-shell saves bounded private settings", () => {
     assert.deepEqual(disk.jumpHost, { hostname: jumpHost.hostname, user: jumpHost.user, sshPort: jumpHost.sshPort }, "failure node: only the Bridge jump-host fields persist");
     assert.equal(disk.tunnels[0].keyFile, join(dataFolder, "ssh", "id_ed25519"));
     assert.deepEqual(loadSettings(dataFolder), disk, "failure node: restart reads the canonical persisted settings");
+  } finally { rmSync(dataFolder, { recursive: true, force: true }); }
+});
+
+// TST-1238001 · level: unit · module: MOD-desktop-shell
+// guards: THE BRIDGE IS CONFIGURED IN ITS WINDOW OR FROM AN EXPORT
+// given: a Bridge data folder that already exists with mode 755 (skipped on Windows, where modes do not apply)
+// input: loadSettings(dataFolder) through the public desktop settings interface, as the Bridge reads its settings at start
+// expect: the data folder has mode 700 afterwards, readable and writable by its user only
+// Planted fault: giving mode 700 only to a folder the Bridge creates leaves the found folder at 755 and fails the mode assertion.
+test("TST-1238001: MOD-desktop-shell makes an existing data folder its user's alone when it reads its settings", { skip: process.platform === "win32" ? "file modes do not apply on Windows" : false }, () => {
+  const dataFolder = folder();
+  try {
+    chmodSync(dataFolder, 0o755);
+    assert.equal(statSync(dataFolder).mode & 0o777, 0o755, "precondition: the found data folder is 755");
+    loadSettings(dataFolder);
+    assert.equal(statSync(dataFolder).mode & 0o777, 0o700, "failure node: loadSettings leaves a found data folder readable by others");
   } finally { rmSync(dataFolder, { recursive: true, force: true }); }
 });
 

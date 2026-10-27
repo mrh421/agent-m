@@ -1,13 +1,14 @@
-// The commits of a team's sprint: its start, a new start decision while it runs, and its close (docs/architecture/
-// MOD-work-plans.md, Interfaces: startSprint, closeSprint; EVERY TEAM RUNS SPRINTS OF ITS OWN, SPRINTS OF DIFFERENT TEAMS
-// CHANGE NO MODULE THE OTHER CHANGES OR USES, A PHASE OR A TIME BOX MAY HAVE A BRANCH OF ITS OWN, A SPRINT ENDS WITH A REVIEW
-// OF ITS INCREMENT, A SPRINT ENDS WITH A RETROSPECTIVE). Each save is one commit on the default branch, at the head that was
+// The commits of a team's sprint: its start, a new start decision while it runs, its end, its close, and its increment given up
+// (docs/architecture/MOD-work-plans.md, Interfaces: startSprint, endSprint, closeSprint, giveUpIncrement; EVERY TEAM RUNS SPRINTS
+// OF ITS OWN, SPRINTS OF DIFFERENT TEAMS CHANGE NO MODULE THE OTHER CHANGES OR USES, A PHASE OR A TIME BOX MAY HAVE A BRANCH OF ITS
+// OWN, A SPRINT ENDS WITH A REVIEW OF ITS INCREMENT, A SPRINT ENDS WITH A RETROSPECTIVE, A SPRINT HOLDS ITS ITEMS UNTIL THEY
+// REACH THE DEFAULT BRANCH). Each save is one commit on the default branch, at the head that was
 // read, through the host it is given — a person's own input on the page, or a job's, whose provenance lines it carries.
 //
 // Module: MOD-work-plans
 //
 // A sprint's record is only ever appended to, never rewritten: a new start decision adds ## Selection, a close ## Review,
-// ## Unfinished items and ## Retrospective. The items a start selects are read from the snapshot at the head with
+// ## Unfinished items and ## Retrospective, an increment given up ## Increment given up. The items a start selects are read from the snapshot at the head with
 // MOD-documents' item schema. A refusal is a WorkPlansError named as the module file names it, and nothing is written then.
 
 import { appendSection, artifactSchemas, readDocument, writeDocument } from "../documents/index.mjs";
@@ -237,4 +238,45 @@ export async function closeSprint(host, close, context) {
   const { commit } = await host.commitFiles({ branch: defaultBranch, expectedHead: head, files: [{ path, text: out }],
     message: message(`Close sprint ${name}`, trailers) });
   return { commit, written: [path] };
+}
+
+// Who gives up an increment: the Product Owner, by the role; the commit, made with the person's token, names the person.
+const GIVER = "Product Owner";
+
+/**
+ * giveUpIncrement(host: Host, sprint: string, reason: string, context: { head: string, trailers: string[] }) -> Promise<{ commit:
+ * string }> — Give up increment (UC-041 7b): appends ## Increment given up — `at` the day of the commit (UTC), `by` the Product
+ * Owner, `reason` — to the record of `sprint`, `<team>/<nn>`, in one commit on the default branch at `head`; the sprint then holds
+ * none of its items (heldItems), and its done items stay done. Refused, with nothing written: NotFound { path } for a sprint
+ * with no record; NotClosed for a record without its ## Review; Merged for a sprint whose own branch has a merged pull
+ * request. Crosses the network, through the host; fails also with the host's failures.
+ */
+export async function giveUpIncrement(host, sprint, reason, context) {
+  const { head, trailers = [] } = context;
+  const name = text(sprint);
+  const path = `docs/backlog/sprints/${name}.md`;
+  const snapshot = await host.readSnapshot(head);
+  const now = await snapshot.read(path);
+  if (now === null || now === undefined) {
+    throw new WorkPlansError("NotFound", { path }, `${path} is no sprint of this product at ${head}.`);
+  }
+  const record = readDocument(sprintSchema, path, now);
+  if (!record.appended.some((section) => section.heading === "## Review")) {
+    throw new WorkPlansError("NotClosed", { sprint: name }, `Sprint ${name} is not closed: its increment is given up only after its review.`);
+  }
+  const branch = text(record.fields.branch).trim();
+  if (branch) {
+    const merged = (await host.listPullRequests({ state: "merged", branch }))
+      .filter((pullRequest) => pullRequest?.state === "merged" && text(pullRequest.branch) === branch);
+    if (merged.length) {
+      throw new WorkPlansError("Merged", { sprint: name, pullRequest: merged[0].url ?? merged[0].number },
+        `The increment of sprint ${name} is merged: the pull request of ${branch} is merged.`);
+    }
+  }
+  const changed = appendSection(sprintSchema, now, "## Increment given up", { at: new Date().toISOString().slice(0, 10), by: GIVER,
+    reason: text(reason).trim() });
+  const { defaultBranch } = await host.repositoryInfo();
+  const { commit } = await host.commitFiles({ branch: defaultBranch, expectedHead: head, files: [{ path, text: changed }],
+    message: message(`Give up the increment of sprint ${name}`, trailers) });
+  return { commit };
 }

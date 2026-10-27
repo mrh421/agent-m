@@ -36,7 +36,7 @@ function withOrigin(t, observed = []) {
 test("TST-263901: public pair and endpoint-test traverse the paired loopback Bridge without URL credentials", async (t) => {
   const folder = await mkdtemp(join(tmpdir(), "agent-m-release-client-"));
   const requests = [], received = [];
-  const bridge = await serveBridge({ host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, {
+  const bridge = await serveBridge({ name: () => "lab-pc", host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, {
     jobs: { "POST /v1/probes/endpoint-test": async ({ body }) => {
       received.push(body);
       return { answer: { works: false, diagnosis: { reason: "not reachable", message: "local model stopped", routes: ["bridge"] } } };
@@ -66,7 +66,7 @@ test("TST-263901: public pair and endpoint-test traverse the paired loopback Bri
 // expect: both timeout stages become the named BridgeError Timeout rather than NoAnswer or a raw DOMException
 test("TST-263902: public pair and probe name both fetch and response-body timeouts", async (t) => {
   const folder = await mkdtemp(join(tmpdir(), "agent-m-release-client-timeout-"));
-  const bridge = await serveBridge({ host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, {
+  const bridge = await serveBridge({ name: () => "lab-pc", host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, {
     jobs: { "POST /v1/probes/endpoint-test": async () => ({ answer: { works: true, model: "small" } }) }, mail: {}, tunnels: {},
   });
   const originalFetch = globalThis.fetch, originalTimeout = AbortSignal.timeout;

@@ -67,7 +67,7 @@ const githubNames = (extra = {}) => ({ GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME
 // guards: UC-049; A HOSTED JOB WRITES WITH THE PERSON'S TOKEN FROM A CI SECRET
 // given: the environment of a GitLab job — GITLAB_CI `true`, CI_PIPELINE_SOURCE `api`, CI_PROJECT_DIR `/builds/alice/thesis-tool`, CI_PROJECT_URL `https://gitlab.example.test/alice/thesis-tool`, CI_COMMIT_REF_NAME `main`, a CI_COMMIT_SHA, GITLAB_USER_LOGIN `alice`, CI_PIPELINE_URL `…/-/pipelines/4711`, the template's AGENT_M_RUNNER `hosted`, AGENT_M_PRODUCT_DIR, AGENT_M_TOKEN_NAME `ALICE_TOKEN`, AGENT_M_TOKEN, AGENT_M_KEY_NAMES `FIXTURE_KEY OTHER_KEY` with the value of FIXTURE_KEY only, and the inputs AGENT_M_INPUT_JOB, AGENT_M_INPUT_TASK and AGENT_M_INPUT_ENDPOINT
 // input: ciEnvironment("onDispatch", that environment, NOW)
-// expect: exactly { entry "onDispatch", service "gitlab", event { name "api", payload { inputs { job, task "Fix the loan due date", endpoint "fixture-endpoint" } } }, checkout "/builds/alice/thesis-tool", repository the project's address, branch "main", agentM { commit the sha }, token null, now NOW, job { runner "hosted", productDir "/builds/alice/thesis-tool", instanceDir "/builds/alice/instance", actor "alice", runUrl the pipeline's address, tokenName "ALICE_TOKEN", personToken the token, keys { FIXTURE_KEY the key, OTHER_KEY null }, summaryFile null, part null, resultDir null, agentKey null, outputFile null } }
+// expect: exactly { entry "onDispatch", service "gitlab", event { name "api", payload { inputs { job, task "Fix the loan due date", endpoint "fixture-endpoint" } } }, checkout "/builds/alice/thesis-tool", repository the project's address, branch "main", agentM { commit the sha }, token null, now NOW, job { runner "hosted", productDir "/builds/alice/thesis-tool", instanceDir "/builds/alice/instance", actor "alice", runUrl the pipeline's address, tokenName "ALICE_TOKEN", personToken the token, keys { FIXTURE_KEY the key, OTHER_KEY null }, summaryFile null, part null, resultDir null, agentKey null, modelUser null, keyHolder null, outputFile null } }
 test("ciEnvironment — a GitLab job's variables are read into the CiEnvironment", () => {
   assert.ok(ciEnvironment, `ciEnvironment: ${composed.error?.message}`);
   assert.deepEqual(ciEnvironment("onDispatch", gitlab(), NOW), {
@@ -75,7 +75,7 @@ test("ciEnvironment — a GitLab job's variables are read into the CiEnvironment
     event: { name: "api", payload: { inputs: { job: JOB, task: "Fix the loan due date", endpoint: "fixture-endpoint" } } },
     checkout: "/builds/alice/thesis-tool", repository: "https://gitlab.example.test/alice/thesis-tool", branch: "main", agentM: { commit: SHA }, token: null, now: NOW,
     job: { runner: "hosted", productDir: "/builds/alice/thesis-tool", instanceDir: "/builds/alice/instance", actor: "alice", runUrl: "https://gitlab.example.test/alice/thesis-tool/-/pipelines/4711",
-      tokenName: "ALICE_TOKEN", personToken: TOKEN, keys: { FIXTURE_KEY: KEY, OTHER_KEY: null }, summaryFile: null, part: null, resultDir: null, agentKey: null, outputFile: null },
+      tokenName: "ALICE_TOKEN", personToken: TOKEN, keys: { FIXTURE_KEY: KEY, OTHER_KEY: null }, summaryFile: null, part: null, resultDir: null, agentKey: null, modelUser: null, keyHolder: null, outputFile: null },
   });
 });
 
@@ -143,7 +143,7 @@ test("ciEnvironment — on GitLab the workflow's own token and the step summary 
 // guards: UC-049
 // given: GitHub's job environment — GITHUB_EVENT_NAME `workflow_dispatch`, GITHUB_EVENT_PATH naming a file that holds { "inputs": { "job": "JOB-1" } }, GITHUB_WORKSPACE `/home/runner/work/thesis-tool`, GITHUB_SERVER_URL, GITHUB_REPOSITORY `alice/thesis-tool`, GITHUB_REF_NAME `main`, GITHUB_SHA, GITHUB_RUN_ID `4711`, GITHUB_ACTOR `alice`, GITHUB_TOKEN, GITHUB_STEP_SUMMARY, and the template's AGENT_M names — and no GITLAB_CI
 // input: ciEnvironment("onDispatch", that environment, NOW)
-// expect: exactly { entry "onDispatch", service "github", event { name "workflow_dispatch", payload { inputs { job "JOB-1" } } }, checkout "/home/runner/work/thesis-tool", repository "https://github.com/alice/thesis-tool", branch "main", agentM { commit the sha }, token "ghs_workflowtoken", now NOW, job { runner "hosted", productDir "/home/runner/work/thesis-tool/product", instanceDir "/home/runner/work/thesis-tool/instance", actor "alice", runUrl "https://github.com/alice/thesis-tool/actions/runs/4711", tokenName "ALICE_TOKEN", personToken the token, keys { FIXTURE_KEY the key }, summaryFile "/home/runner/summary.md", part null, resultDir null, agentKey null, outputFile null } } — the known positive: the GitHub path's result, which the item leaves unchanged
+// expect: exactly { entry "onDispatch", service "github", event { name "workflow_dispatch", payload { inputs { job "JOB-1" } } }, checkout "/home/runner/work/thesis-tool", repository "https://github.com/alice/thesis-tool", branch "main", agentM { commit the sha }, token "ghs_workflowtoken", now NOW, job { runner "hosted", productDir "/home/runner/work/thesis-tool/product", instanceDir "/home/runner/work/thesis-tool/instance", actor "alice", runUrl "https://github.com/alice/thesis-tool/actions/runs/4711", tokenName "ALICE_TOKEN", personToken the token, keys { FIXTURE_KEY the key }, summaryFile "/home/runner/summary.md", part null, resultDir null, agentKey null, modelUser null, keyHolder null, outputFile null } } — the known positive: the GitHub path's result, which the item leaves unchanged
 test("ciEnvironment — without GITLAB_CI a GitHub job is read as before", () => {
   assert.ok(ciEnvironment, `ciEnvironment: ${composed.error?.message}`);
   const root = mkdtempSync(join(tmpdir(), "agent-m-547-"));
@@ -158,7 +158,7 @@ test("ciEnvironment — without GITLAB_CI a GitHub job is read as before", () =>
       entry: "onDispatch", service: "github", event: { name: "workflow_dispatch", payload: { inputs: { job: "JOB-1" } } },
       checkout: "/home/runner/work/thesis-tool", repository: "https://github.com/alice/thesis-tool", branch: "main", agentM: { commit: SHA }, token: "ghs_workflowtoken", now: NOW,
       job: { runner: "hosted", productDir: "/home/runner/work/thesis-tool/product", instanceDir: "/home/runner/work/thesis-tool/instance", actor: "alice",
-        runUrl: "https://github.com/alice/thesis-tool/actions/runs/4711", tokenName: "ALICE_TOKEN", personToken: TOKEN, keys: { FIXTURE_KEY: KEY }, summaryFile: "/home/runner/summary.md", part: null, resultDir: null, agentKey: null, outputFile: null },
+        runUrl: "https://github.com/alice/thesis-tool/actions/runs/4711", tokenName: "ALICE_TOKEN", personToken: TOKEN, keys: { FIXTURE_KEY: KEY }, summaryFile: "/home/runner/summary.md", part: null, resultDir: null, agentKey: null, modelUser: null, keyHolder: null, outputFile: null },
     });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

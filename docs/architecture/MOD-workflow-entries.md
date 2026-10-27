@@ -20,6 +20,7 @@ uses:
   - MOD-participant-list.participantSchema
   - MOD-endpoint-calls.endpointDriver
   - MOD-endpoint-calls.diagnoseEndpoint
+  - MOD-endpoint-calls.holdKey
   - MOD-agent-processes.agentDriver
   - MOD-checkout-tools.checkoutStrategies
   - MOD-checkout-tools.checkoutPrompt
@@ -120,12 +121,14 @@ It runs in Node, in GitHub Actions or GitLab CI, on hosted or self-hosted runner
     That host is `productFacts`' `instanceAt`: the instance at the commit a product's declaration names, which is
     another commit than the one the checkout holds.
   - The clone fetches that commit from its origin with its own credentials (MOD-repository-hosts' `readSnapshot`), the
-    access the job workflow checked the instance out with. No further token is used, and the generated files are
-    unchanged.
+    access the job workflow checked the instance out with — on the agent's machine none, since its checkouts keep no
+    token, which reaches the public instance all the same. No further token is used.
 - `product.mjs` — the entries of a product's job workflow and of its test configuration.
 - `result.mjs` — the run's result between the agent's machine and the writing machine of a product's job workflow: the
   repository the agent's checkout pushes into, what is kept for later, the result packed, read, checked and
   written.
+- `model-user.mjs` — the hosted agent's machine split by OS user: a hand-over to a model endpoint run as the model's own
+  user, beside the key holder.
 - `instance.mjs` — the entries of the instance's workflows.
 - **Taken over, outside this folder** (`CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT`; the count in `docs/measurements/2026-10-17_code-outside-every-module.md`). Each file goes as stated, in this module's own implementation jobs:
   - `.github/workflows/apply-approvals.yml`, `.github/workflows/fetch-sources.yml`, `.github/workflows/main-changed.yml`, `.github/workflows/release.yml`: named here, since GitHub fixes their place; `apply-approvals.yml` runs `onApprovalsCommitted`, `main-changed.yml` runs `onMainChanged` and `release.yml` runs `onReleaseTagged`, each and nothing else, as this module states.
@@ -165,6 +168,24 @@ address; a pull request the writer opens and each job's end are kept for the wri
 pull request and the commits as they stand once written. The records' bookkeeping thus reaches the product only through
 the writing machine.
 
+**The model's user** (`NO MODEL READS A CREDENTIAL`). On the server's own runners the machine's user may use sudo, and a
+process may read the environment of every other process of its user; so a command that a model's tool runs as that user
+reaches the key of the run, and so does every command the version control runs for the entry in a checkout the model
+writes — a hook, a command in `.git/config`. Where the job workflow names the model's user — on the server's runners,
+`agent-m-model` —, `onDispatch` of a hand-over to a model endpoint therefore runs as that user (`model-user.mjs`), whom
+the machine's user makes for the run with a home of its own and no group, so that it may not use sudo. Into that home it
+copies the product's and the instance's checkouts and the event's payload, and gives them to that user; then it runs the
+entry, and `leaveResult`, as that user, with none of the machine's variables but those of the CI service, the route and
+the machine, the names of the keys, and the home's folders in their places. The key stays with the machine's user, in
+the key holder (MOD-endpoint-calls' `holdKey`), started for the run's endpoint and the key of the secret the input
+`secret` names; the model's user's side is given its address as `AGENT_M_KEY_HOLDER`, through which it reaches the
+endpoint with no key of its own. Afterwards the machine's user ends every process of the model's user and reads the
+result's files and the step's summary back as that user — what that user can read, and nothing else — into the
+machine's result folder and summary, where the job workflow's own `leaveResult` finds the result already left. The tools
+of MOD-checkout-tools thus run, in the driver's process and in `bash`, as a user that holds no key and no token. A
+self-hosted runner names no model's user: the entry runs as the runner's own user, as on GitLab, and a model's command
+there reaches what that user can.
+
 ## Interfaces
 
 - `CiEnvironment` — what an entry reads: the entry's name; the CI service (`github` or `gitlab`) and its event with its
@@ -174,7 +195,8 @@ the writing machine.
   (`A HOSTED JOB WRITES WITH THE PERSON'S TOKEN FROM A CI SECRET`) and each CI participant's key
   (`A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET`) — on the agent's machine no token and the one key whose
   place among the key names the machine is given, on the writing machine the token and every key —, the machine, `agent`
-  or `write`, the folder of the result between them, and the file of a step's outputs — GitHub's `GITHUB_OUTPUT`, on
+  or `write`, the folder of the result between them, on the agent's machine the model's user (`AGENT_M_MODEL_USER`) and,
+  on that user's side, the key holder's address (`AGENT_M_KEY_HOLDER`), and the file of a step's outputs — GitHub's `GITHUB_OUTPUT`, on
   GitLab the dotenv file `AGENT_M_OUTPUT` names; a GitLab pipeline started from the page or the API (`web`, `api`) is read
   as a start as GitHub's `workflow_dispatch` is; in the instance, the workflow's own token for the instance
   repository and the signing secrets of a release; for `runTests`, the variables of MOD-test-schedule's *The variables of
@@ -241,7 +263,8 @@ the writing machine.
   runs tests — works in the job's checkout of the product, `JobContext`'s `product.checkout`, with the tools of
   MOD-checkout-tools, which only the agent's machine registers, and with MOD-checkout-tools' `checkoutPrompt` for that
   checkout as the endpoint's system prompt; no command of `bash` receives a key the job workflow names or the person's
-  token. Every job's context carries the places of the restricted sources, MOD-source-register's `restrictedPlaces` over
+  token. Where the job workflow names the model's user, the entry runs as that user beside the key holder (*The model's
+  user*), and the endpoint is reached through the holder's address with no key. Every job's context carries the places of the restricted sources, MOD-source-register's `restrictedPlaces` over
   the instance's register for the product; where the content of one in the product — a path of `places.contents` — is
   refused to the participant's place by MOD-job-runner's `withheld`, the job's parameter `refuses` names `bash`, since a
   command can read any file of the checkout, and the job's end notes `bash is not offered:` with that refusal
@@ -348,7 +371,8 @@ In a product: reads the snapshot of the checkout — `docs/participants.md`, the
 requirements are the process requirements, through the instance's checkout, the product's
 `docs/process.md`, its plan or backlog, `docs/jobs/` and `docs/gates/` —, writes job and gate records and the results of
 jobs through Access's local clone — on the agent's machine into the result's own repository, which the writing
-machine pushes —; reads pull requests and closes issues through the server's API, since the local clone
+machine pushes —; on the hosted agent's machine copies the checkouts into the model's user's home and reads the result's
+files and the summary back from there as that user; reads pull requests and closes issues through the server's API, since the local clone
 does no server operation; in a test job, reads the commit's test files and runs the product's test command, which writes
 the job's report; appends result records to the branch `test-results`; on GitLab, sets the project's pipeline
 schedule. It also reads the instance's process models at the commit the product's declaration names, through the
@@ -369,7 +393,8 @@ sections with their decisions and the fetched texts of sources. Reads secrets on
 - `MOD-test-document.TestDeclaration`, `testDeclarations` — the declarations of the product's tests, to which a report's
   outcomes are matched.
 - `MOD-endpoint-calls.endpointDriver`, `MOD-agent-processes.agentDriver` — the drivers of CI participants;
-  `MOD-endpoint-calls.diagnoseEndpoint` — why a handed-over run could not reach its endpoint.
+  `MOD-endpoint-calls.diagnoseEndpoint` — why a handed-over run could not reach its endpoint; `MOD-endpoint-calls.holdKey`
+  — the key holder beside the model's user.
 - `MOD-checkout-tools.checkoutStrategies`, `MOD-checkout-tools.checkoutPrompt` — the tools and the system prompt of a
   model endpoint that works in the job's checkout, on the agent's machine.
 - `MOD-job-runner.JobContext`, `registerStrategies`, `prepareJob`, `runJob`, `MOD-job-catalogue.kindOf` — running a job of

@@ -1,7 +1,8 @@
 # Agent M's job workflow for this product, written by Agent M (docs/architecture/MOD-runtimes.md). It runs an entry of Agent M's
 # workflow entries for each event below, from a checkout of the instance at the commit named in each job. The secrets are named
 # here and never valued; they are set on the repository's secrets page. The agent works on a machine of its own, which receives
-# the key of the one participant the run names and no other secret; the person's token is read only by the job that writes.
+# the key of the one participant the run names and no other secret, and keeps no token in its checkouts; on the server's runners a
+# model endpoint's job runs there as the model's own user, beside the key holder; the person's token is read only by the job that writes.
 name: agent-m-jobs
 
 on:
@@ -52,7 +53,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: akmaier/agent-m
-          ref: 9bf64ca055a7b1588f2790256b0e25e2463d83cb
+          ref: aa37c8b4a9e7b7b9e54757ab8b3f10692f9e2a08
           path: instance
       - uses: actions/setup-node@v4
         with:
@@ -61,7 +62,8 @@ jobs:
         working-directory: instance
         run: node src/workflow-entries/main.mjs chooseAgentKey
   hosted-agent-0:
-    # The agent's machine: the product and the instance read with the workflow's own read access, the one key of the participant the run names, no other secret.
+    # The agent's machine: the product and the instance read with the workflow's own read access, which neither checkout keeps; the one key of the participant the run
+    # names, no other secret; on the server's runners, the model's user, as whom a model endpoint's job runs (MOD-workflow-entries).
     name: Agent M's agent on hosted, key 0
     needs: hosted-plan
     if: needs.hosted-plan.outputs.agent == '0'
@@ -73,17 +75,20 @@ jobs:
       AGENT_M_PART: "agent"
       AGENT_M_PRODUCT_DIR: ${{ github.workspace }}/product
       AGENT_M_RESULT_DIR: ${{ github.workspace }}/result
+      AGENT_M_MODEL_USER: "agent-m-model"
       AGENT_M_KEY_NAMES: "NVIDIA_NEMOTRON_3_ULTRA_550B_A55B_API_KEY"
       AGENT_M_KEY: "0"
     steps:
       - uses: actions/checkout@v4
         with:
           path: product
+          persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: akmaier/agent-m
-          ref: 9bf64ca055a7b1588f2790256b0e25e2463d83cb
+          ref: aa37c8b4a9e7b7b9e54757ab8b3f10692f9e2a08
           path: instance
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -109,7 +114,8 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
   hosted-agent-1:
-    # The agent's machine: the product and the instance read with the workflow's own read access, the one key of the participant the run names, no other secret.
+    # The agent's machine: the product and the instance read with the workflow's own read access, which neither checkout keeps; the one key of the participant the run
+    # names, no other secret; on the server's runners, the model's user, as whom a model endpoint's job runs (MOD-workflow-entries).
     name: Agent M's agent on hosted, key 1
     needs: hosted-plan
     if: needs.hosted-plan.outputs.agent == '1'
@@ -121,6 +127,7 @@ jobs:
       AGENT_M_PART: "agent"
       AGENT_M_PRODUCT_DIR: ${{ github.workspace }}/product
       AGENT_M_RESULT_DIR: ${{ github.workspace }}/result
+      AGENT_M_MODEL_USER: "agent-m-model"
       AGENT_M_KEY_NAMES: "NVIDIA_NEMOTRON_3_ULTRA_550B_A55B_API_KEY"
       AGENT_M_KEY: "1"
       NVIDIA_NEMOTRON_3_ULTRA_550B_A55B_API_KEY: ${{ secrets.NVIDIA_NEMOTRON_3_ULTRA_550B_A55B_API_KEY }}
@@ -128,11 +135,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: product
+          persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: akmaier/agent-m
-          ref: 9bf64ca055a7b1588f2790256b0e25e2463d83cb
+          ref: aa37c8b4a9e7b7b9e54757ab8b3f10692f9e2a08
           path: instance
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -180,7 +189,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: akmaier/agent-m
-          ref: 9bf64ca055a7b1588f2790256b0e25e2463d83cb
+          ref: aa37c8b4a9e7b7b9e54757ab8b3f10692f9e2a08
           token: ${{ secrets.AGENT_M_TOKEN }}
           path: instance
       - uses: actions/setup-node@v4

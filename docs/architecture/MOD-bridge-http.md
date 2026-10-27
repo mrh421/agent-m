@@ -81,20 +81,20 @@ server's or the agent's own message; `paused` (503).
 - `BridgeHandlers` — `{ jobs: RouteHandlers, mail: RouteHandlers, tunnels: RouteHandlers }`, where `RouteHandlers` maps a
   route of `bridgeApi` to `(request: { params: object, body: object }) -> Promise<object>`; a handler throws an error of
   `bridgeApi` by its code.
-- `serveBridge(config: { host: string, port: number, origin: string, dataFolder: string, paused: () => boolean }, handlers:
-  BridgeHandlers) -> Promise<{ address: string, token: string, pairedWith: () -> string | null, close: () -> Promise<void>
-  }>` — starts the server, and returns its address and the pairing token in force, made on the first start, for the
-  Bridge's window; `pairedWith()` is the origin of the first request since this start that carried the token in force and
-  came from `origin`, and `null` before one did and again after `pairAnew` (UC-044, pairing). It is kept in memory
-  only. It refuses any
-  `host`
-  but `127.0.0.1`, `::1` or `localhost` with `BindRefused`, and a port in use with `PortInUse`. It answers a request only
-  with the pairing token, whatever its route; it answers cross-origin requests, and the browser's preflight for a request
-  to the local network, only for `origin`, the instance's Pages origin — through the jump host its web server does the
-  same (`THE JUMP HOST ALLOWS CROSS-ORIGIN REQUESTS ONLY FROM THE INSTANCE`); while `paused()` holds, a request that
-  starts work — a hand-over, an ask, a probe, a mail operation — answers `paused`, and the others still answer, so that
-  running jobs can be followed and cancelled. Its log keeps a request's method, route, status and duration — never a
-  body, a query value or a header's value.
+- `serveBridge(config: { host: string, port: number, origin: string, dataFolder: string, paused: () => boolean,
+  name: () => string, version: string | null }, handlers: BridgeHandlers) -> Promise<{ address: string, token: string,
+  pairedWith: () -> string | null, close: () -> Promise<void> }>` — starts the server, and returns its address and the
+  pairing token in force, made on the first start, for the Bridge's window; `pairedWith()` is the origin of the first
+  request since this start that carried the token in force and came from `origin`, and `null` before one did and again
+  after `pairAnew` (UC-044, pairing). It is kept in memory only. `GET /v1/pair` answers with `name()` at the time of the
+  request, with `version`, the release the Bridge runs or `null` for a start that names none, and with the platform it
+  runs on. It refuses any `host` but `127.0.0.1`, `::1` or `localhost` with `BindRefused`, and a port in use with
+  `PortInUse`. It answers a request only with the pairing token, whatever its route; it answers cross-origin requests,
+  and the browser's preflight for a request to the local network, only for `origin`, the instance's Pages origin —
+  through the jump host its web server does the same (`THE JUMP HOST ALLOWS CROSS-ORIGIN REQUESTS ONLY FROM THE
+  INSTANCE`); while `paused()` holds, a request that starts work — a hand-over, an ask, a probe, a mail operation —
+  answers `paused`, and the others still answer, so that running jobs can be followed and cancelled. Its log keeps a
+  request's method, route, status and duration — never a body, a query value or a header's value.
 - `pairAnew(dataFolder: string, token: string | null) -> Promise<string>` — a new pairing token, random or the one given
   — such as the token of a Bridge reached through the jump host, from the dashboard's settings export —, written to the
   token's file; from then on the old token is refused, by a server already running too. Errors: `NotWritable` with the

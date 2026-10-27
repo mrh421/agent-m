@@ -8,7 +8,7 @@
 // Run: node --test tests/workflow-entries-endpoint-harness.test.mjs
 //
 // Module: MOD-workflow-entries
-// Guards: UC-049; ONE DEFINITION, THREE DRIVERS; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET; RESTRICTED CONTENT GOES ONLY WHERE ITS SOURCE PERMITS; EVERY MODEL READS AGENT M'S AGENTS.MD FIRST
+// Guards: UC-049; ONE DEFINITION, THREE DRIVERS; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET; RESTRICTED CONTENT GOES ONLY WHERE ITS SOURCE PERMITS; EVERY MODEL READS AGENT M'S AGENTS.MD FIRST; NO MODEL READS A CREDENTIAL
 // Level: component
 //
 // Deterministic, no network, no real agent and no real model: the product and the instance are temporary git repositories laid out as the job workflow lays them out on the agent's
@@ -112,13 +112,14 @@ const call = (id, name, args) => ({ choices: [{ finish_reason: "tool_calls", mes
 const final = (answered) => ({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ draft: { answered }, answers: [] }) } }], usage: { prompt_tokens: 10, completion_tokens: 5 } });
 
 // The workflow's agent machine for one dispatched hand-over of check-resource to the unlisted endpoint `nvidia`: `register` adds the restricted source to the instance, and the
-// product then holds its content; `script` is the endpoint's answers in turn, the last repeated.
-async function world({ register = false, answers }, run) {
+// product then holds its content; `script` is the endpoint's answers in turn, the last repeated. `holder` lays it out as the model's user's side of that machine: no key in its
+// environment, and AGENT_M_KEY_HOLDER naming that address, at which the fake endpoint then answers; `key: false` leaves the key out without a holder.
+async function world({ register = false, answers, holder = null, key = !holder }, run) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-m-harness-")));
   const workspace = join(root, "ws"), bin = join(root, "bin"), starts = join(root, "opencode-starts");
   mkdirSync(bin);
   writeFileSync(starts, "");
-  script(bin, "opencode", `printf '%s\\n' "$*" >> ${starts}\ncase "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; esac`);
+  script(bin, "opencode", `printf '%s\\n' "$*" >> ${starts}\ncase "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; models) echo opencode/big-pickle;; esac`);
   const instanceFiles = { "README.md": "# Instance\n", "AGENTS.md": AGENTS_MD, "docs/participants.md": PARTICIPANTS, ...(register ? { "docs/sources/SRC-secret.md": RESTRICTED } : {}) };
   repository(root, "instance", instanceFiles, join(workspace, "instance"));
   const instanceDir = join(workspace, "instance");
@@ -133,10 +134,11 @@ async function world({ register = false, answers }, run) {
     NODE_TEST_CONTEXT: process.env.NODE_TEST_CONTEXT, fetch: globalThis.fetch };
   // The machine's environment as a command of bash would inherit it: the key and the token are in it, and a variable that is neither, as the known positive. The test
   // runner's own NODE_TEST_CONTEXT is not, so that the product's tests run by bash report as they do on a runner.
-  Object.assign(process.env, { PATH: `${bin}:${process.env.PATH}`, FIXTURE_KEY: KEY, AGENT_M_TOKEN: TOKEN, FIXTURE_VISIBLE: "seen-visible-2026" });
+  Object.assign(process.env, { PATH: `${bin}:${process.env.PATH}`, AGENT_M_TOKEN: TOKEN, FIXTURE_VISIBLE: "seen-visible-2026", ...(key ? { FIXTURE_KEY: KEY } : {}) });
+  if (!key) delete process.env.FIXTURE_KEY;
   delete process.env.NODE_TEST_CONTEXT;
   globalThis.fetch = async (address, init = {}) => {
-    if (!String(address).startsWith(ENDPOINT.baseUrl)) throw new TypeError(`uncontrolled request: ${address}`);
+    if (!String(address).startsWith(holder ?? ENDPOINT.baseUrl)) throw new TypeError(`uncontrolled request: ${address}`);
     requests.push({ address: String(address), headers: init.headers ?? {}, body: JSON.parse(String(init.body ?? "{}")) });
     const answer = answers[Math.min(requests.length - 1, answers.length - 1)];
     return new Response(JSON.stringify(answer), { status: 200, headers: { "content-type": "application/json" } });
@@ -147,7 +149,8 @@ async function world({ register = false, answers }, run) {
     const status = await runEntry("onDispatch", { GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_EVENT_PATH: payload, GITHUB_WORKSPACE: workspace,
       GITHUB_SERVER_URL: "https://github.com", GITHUB_REPOSITORY: "alice/thesis-tool", GITHUB_REF_NAME: "main", GITHUB_SHA: agentM.commit, GITHUB_RUN_ID: "4711",
       GITHUB_ACTOR: "alice", AGENT_M_RUNNER: "hosted", AGENT_M_PRODUCT_DIR: productDir, AGENT_M_TOKEN_NAME: "AGENT_M_TOKEN", AGENT_M_KEY_NAMES: "FIXTURE_KEY",
-      AGENT_M_PART: "agent", AGENT_M_KEY: "1", AGENT_M_RESULT_DIR: join(root, "result"), FIXTURE_KEY: KEY }, { now: NOW });
+      AGENT_M_PART: "agent", AGENT_M_KEY: "1", AGENT_M_RESULT_DIR: join(root, "result"), ...(key ? { FIXTURE_KEY: KEY } : {}),
+      ...(holder ? { AGENT_M_KEY_HOLDER: holder } : {}) }, { now: NOW });
     const deferred = join(root, "result", "deferred.json");
     return await run({ status, requests, productDir, instanceDir, bin,
       opencodeStarts: () => readFileSync(starts, "utf8").split("\n").filter(Boolean).filter((line) => !/^(--version|auth)/.test(line)),
@@ -239,5 +242,30 @@ test("TST-2026103: where a restricted source does not allow the endpoint's place
     assert.match(results, /bash/);
     assert.match(results, /SRC-secret/);
     assert.match(results, /GitHub's hosted runners/);
+  });
+});
+
+// TST-1243006 · level: component · module: MOD-workflow-entries
+// guards: NO MODEL READS A CREDENTIAL; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
+// given: as TST-2026101, but laid out as the model's user's side of the agent's machine: FIXTURE_KEY is set neither in the entry's environment nor in the process's, and AGENT_M_KEY_HOLDER names http://127.0.0.1:9, a stand-in for the key holder at which the fake endpoint answers
+// input: onDispatch with the inputs job, task, endpoint (https://llm.example.test/v1) and secret FIXTURE_KEY
+// expect: outcome `done`; every request goes to http://127.0.0.1:9/chat/completions with the model fixture-llm and no Authorization header, none to the endpoint's own
+//   address; the checkout's src/sum.mjs now adds; counter-proof: laid out the same without AGENT_M_KEY_HOLDER, the entry ends `not run`, its summary naming FIXTURE_KEY as
+//   missing, and sends no request
+test("TST-1243006: on the model's user's side the endpoint is reached through the key holder, with no key in that side's environment", async () => {
+  await world({ answers: WORK, holder: "http://127.0.0.1:9" }, async (w) => {
+    assert.equal(w.status.outcome, "done", w.status.summary);
+    assert.equal(w.requests.length, 5);
+    for (const request of w.requests) {
+      assert.equal(request.address, "http://127.0.0.1:9/chat/completions");
+      assert.equal(request.body.model, "fixture-llm");
+      assert.equal(Object.keys(request.headers).some((name) => name.toLowerCase() === "authorization"), false, "the model's user's side sends no key");
+    }
+    assert.equal(readFileSync(join(w.productDir, "src/sum.mjs"), "utf8"), "export const sum = (a, b) => a + b;\n");
+  });
+  await world({ answers: WORK, key: false }, async (w) => {
+    assert.equal(w.status.outcome, "not run", "counter-proof: without the holder and the key the job does not run");
+    assert.match(w.status.summary, /FIXTURE_KEY is missing/);
+    assert.equal(w.requests.length, 0);
   });
 });

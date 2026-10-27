@@ -6,7 +6,7 @@
 // STATUS IS DERIVED FROM THE RECORDS (it is read from MOD-approvals only); THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; WITHOUT A
 // TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; A GITLAB PRODUCT IS WRITTEN WITH A TOKEN. Nothing is written while a page is drawn.
 
-import { statuses, statusOf, lastAcceptedText, acceptShown, acceptanceBlockers, fallbackAcceptLink, approvalSchema } from "../approvals/index.mjs";
+import { statuses, statusOf, lastAcceptedText, acceptShown, acceptanceBlockers, fallbackAcceptLink, approvalSchema, rejectShown } from "../approvals/index.mjs";
 import { writeDocument, readDocument, artifactSchemas } from "../documents/index.mjs";
 import { listJobs } from "../job-ledger/index.mjs";
 import { renderArtifact, showDifference } from "../markdown-render/index.mjs";
@@ -22,6 +22,7 @@ import { showFileEdit } from "./file-edit.mjs";
 import { showDraft, jobNotes } from "./jobs.mjs";
 import { storedOnce, fromStored } from "./stored.mjs";
 import { queueService } from "./spec-entries.mjs";
+import { rejectSection } from "./reject.mjs";
 import { reportSections, splitDueDiligence, dueDiligenceSection, roundsSection, stoppedBecause, changeImpact, graphOnce } from "./sections.mjs";
 
 // What the status approved means (UC-006 4c): the record is committed, the section is not yet written into the SPEC.
@@ -126,7 +127,8 @@ function reviewedFiles(snapshot) {
 
 // The service a descriptor names for its decisions (`accept`): the approvals of reviewed files, or the entries of a change queue through
 // MOD-spec-changes. Each gives the flow the groups of files to list, whether a kind has a Review all, whether a product without a token
-// is sent to the token's step, and accepts what was shown, once: a result { commit, leftOut } or { refusal } — a failure is thrown.
+// is sent to the token's step, and accepts what was shown, once: a result { commit, leftOut } or { refusal } — a failure is thrown. `reject`
+// rejects one item that was shown, with the person's reason: { commit } or, without a token, { fallback } — null for a kind that is not rejected.
 const approvalsService = {
   tokenRequired: (context) => parseServer(context) === "gitlab",
   tokenNote: "A GitLab product is written with the project's own token. ",
@@ -141,6 +143,7 @@ const approvalsService = {
     return [{ key: kind.kind, title: null, entries }];
   },
   accept: (where, shown, person) => acceptShown(where.host, shown, person),
+  reject: (where, shown, person, reason) => rejectShown(where.host, shown, person, reason),
   // Whether an approval record's identifier is one of the kind's files in this snapshot.
   owns(snapshot, kind) {
     const ids = new Set([...reviewedFiles(snapshot).values()].filter((each) => each.kind === kind.kind).map((each) => each.id));
@@ -167,7 +170,8 @@ async function releaseShown(where, shown, person) {
   if (recorded.length === 0) throw first;
   return { commit, recorded, leftOut };
 }
-const releaseService = { ...approvalsService, accept: releaseShown };
+// A release test report is decided by its release, not rejected (A PROPOSAL IS REJECTED WITH A REASON names use cases, decisions and SPEC change entries).
+const releaseService = { ...approvalsService, accept: releaseShown, reject: null };
 const SERVICES = { approvals: approvalsService, release: releaseService, queue: queueService };
 
 export function reviewRoute(kind) {
@@ -485,7 +489,7 @@ export function reviewRoute(kind) {
 
   // One entry of a change queue: its sections as the service draws them, what holds it back or what a click accepts, and without a token the record.
   async function showEntry(where, id) {
-    const { target, token, snapshot } = where;
+    const { target } = where;
     const entry = await service.view(where, id, (other) => `#${kind.route}/id=${encodeURIComponent(other)}`);
     if (!entry) {
       target.append(el("p", "problem", `No ${kind.noun} ${id} on the default branch.`), link(`#${kind.route}`, null, `All ${kind.plural}`));
@@ -494,6 +498,14 @@ export function reviewRoute(kind) {
     target.append(el("h2", null, entry.title), badge(entry.status, entry.label),
       ...(entry.status === "approved" ? [el("p", "approved-note", APPROVED_NOTE)] : []), explain(kind.explain.one), ...entry.nodes);
     if (entry.edit) target.append(link(`#${kind.route}/id=${encodeURIComponent(id)}/edit=1`, "edit-link", "Edit"));
+    offerEntryAcceptance(where, id, entry);
+    // Beside Accept, Reject, for every entry that is not decided — open, stale or waiting for its anchor (UC-006 4a).
+    if (entry.shown && service.reject) target.append(rejectOffer(where, id, entry.shown[0]));
+  }
+
+  // What holds an entry back, or what a click accepts of it — or, without a token, the record.
+  function offerEntryAcceptance(where, id, entry) {
+    const { target, token, snapshot } = where;
     if (entry.hold) { target.append(entry.hold); return; }
     if (!entry.shown) return;
     if (!token) { offerRecord(target, entry.record, snapshot, where.context); return; }
@@ -509,6 +521,12 @@ export function reviewRoute(kind) {
       }
     });
     target.append(accept);
+  }
+
+  // The Reject of one item shown (rejectSection): the service's reject with the person's reason, and the page drawn again from the repository after it.
+  function rejectOffer(where, id, shown) {
+    return rejectSection(where, id, kind.explain.fallback, (reason) => service.reject(where, shown, where.token?.name ?? "a reviewer", reason),
+      (message) => redraw(where, { id }, message));
   }
 
   async function showOne(where, id) {
@@ -548,6 +566,15 @@ export function reviewRoute(kind) {
       }
     }
     if (file.status === "accepted") return;
+    await offerAcceptance(where, file, body, blob, last, stored);
+    // Beside Accept, Reject (UC-008 3f, UC-023 5b).
+    if (service.reject) target.append(rejectOffer(where, id, { path: file.path, blob }));
+  }
+
+  // What a click accepts of one file that is not accepted: its impact list and what it rests on, then Accept — or, without a token, GitHub's page.
+  async function offerAcceptance(where, file, body, blob, last, stored) {
+    const { target, snapshot, token } = where;
+    const id = file.id;
     const asked = kind.limitations ? reportSections(body) : null;
     if (asked) target.append(...asked.nodes);
     if (kind.restsOn && last) {

@@ -19,6 +19,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { formatFinding } from "../src/text-tools/index.mjs";
 import { runJob } from "../src/job-runner/index.mjs";
+import * as catalogue from "../src/job-catalogue/index.mjs";
 
 const ENDPOINT = { name: "endpoint-a", type: "model endpoint", model: "example-model", context: 200000, price: null,
   capabilities: ["draft text", "read the repository", "use tools"], place: "this machine", route: "endpoint a" };
@@ -113,6 +114,20 @@ test("a model endpoint that declares use tools gets the kind's five tools in its
   assert.equal((await offeredIn({ kind: kindOf({ toolLimit: 30 }) })).limit, 30, "the limit is the kind's, not a constant");
 });
 
+// TST-1240102 · level: unit · module: MOD-job-runner
+// guards: A PARTICIPANT DECLARES ITS CAPABILITIES
+// given: the kind of TST-486001 with a toolLimit of null; then the same kind with the toolLimit the real catalogue gives the code kind implement; a model endpoint declaring draft text, read the repository and use tools
+// input: runJob with a fixture drafter that keeps the `tools` of its input
+// expect: a ToolUse with the five definitions whose limit is null in both cases — not 200, not 0; known positive: with a toolLimit of 30, the limit is 30
+test("TST-1240102: a kind without a tool limit gives a ToolUse whose limit is null, the code kind implement among them", async () => {
+  assert.equal((await offeredIn({ kind: kindOf({ toolLimit: 30 }) })).limit, 30, "known positive: a number is handed on");
+  const none = await offeredIn({ kind: kindOf({ toolLimit: null }) });
+  assert.deepEqual(none.definitions.map((tool) => tool.name), ALL_FIVE);
+  assert.strictEqual(none.limit, null);
+  const implement = await catalogue.kindOf("implement");
+  assert.strictEqual((await offeredIn({ kind: kindOf({ toolLimit: implement.toolLimit }) })).limit, null, "the code kind implement has no limit");
+});
+
 // TST-486002 · level: unit · module: MOD-job-runner
 // guards: A PARTICIPANT DECLARES ITS CAPABILITIES
 // given: the kind of TST-486001; then a model endpoint declaring draft text and read the repository but not use tools; a CLI agent and a sandboxed agent, each declaring use tools; a CI agent declaring use tools; the same endpoint with a kind that names no tools
@@ -124,7 +139,7 @@ test("every other drafter gets null: without use tools, a coding agent, a CI age
   for (const type of ["CLI agent", "sandboxed agent", "CI agent"]) {
     assert.equal(await offeredIn({ participant: { ...ENDPOINT, type, route: "bridge lab-pc agent claude" } }), null, type);
   }
-  assert.equal(await offeredIn({ kind: kindOf({ tools: [], toolLimit: 0 }) }), null, "a kind that names no tools");
+  assert.equal(await offeredIn({ kind: kindOf({ tools: [], toolLimit: null }) }), null, "a kind that names no tools");
 });
 
 // TST-486003 · level: unit · module: MOD-job-runner

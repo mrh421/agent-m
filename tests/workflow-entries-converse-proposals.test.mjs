@@ -370,7 +370,7 @@ test("TST-1360108: the endpoint's own converse job, dispatched with its task, ru
     writeFileSync(started, "");
     writeFileSync(join(bin, "git"), `#!/bin/sh\nexec ${REAL_GIT} "$@"\n`, { mode: 0o755 });
     writeFileSync(join(bin, "sleep"), `#!/bin/sh\nexec ${REAL_SLEEP} "$@"\n`, { mode: 0o755 });
-    writeFileSync(join(bin, "opencode"), `#!/bin/sh\necho "$1" >> ${started}\ncase "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; esac\n`, { mode: 0o755 });
+    writeFileSync(join(bin, "opencode"), `#!/bin/sh\necho "$1" >> ${started}\ncase "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; models) echo opencode/big-pickle;; esac\n`, { mode: 0o755 });
     const saved = { PATH: process.env.PATH, FIXTURE_KEY: process.env.FIXTURE_KEY };
     Object.assign(process.env, { PATH: bin, FIXTURE_KEY: KEY });
     try {

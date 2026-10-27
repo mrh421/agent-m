@@ -189,7 +189,7 @@ test("5a and 5b: no participant can run the levels, and a run started without a 
   await clickOf(byClass(noRunner.page, "run-on-commit")[0]);
   const missing = textOf(byClass(noRunner.page, "missing-capability")[0]);
   assert.match(missing, /run code and tests/);
-  assert.equal(byClass(noRunner.page, "uc-017")[0].getAttribute("href"), "#use-case/id=UC-017");
+  assert.equal(textOf(byClass(noRunner.page, "uc-017")[0]), "UC-017");
   assert.equal(byTag(noRunner.page, "button").filter((button) => textOf(button) === "Run").length, 0);
   const tokenless = await show({}, { tokenStored: false });
   await clickOf(byClass(tokenless.page, "run-on-commit")[0]);

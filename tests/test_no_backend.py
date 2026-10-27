@@ -23,7 +23,9 @@ on its own (KEIN SPEC-ZUGRIFF AUS PRODUKT-CODE). Three checks:
    GitHub's API and raw hosts, or the product's own GitLab project (`prepare` in src/repository-hosts/failures.mjs, tested in
    tests/review-core.d/repository-hosts.test.mjs and tests/repository-hosts.test.mjs); the bridge probe on localhost; the dashboard's
    own view files and style sheets; MOD-spec-document's own skeleton.md, read from the address the module was loaded
-   from; MOD-endpoint-calls' configured endpoint short test and direct job-driver transports; and the own data files — schemas, models, practices —
+   from; MOD-endpoint-calls' two senders, sentWithRetries and endpointResponse, given only requests whose address endpointUrl built
+   from the configured baseUrl; MOD-checkout-tools' webfetch, which runs in Node only and which no module the site loads in a
+   browser imports (a reading, stated at its entry below); and the own data files — schemas, models, practices —
    of the modules whose files state that they read them when
    they are loaded: MOD-documents, MOD-model-catalogue, MOD-participant-list, MOD-source-register, MOD-product-process,
    MOD-site-frame (its explanations.md), MOD-personal-data, MOD-resource-list, MOD-reuse-facts and MOD-prompt-bar,
@@ -42,6 +44,7 @@ every vendored library for request channels.
 
 Only tracked files are read, so a scratch file in a working tree changes nothing. Counter-proofs:
 docs/measurements/2026-10-01_product-rules-repository-checks.md."""
+import posixpath
 import re
 import subprocess
 import unittest
@@ -187,46 +190,103 @@ def _source_register_request(text: str, at: int) -> bool:
             and 'url.searchParams.set("language", "eng");' in text)
 
 
-def _endpoint_transport_path(text: str, at: int) -> str | None:
-    """The declared short-test or driver path supplying this endpoint fetch, if any."""
-    before = text[:at]
-    if not text[at:].startswith("fetch(url, init)"):
-        return None
-    provider = ("function providerRequest(config, prompt," in before
-                and "url: endpointUrl(config.baseUrl," in before
-                and "if (config.key !== null)" in before)
-    direct = ("function requestFor(config)" in before
-              and "url: endpointUrl(config.baseUrl," in before
-              and "if (config.key !== null)" in before)
-    short_test = ("function requestFor(config)" in before
-                  and "export async function testEndpoint(config)" in before
-                  and "const { url, init } = requestFor(config);" in before)
-    driver_input = ("const { url, init } = driverRequest(config, input.prompt, options.signal);" in before
-                    or ('import { driverPrompt } from "../job-runner/index.mjs";' in before
-                        and "const { url, init } = driverRequest(config, driverPrompt(input), options.signal);" in before))
-    driver = ("function driverRequest(config, prompt, signal)" in before
-              and "return providerRequest(config, prompt," in before
-              and "export function endpointDriver(config, participant)" in before
-              and driver_input)
-    if short_test and (direct or provider) and before.rfind("export async function testEndpoint(config)") > before.rfind("export function endpointDriver(config, participant)"):
-        return "short test"
-    if driver and provider:
-        return "direct driver"
-    return None
+ENDPOINT_URL = 'function endpointUrl(baseUrl, path) {\n  return `${baseUrl.replace(/\\/+$/, "")}${path}`;\n}'
+PROVIDER_REQUEST = "function providerRequest(config, "
+# A sender of MOD-endpoint-calls -> (its declaration, its one fetch), as the file writes them.
+ENDPOINT_SENDERS = {
+    "sentWithRetries": ("async function sentWithRetries(config, { url, init }, where, signal) {", "fetch(url, { ...init, signal })"),
+    "endpointResponse": ("async function endpointResponse(config, { url, init }, where) {", "fetch(url, init)"),
+}
+# What a sender may be given as its request after `config, ` -> the declarations that must each stand once in the file for it: the job
+# driver's driverRequest and the exchange's `request`, both providerRequest's; the short test's requestFor, providerRequest's too; and the
+# model listings' address, which endpointUrl builds from the configuration's baseUrl.
+ENDPOINT_REQUESTS = (
+    ("driverRequest(config, ", ("function driverRequest(config, prompt, signal) {\n  return providerRequest(config, ",)),
+    ("request, ", ("  const request = providerRequest(config, ",)),
+    ("{ url, init }, ", ("  const { url, init } = requestFor(config);", "function requestFor(config) {\n  return providerRequest(config, ")),
+    ("{ url: endpointUrl(config.baseUrl, ", ()),
+)
+
+
+def _function_body(text: str, head: str) -> str:
+    """The text of the top-level function the file declares with `head`, up to its closing brace at the line's start."""
+    start = text.find(head)
+    end = text.find("\n}\n", start)
+    return text[start:end if end >= 0 else len(text)]
 
 
 def _configured_endpoint_transport(text: str, at: int) -> bool:
-    """MOD-endpoint-calls sends only its EndpointConfig-derived short test and direct driver requests."""
-    return _endpoint_transport_path(text, at) is not None
+    """MOD-endpoint-calls (docs/architecture/MOD-endpoint-calls.md) sends a request to the configured endpoint only through its two
+    senders — sentWithRetries, which sends a failed request again (MOD-endpoint-calls: at most five times), and endpointResponse, which
+    sends once —: the fetch is the one of a sender's own function, which the file declares once and does not export or pass on. Every call
+    of a sender gives it a request whose address endpointUrl built from the configuration's baseUrl — driverRequest's, the exchange's or
+    requestFor's, all providerRequest's, or the model listings' —; every address providerRequest returns and every `url:` the file writes
+    is endpointUrl(config.baseUrl, …), and endpointUrl only joins the baseUrl and a path."""
+    own = [name for name, (head, call) in ENDPOINT_SENDERS.items()
+           if text[at:].startswith(call) and text.count(head) == 1 and f"export {head}" not in text
+           and text.rfind("function ", 0, at) == text.find(head) + len("async ")]
+    if not own or text.count(ENDPOINT_URL) != 1 or text.count(PROVIDER_REQUEST) != 1:
+        return False
+    if text.count("url:") != text.count("url: endpointUrl(config.baseUrl, "):
+        return False
+    provider = _function_body(text, PROVIDER_REQUEST)
+    returns = re.findall(r"\breturn\b\s*(\S)", provider)
+    if not returns or set(returns) != {"{"} or len(returns) != provider.count("url: endpointUrl(config.baseUrl, "):
+        return False
+    for name, (head, _) in ENDPOINT_SENDERS.items():
+        rest = text.replace(head, "")
+        for m in re.finditer(rf"(?<![\w$.]){name}\b", rest):
+            argument = rest[m.end():m.end() + 160]
+            if not argument.startswith("(config, "):
+                return False  # the sender passed on, aliased or called with another configuration
+            argument = argument[len("(config, "):]
+            if not any(argument.startswith(form) and all(text.count(need) == 1 for need in needs) for form, needs in ENDPOINT_REQUESTS):
+                return False
+    return True
 
 
-def _endpoint_transport_count(text: str) -> int:
-    """The second transport exists only when the one short-test and one direct-driver paths both have their evidence."""
-    fetch = next(pattern for name, pattern in CHANNELS if name == "fetch")
-    calls = [match.start() for match in fetch.finditer(text)]
-    short = [at for at in calls if _endpoint_transport_path(text, at) == "short test"]
-    driver = [at for at in calls if _endpoint_transport_path(text, at) == "direct driver"]
-    return 2 if len(calls) == len(short) + len(driver) == 2 and len(short) == len(driver) == 1 else 1
+CHECKOUT_TOOLS = "src/checkout-tools/"
+WEBFETCH = ("its webfetch tool, which runs in Node only, registered only by the Workflows (src/workflow-entries/, in CI): no module "
+            "the site loads in a browser imports src/checkout-tools/")
+IMPORT_SPECIFIER = re.compile(r"""(?:\bimport|\bexport)\s*(?:[\w$*{}\s,]*?\bfrom\s*)?(["'])(\.{1,2}/[^"'`]+)\1"""
+                              r"""|\bimport\(\s*(["'`])(\.{1,2}/[^"'`$]+)\3\s*\)""")
+
+
+def browser_modules(files: dict[str, str]) -> set[str]:
+    """The modules the site loads in a browser: the module each script tag of a page names, the view modules its data-views name —
+    MOD-site-frame's viewAddress(slug), ../<slug>/index.mjs against src/site-frame/, that is src/<slug>/index.mjs —, and every module these
+    import, statically or by an import() of a relative address written out. A page's address of another origin is check 1's and 2's."""
+    def resolve(base: str, specifier: str) -> str:
+        return posixpath.normpath(posixpath.join(posixpath.dirname(base), specifier))
+    queue = []
+    for path, text in files.items():
+        if not path.endswith(".html"):
+            continue
+        for tag in re.finditer(r"<script\b[^>]*>", text, re.I):
+            src = re.search(r"""\bsrc\s*=\s*["']([^"']+)["']""", tag.group(0))
+            if src and not re.match(r"(?:[a-z][a-z0-9+.-]*:)?//", src.group(1), re.I):
+                queue.append(resolve(path, src.group(1)))
+            views = re.search(r"""\bdata-views\s*=\s*["']([^"']*)["']""", tag.group(0))
+            queue += [f"src/{slug}/index.mjs" for slug in (views.group(1).split() if views else [])]
+    seen = set()
+    while queue:
+        path = queue.pop()
+        if path in seen or path not in files:
+            continue
+        seen.add(path)
+        queue += [resolve(path, m.group(2) or m.group(4)) for m in IMPORT_SPECIFIER.finditer(files[path])]
+    return seen
+
+
+def _webfetch_in_node_only(text: str, at: int, files: dict[str, str]) -> bool:
+    """MOD-checkout-tools' webfetch (docs/architecture/MOD-checkout-tools.md, ARC-046): "It runs in Node only: the programs that run such
+    jobs register its strategies; the browser does not". NO SERVER's check concerns the built site a browser runs; the tool's fetch is
+    allowed when a page of the site exists and no module the site loads in a browser lies in src/checkout-tools/."""
+    loaded = browser_modules(files)
+    return text[at:].startswith("fetch(url, {") and bool(loaded) and not any(f.startswith(CHECKOUT_TOOLS) for f in loaded)
+
+
+_webfetch_in_node_only.site = True  # the evidence reads the whole site, not the file alone
 
 
 def _bridge_client_transport(text: str, at: int) -> bool:
@@ -276,7 +336,7 @@ def _msal_element(text: str, at: int) -> bool:
 
 
 OWN_DATA_FILES = "its own data files, from the address the module itself was loaded from"
-ENDPOINT_TRANSPORT = "the EndpointConfig-derived short test or direct driver request"
+ENDPOINT_TRANSPORT = "a sender of the request endpointUrl built from the configured baseUrl"
 BRIDGE_CLIENT_TRANSPORT = "the Bridge-handle pairing or bridgeApi endpoint-test transport"
 MSAL_BROWSER_FETCH = "the network client of @azure/msal-browser 5.24.0, vendored in MOD-mail-routes: the authority's configuration and the token endpoint"
 MSAL_BROWSER_ELEMENT = "the preconnect link and the silent sign-in iframe of @azure/msal-browser 5.24.0, vendored in MOD-mail-routes"
@@ -314,7 +374,13 @@ PERMITTED_CHANNELS = {
     ("src/repository-hosts/failures.mjs", "fetch"): (1, "the repository hosts' request helper sends only what its origin gate prepare() let through", _prepared),
     ("src/spec-document/index.mjs", "fetch"): (1, "its own skeleton.md, from the address the module itself was loaded from",
                                                lambda t, i: t[i:].startswith("fetch(url)") and 'new URL("./skeleton.md", import.meta.url)' in t),
-    ("src/endpoint-calls/index.mjs", "fetch"): (1, ENDPOINT_TRANSPORT, _configured_endpoint_transport),
+    ("src/endpoint-calls/index.mjs", "fetch"): (2, ENDPOINT_TRANSPORT, _configured_endpoint_transport),
+    # A reading taken, not a rule of NO SERVER's own: its check concerns the built site a browser runs (this file's docstring);
+    # MOD-checkout-tools, MOD-job-catalogue and ARC-046 say webfetch runs in Node only, registered only by the Workflows — in CI —,
+    # never by the browser; and A PARTICIPANT DECLARES ITS CAPABILITIES grants a participant "reach the web". Its two fetches (the page, and
+    # the page again with an honest user agent where Cloudflare challenged the first) are allowed while no module the site loads in a
+    # browser imports src/checkout-tools/.
+    ("src/checkout-tools/webfetch.mjs", "fetch"): (2, WEBFETCH, _webfetch_in_node_only),
     ("src/bridge-client/", "fetch"): (1, BRIDGE_CLIENT_TRANSPORT, _bridge_client_transport),
     ("src/mail-routes/", "fetch"): (2, MAIL_ROUTES_LOOKUP, _mail_routes_request),
     # The modules whose files state that they read their own data files when they are loaded (their ## Files and ## Parts).
@@ -398,11 +464,10 @@ def channel_findings(files: dict[str, str], permitted=PERMITTED_CHANNELS) -> lis
                     found.append(f"{path}:{line}: {name}: {text[m.start():m.start() + 60].splitlines()[0]}")
                     continue
                 evidence = permitted[key][2]
-                if evidence and not evidence(text, m.start()):
+                holds = evidence and (evidence(text, m.start(), files) if getattr(evidence, "site", False) else evidence(text, m.start()))
+                if evidence and not holds:
                     found.append(f"{path}:{line}: {name}: not {permitted[key][1]}")
     for key, (count, why, _) in permitted.items():
-        if key == ("src/endpoint-calls/index.mjs", "fetch") and _present(key[0], files):
-            count = _endpoint_transport_count(files[key[0]])
         n, folder = seen.get(key, 0), key[0].endswith("/")
         if _present(key[0], files) and (n > count if folder else n != count):
             found.append(f"{key[0]}: {key[1]} found {n} times, permitted {'at most ' if folder else ''}{count} ({why})")
@@ -504,58 +569,129 @@ class NoServer(unittest.TestCase):
                                                                 "// the settings by name, export and import (UC-042)\nfetchText(u);\n"}), [])
 
     def test_counter_proof_only_the_configured_endpoint_transport_is_allowed(self):
-        configured = ("function requestFor(config) {\n"
-                      "  if (config.key !== null) headers.Authorization = `Bearer ${config.key}`;\n"
-                      "  return { url: endpointUrl(config.baseUrl, \"/chat/completions\"), init };\n"
-                      "}\n"
-                      "export async function testEndpoint(config) {\n"
-                      "  const { url, init } = requestFor(config);\n"
-                      "  return fetch(url, init);\n"
-                      "}\n")
-        self.assertEqual(channel_findings({"src/endpoint-calls/index.mjs": configured}), [])
-        arbitrary = configured.replace("const { url, init } = requestFor(config);", "const url = telemetry; const init = {};")
-        self.assertEqual(channel_findings({"src/endpoint-calls/index.mjs": arbitrary}),
-                         [f"src/endpoint-calls/index.mjs:7: fetch: not {ENDPOINT_TRANSPORT}"])
-        twice = configured.replace("return fetch(url, init);", "return fetch(url, init);\n  return fetch(url, init);")
-        self.assertEqual(channel_findings({"src/endpoint-calls/index.mjs": twice}),
-                         [f"src/endpoint-calls/index.mjs: fetch found 2 times, permitted 1 ({ENDPOINT_TRANSPORT})"])
+        # MOD-endpoint-calls in the form its file writes it: its two senders sentWithRetries (line 16) and endpointResponse (line 37),
+        # fed only by driverRequest's, the exchange's, requestFor's and the listings' requests, all built by endpointUrl from config.baseUrl.
+        path = "src/endpoint-calls/index.mjs"
+        accepted = ("function endpointUrl(baseUrl, path) {\n"
+                    "  return `${baseUrl.replace(/\\/+$/, \"\")}${path}`;\n"
+                    "}\n"
+                    "function requestFor(config) {\n"
+                    "  return providerRequest(config, PROBE_PROMPT, { maxTokens: 64 });\n"
+                    "}\n"
+                    "function providerRequest(config, prompt, { signal } = {}) {\n"
+                    "  if (config.key !== null) headers.Authorization = `Bearer ${config.key}`;\n"
+                    "  return { url: endpointUrl(config.baseUrl, \"/chat/completions\"), init: { method: \"POST\", headers, signal } };\n"
+                    "}\n"
+                    "function driverRequest(config, prompt, signal) {\n"
+                    "  return providerRequest(config, prompt, { signal });\n"
+                    "}\n"
+                    "async function sentWithRetries(config, { url, init }, where, signal) {\n"
+                    "  for (let attempt = 1; ; attempt++) {\n"
+                    "    const response = await fetch(url, { ...init, signal });\n"
+                    "    if (response.ok) return response;\n"
+                    "  }\n"
+                    "}\n"
+                    "export async function endpointExchange(config, exchange, { signal } = {}) {\n"
+                    "  const request = providerRequest(config, null, { signal });\n"
+                    "  return sentWithRetries(config, request, \"node\", signal);\n"
+                    "}\n"
+                    "export function endpointDriver(config, participant) {\n"
+                    "  return { async send(input, options = {}) {\n"
+                    "    return sentWithRetries(config, driverRequest(config, driverPrompt(input), options.signal), \"node\", options.signal);\n"
+                    "  } };\n"
+                    "}\n"
+                    "export async function testEndpoint(config) {\n"
+                    "  const { url, init } = requestFor(config);\n"
+                    "  return endpointResponse(config, { url, init }, \"node\");\n"
+                    "}\n"
+                    "export async function listModels(config) {\n"
+                    "  return endpointResponse(config, { url: endpointUrl(config.baseUrl, \"/models\"), init: { method: \"GET\", headers } }, \"node\");\n"
+                    "}\n"
+                    "async function endpointResponse(config, { url, init }, where) {\n"
+                    "  return await fetch(url, init);\n"
+                    "}\n")
+        # Known positive: the accepted form passes, with its two fetches.
+        self.assertEqual(channel_findings({path: accepted}), [])
+        both = [f"{path}:16: fetch: not {ENDPOINT_TRANSPORT}", f"{path}:37: fetch: not {ENDPOINT_TRANSPORT}"]
+        # Planted: a request whose address is not endpointUrl's of the configured baseUrl, given to a sender or returned by providerRequest;
+        # an endpointUrl that does not join the baseUrl; a sender exported, passed on, or called with another configuration. Each leaves
+        # both senders' fetches without their evidence.
+        for planted, note in (
+            (accepted.replace("sentWithRetries(config, request,", "sentWithRetries(config, { url: telemetry, init: {} },"), "an arbitrary request"),
+            (accepted.replace("endpointResponse(config, { url, init },", "endpointResponse(config, { url: location.href, init },"), "another address"),
+            (accepted.replace("url: endpointUrl(config.baseUrl, \"/chat/completions\")", "url: TELEMETRY"), "providerRequest's address"),
+            (accepted.replace("url: endpointUrl(config.baseUrl, \"/models\")", "url: endpointUrl(TELEMETRY, \"/models\")"), "another base"),
+            (accepted.replace("${baseUrl.replace(/\\/+$/, \"\")}${path}", "https://collector.example${path}"), "endpointUrl without the baseUrl"),
+            (accepted + "export const send = sentWithRetries;\n", "a sender passed on"),
+            (accepted.replace("sentWithRetries(config, request,", "sentWithRetries(other, request,"), "another configuration"),
+            (accepted.replace("  const { url, init } = requestFor(config);\n", "  const { url, init } = { url: telemetry, init: {} };\n"),
+             "the short test's request from elsewhere"),
+        ):
+            with self.subTest(note):
+                self.assertEqual(channel_findings({path: planted}), both)
+        # A sender exported, which another module could give any address: its own fetch is found.
+        exported = accepted.replace("async function endpointResponse(", "export async function endpointResponse(")
+        self.assertEqual(channel_findings({path: exported}), [f"{path}:37: fetch: not {ENDPOINT_TRANSPORT}"])
+        # providerRequest returning an address it did not build with endpointUrl, by shorthand (each fetch one line further down).
+        shorthand = accepted.replace("  return { url: endpointUrl(config.baseUrl, \"/chat/completions\"), init:",
+                                     "  const url = TELEMETRY;\n  return { url, init:")
+        self.assertEqual(channel_findings({path: shorthand}),
+                         [f"{path}:17: fetch: not {ENDPOINT_TRANSPORT}", f"{path}:38: fetch: not {ENDPOINT_TRANSPORT}"])
+        # A fetch in another function of the file: found, and counted.
+        beacon = accepted + "async function beacon(url) {\n  return fetch(url, { ...init, signal });\n}\n"
+        self.assertEqual(channel_findings({path: beacon}),
+                         [f"{path}:40: fetch: not {ENDPOINT_TRANSPORT}", f"{path}: fetch found 3 times, permitted 2 ({ENDPOINT_TRANSPORT})"])
+        # A second fetch in a sender: counted.
+        twice = accepted.replace("    const response = await fetch(url, { ...init, signal });\n",
+                                 "    const response = await fetch(url, { ...init, signal });\n    await fetch(url, { ...init, signal });\n")
+        self.assertEqual(channel_findings({path: twice}), [f"{path}: fetch found 3 times, permitted 2 ({ENDPOINT_TRANSPORT})"])
+        # What the module is allowed is the file's alone: the same text in another module is found, each fetch.
+        self.assertEqual(channel_findings({"src/text-tools/index.mjs": accepted}),
+                         ["src/text-tools/index.mjs:16: fetch: fetch(url, { ...init, signal });",
+                          "src/text-tools/index.mjs:37: fetch: fetch(url, init);"])
 
-        driver = ("function requestFor(config) {\n"
-                  "  return providerRequest(config, ONE_WORD_PROMPT, { maxTokens: 1 });\n"
-                  "}\n"
-                  "function providerRequest(config, prompt, { maxTokens = null, signal } = {}) {\n"
-                  "  if (config.key !== null) headers.Authorization = `Bearer ${config.key}`;\n"
-                  "  return { url: endpointUrl(config.baseUrl, \"/chat/completions\"), init };\n"
-                  "}\n"
-                  "function driverRequest(config, prompt, signal) {\n"
-                  "  return providerRequest(config, prompt, { maxTokens: config.kind === \"anthropic\" ? DRIVER_MAX_TOKENS : null, signal });\n"
-                  "}\n"
-                  "export function endpointDriver(config, participant) {\n"
-                  "  const { url, init } = driverRequest(config, input.prompt, options.signal);\n"
-                  "  return fetch(url, init);\n"
-                  "}\n"
-                  "export async function testEndpoint(config) {\n"
-                  "  const { url, init } = requestFor(config);\n"
-                  "  return fetch(url, init);\n"
-                  "}\n")
-        self.assertEqual(channel_findings({"src/endpoint-calls/index.mjs": driver}), [])
-        serialized = ('import { driverPrompt } from "../job-runner/index.mjs";\n' + driver.replace(
-            "driverRequest(config, input.prompt, options.signal)", "driverRequest(config, driverPrompt(input), options.signal)"))
-        self.assertEqual(channel_findings({"src/endpoint-calls/index.mjs": serialized}), [])
-        undeclared = serialized.replace('import { driverPrompt } from "../job-runner/index.mjs";\n', "")
-        self.assertEqual(len(channel_findings({"src/endpoint-calls/index.mjs": undeclared})), 2)
-        foreign = serialized.replace("const { url, init } = driverRequest(config, driverPrompt(input), options.signal);",
-                                     "const url = telemetry; const init = {};")
-        self.assertEqual(len(channel_findings({"src/endpoint-calls/index.mjs": foreign})), 2)
-        arbitrary_driver = driver.replace("const { url, init } = driverRequest(config, input.prompt, options.signal);",
-                                          "const url = telemetry; const init = {};")
-        self.assertEqual(channel_findings({"src/endpoint-calls/index.mjs": arbitrary_driver}),
-                         [f"src/endpoint-calls/index.mjs:13: fetch: not {ENDPOINT_TRANSPORT}",
-                          f"src/endpoint-calls/index.mjs: fetch found 2 times, permitted 1 ({ENDPOINT_TRANSPORT})"])
-        duplicate_driver = driver.replace("return fetch(url, init);\n}\nexport async function testEndpoint",
-                                          "return fetch(url, init);\n  return fetch(url, init);\n}\nexport async function testEndpoint", 1)
-        self.assertEqual(channel_findings({"src/endpoint-calls/index.mjs": duplicate_driver}),
-                         [f"src/endpoint-calls/index.mjs: fetch found 3 times, permitted 1 ({ENDPOINT_TRANSPORT})"])
+    def test_counter_proof_webfetch_is_allowed_only_while_no_browser_module_imports_the_checkout_tools(self):
+        # MOD-checkout-tools' webfetch: its two fetches are allowed while a page of the site exists and no module the site loads in a browser
+        # — a page's script, a view its data-views names, and what they import — lies in src/checkout-tools/.
+        webfetch = ("export async function webfetch({ url }) {\n"
+                    "  let response = await fetch(url, { headers, signal: controller.signal });\n"
+                    "  if (response.status === 403) response = await fetch(url, { headers: { ...headers, \"User-Agent\": \"opencode\" }, signal: controller.signal });\n"
+                    "}\n")
+        site = {"index.html": '<script type="module" src="src/site-frame/start.mjs" data-page="main" data-views="main-page"></script>\n',
+                "src/site-frame/start.mjs": 'import { loadView } from "./views.mjs";\n',
+                "src/site-frame/views.mjs": "export const loadView = () => null;\n",
+                "src/main-page/index.mjs": 'import { home } from "./home.mjs";\n',
+                "src/main-page/home.mjs": "export const home = 1;\n",
+                "src/workflow-entries/compose.mjs": 'import { checkoutStrategies } from "../checkout-tools/index.mjs";\n',
+                "src/checkout-tools/index.mjs": 'export { webfetch } from "./webfetch.mjs";\n',
+                "src/checkout-tools/webfetch.mjs": webfetch}
+        # Known positives: the closure holds the page's script, what it imports, the view and what the view imports — not the program
+        # that runs jobs, nor the tools; and the real site's closure holds its frame, its views and the modules they import.
+        self.assertEqual(browser_modules(site), {"src/site-frame/start.mjs", "src/site-frame/views.mjs", "src/main-page/index.mjs",
+                                                 "src/main-page/home.mjs"})
+        loaded = browser_modules(self.files)
+        for module in ("src/site-frame/start.mjs", "src/site-frame/dashboard-app.mjs", "src/main-page/index.mjs", "src/prompt-bar/index.mjs",
+                       "src/endpoint-calls/index.mjs", "src/job-runner/index.mjs"):
+            self.assertIn(module, loaded)
+        self.assertEqual(channel_findings(site), [])
+        # Planted: a browser-loaded module — the frame, a view, or a module a view imports, by a static import, a re-export or a
+        # literal import() — that imports the tools; then both of webfetch's fetches are found.
+        path = "src/checkout-tools/webfetch.mjs"
+        both = [f"{path}:2: fetch: not {WEBFETCH}", f"{path}:3: fetch: not {WEBFETCH}"]
+        for module, line, own in (("src/site-frame/start.mjs", 'import { checkoutPrompt } from "../checkout-tools/index.mjs";\n', []),
+                                  ("src/main-page/index.mjs", 'export { webfetch } from "../checkout-tools/webfetch.mjs";\n', []),
+                                  ("src/main-page/home.mjs", 'const tools = await import("../checkout-tools/index.mjs");\n',
+                                   ['src/main-page/home.mjs:2: import(): import("../checkout-tools/index.mjs");']),  # itself a finding too
+                                  ("src/site-frame/views.mjs", 'import "../workflow-entries/compose.mjs";\n', [])):
+            with self.subTest(module=module, line=line):
+                self.assertEqual(channel_findings({**site, module: site[module] + line}), both + own)
+        # A view named in data-views that is the tools' own folder, and a site without a page to start from.
+        self.assertEqual(channel_findings({**site, "index.html": site["index.html"].replace('"main-page"', '"main-page checkout-tools"')}), both)
+        self.assertEqual(channel_findings({path: webfetch}), both)
+        # The same fetches anywhere else are found; a third fetch in the file is counted.
+        self.assertEqual(len(channel_findings({**site, "src/workflow-entries/fetch.mjs": webfetch})), 2)
+        self.assertEqual(channel_findings({**site, path: webfetch + "fetch(url, { headers });\n"}),
+                         [f"{path}: fetch found 3 times, permitted 2 ({WEBFETCH})"])
 
     def test_counter_proof_only_the_mail_routes_lookup_and_links_are_allowed(self):
         # MOD-mail-routes (docs/architecture/MOD-mail-routes.md): routeFor asks Microsoft's sign-in service, the provider's one origin the page

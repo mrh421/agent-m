@@ -122,12 +122,15 @@ limit or stops it.
   limit not above the one in force, with nothing written; `RecordEnded` for a run that has ended; `Moved`,
   `TokenRefused`, `PermissionMissing`, `RateLimited`, `Unreachable`.
 - `runStrategies: Strategies` — the strategies this module offers the job runner (ARC-046):
-  - recipe `implementation-inputs` — for a step or item: the file of each of its modules; the decision of their
-    subsystem and the decision that states the system; the SPEC; the interfaces — the `## Interfaces` of their files, not
+  - recipe `implementation-inputs` — for a step, an item, or the modules a job's parameter `modules` names itself, as a
+    bug's fix does (UC-012); for a module step, an item, and each module so named: the file of each module; the decision
+    of their subsystem and the decision that states the system; the SPEC; the interfaces — the `## Interfaces` of their files, not
     the code — of the modules they use; the code in their folders and the tests that name them; the product's coding
     standards file, `AGENTS.md` at its root, if it has one; for a subsystem's integration, the subsystem's decision and the files, code and tests
     of its modules; for the system, the decision that states it, the subsystems' decisions and the use cases. Each part
-    names the sources whose content it carries, so that restricted content goes only where its source permits.
+    names the sources whose content it carries, so that restricted content goes only where its source permits. Throws
+    `NoWorkNamed` for a job whose parameters name no step, no item and no module, and `UnknownWork { id }` for a name
+    that is no step, item or module of the product.
 
 `Facts` is MOD-progress-measures'; `JobRecord` and `JobRow` MOD-job-ledger's; `Host` and `Snapshot`
 MOD-repository-hosts'.

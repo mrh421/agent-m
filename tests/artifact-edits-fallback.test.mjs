@@ -9,7 +9,7 @@
 // Run: node --test tests/artifact-edits-fallback.test.mjs
 //
 // Module: MOD-artifact-edits
-// Guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; NO TEXT TRAVELS IN A URL; A GITLAB PRODUCT IS WRITTEN WITH A TOKEN; UC-018; UC-008
+// Guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; NO TEXT TRAVELS IN A URL; A GITLAB PRODUCT IS WRITTEN WITH A TOKEN; UC-018; UC-008; A REJECTION REMOVES THE PROPOSAL
 // Level: unit
 //
 // `differs`: the function is given the files, each with `existing` — whether it existed when the edit started —, and the snapshot
@@ -150,4 +150,16 @@ test("fallbackEditLinks — a GitLab product is refused (GitHub, GitLab)", async
 
   assert.ok(Array.isArray(fallbackEditLinks(FILES, github)), "known positive: GitHub gets its pages");
   assert.deepEqual(fallbackEditLinks(FILES, gitlab), { refused: "gitlab" }, "GitLab is refused");
+});
+
+// TST-2026271032 · level: unit · module: MOD-artifact-edits
+// guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; NO TEXT TRAVELS IN A URL; A REJECTION REMOVES THE PROPOSAL
+// given: the product above, whose `main` holds the use case UC-041; known positive: an existing file with a text gets GitHub's editor (TST-472026)
+// input: fallbackEditLinks([the use case, existing, with the text null — to be deleted]) on GitHub, and the same on GitLab
+// expect: GitHub's page that deletes the file from `main`, https://github.com/alice/thesis-tool/delete/main/docs/use-cases/UC-041-check-out-a-book.md, with its path, the text null and `differs` false; on GitLab the refusal { refused: "gitlab" }
+test("fallbackEditLinks — a file whose text is null gets GitHub's page that deletes it", async () => {
+  const deleted = [{ path: USE_CASE, text: null, existing: true }];
+  const links = fallbackEditLinks(deleted, await fakeHost(BRANCH).host.readSnapshot("main"));
+  assert.deepEqual(links, [{ url: "https://github.com/alice/thesis-tool/delete/main/docs/use-cases/UC-041-check-out-a-book.md", path: USE_CASE, text: null, differs: false }]);
+  assert.deepEqual(fallbackEditLinks(deleted, await fakeHost(BRANCH, ON_GITLAB).host.readSnapshot("main")), { refused: "gitlab" });
 });

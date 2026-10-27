@@ -7,7 +7,8 @@
 //
 // A team's sprint is the record docs/backlog/sprints/<team>/<nn>.md, read with planSchemas.sprint; <team> is the name of the
 // team's role assignment, and the sprint is named <team>/<nn>. A record that stands in no team's folder is no team's sprint
-// and holds nothing. A sprint is closed once its record holds the ## Review its close appends, as closeSprint decides it.
+// and holds nothing. A sprint is closed once its record holds the ## Review its close appends, as closeSprint decides it; its
+// increment is given up once its record holds the ## Increment given up giveUpIncrement appends (UC-041 7b).
 // An item and a module file are Documents as MOD-documents' readDocument gives them: an item's `modules`
 // are the modules it changes, a module file's `uses` the interfaces it uses, `MOD-<slug>.<name>`. A pull request is in the
 // form of MOD-repository-hosts' PullRequest: `branch` its head branch, `base` the branch it goes into.
@@ -47,6 +48,9 @@ function sentOn(record) {
 
 // Whether a sprint's close is recorded: its record holds the ## Review its close appends.
 const closedRecord = (record) => (record?.appended ?? []).some((section) => section?.heading === "## Review");
+
+// Whether the Product Owner gave up a sprint's increment: its record holds the ## Increment given up giveUpIncrement appends.
+const givenUpRecord = (record) => (record?.appended ?? []).some((section) => section?.heading === "## Increment given up");
 
 /**
  * sprintsToClose(sprints: Document[], states: ItemState[], today: string) -> Array<{ sprint: string, closer: string, because: "time box ended" | "every selected item done" | "ended by the Product Owner" }> —
@@ -131,8 +135,9 @@ function inDefaultBranch(id, pullRequests, onDefault) {
  * onDefault?: Set<string>) -> Held[] — every item a team's sprint holds, in the order of the sprints and of their selections: from its selection until a
  * pull request with its change is merged into the default branch — through the pull requests that merge its base on, or with
  * its head commit in `onDefault`, the head commits a caller found on the default branch —, or until its sprint's close sends it back to the backlog or
- * on to the next sprint — once the close is recorded, every item none of whose pull requests is merged into the sprint's own branch — (A SPRINT HOLDS ITS
- * ITEMS UNTIL THEY REACH THE DEFAULT BRANCH). With the pull requests "unknown" — a host that could not read them —, a
+ * on to the next sprint — once the close is recorded, every item none of whose pull requests is merged into the sprint's own branch —, or until the
+ * Product Owner gives up its sprint's increment — a record that holds ## Increment given up holds none of its items (A SPRINT HOLDS ITS
+ * ITEMS UNTIL THEY REACH THE DEFAULT BRANCH; UC-041 7b). With the pull requests "unknown" — a host that could not read them —, a
  * selected item counts as held. An item the backlog lacks is held with no module.
  * @param {object[]} sprints @param {object[]} items @param {object[]} architecture @param {object[] | "unknown"} pullRequests
  * @param {Set<string>} [onDefault]
@@ -145,7 +150,7 @@ export function heldItems(sprints, items, architecture, pullRequests, onDefault 
   const held = [];
   for (const record of sprints ?? []) {
     const of = sprintOf(record);
-    if (!of) continue;
+    if (!of || givenUpRecord(record)) continue;
     const gone = sentOn(record);
     const closed = closedRecord(record);
     for (const item of selectionOf(record)) {

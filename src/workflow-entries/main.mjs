@@ -9,6 +9,7 @@
 
 import { pathToFileURL } from "node:url";
 import { ciEnvironment } from "./compose.mjs";
+import { runAsModelUser, separates } from "./model-user.mjs";
 import { onApprovalsCommitted, onSourcesCommitted, onMainChanged, onReleaseTagged } from "./instance.mjs";
 import { onRecordsChanged, onDispatch, onCheckCompleted, onSchedule, chooseAgentKey, leaveResult, writeResult, runTests, onTestsFinished, onDoneCheck } from "./product.mjs";
 
@@ -17,14 +18,15 @@ const ENTRIES = { onApprovalsCommitted, onSourcesCommitted, onMainChanged, onRel
 
 /**
  * runEntry(name: string, env: Record<string, string | undefined>, options?: { now?: Date }) -> Promise<EntryStatus> — runs the entry of that
- * name in the environment a workflow gives it. An entry that does not exist is `failed`. It never throws: a failure of the entry is the
- * status.
+ * name in the environment a workflow gives it; where model-user.mjs' `separates` holds, as the model's user (runAsModelUser). An entry that does
+ * not exist is `failed`. It never throws: a failure of the entry is the status.
  */
 export async function runEntry(name, env, options = {}) {
   const entry = Object.hasOwn(ENTRIES, name) ? ENTRIES[name] : null;
   if (!entry) return { outcome: "failed", summary: `There is no entry ${name}.`, findings: [] };
   try {
-    return await entry(ciEnvironment(name, env, options.now ?? new Date()));
+    const ci = ciEnvironment(name, env, options.now ?? new Date());
+    return await (separates(name, ci) ? runAsModelUser(name, env, ci) : entry(ci));
   } catch (error) {
     return { outcome: "failed", summary: `${name} failed: ${error?.message ?? error}`, findings: [] };
   }

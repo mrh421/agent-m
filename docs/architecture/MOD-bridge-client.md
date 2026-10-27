@@ -114,8 +114,9 @@ uses; the key itself stays on its computer.
   window, and returns the name the Bridge reports and the settings to store under it (`THE BRIDGE IS PAIRED ONCE`). The
   page proposes `http://127.0.0.1` with `bridgeApi`'s default port as the address. Crosses the network; fails with
   `NoAnswer`, `TokenRefused`, `JumpHostLoginRefused`, `Timeout`.
-- `testBridge(bridge: Bridge) -> Promise<{ bridge: { name: string, version: string, platform: string }, origin: string,
-  agents: { name: string, version: string, ready: boolean, loggedIn: boolean }[], missing: { name: string }[] }>` — a
+- `testBridge(bridge: Bridge) -> Promise<{ bridge: { name: string, version: string | null, platform: string },
+  origin: string, agents: { name: string, version: string, ready: boolean, loggedIn: boolean }[],
+  missing: { name: string }[] }>` — a
   harmless test in two requests: `GET /v1/pair`, whose answer names the Bridge and the `origin` it is paired with — the
   instance's Pages origin it answers —, and `GET /v1/agents`, the coding agents it offers, each ready or not and logged
   in or not, and the supported agents missing on its computer (UC-044, UC-017). Crosses the network; fails with

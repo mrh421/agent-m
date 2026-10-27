@@ -19,7 +19,7 @@ const SUCCESS = { works: true, model: "tiny" };
 
 async function running(t, { paused = () => false, jobs = {} } = {}) {
   const folder = await mkdtemp(join(tmpdir(), "agent-m-bridge-http-"));
-  const server = await serveBridge({ host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused }, { jobs, mail: {}, tunnels: {} });
+  const server = await serveBridge({ name: () => "lab-pc", host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused }, { jobs, mail: {}, tunnels: {} });
   t.after(() => server.close());
   return { ...server, folder };
 }
@@ -73,7 +73,7 @@ test("TST-261010: bridgeApi has a browser-loadable public entry", async () => {
 // expect: BindRefused is named and no server starts
 test("TST-261002: serveBridge refuses a non-loopback bind", async () => {
   const folder = await mkdtemp(join(tmpdir(), "agent-m-bridge-http-"));
-  await assert.rejects(() => serveBridge({ host: "0.0.0.0", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, { jobs: {}, mail: {}, tunnels: {} }), { name: "BindRefused" });
+  await assert.rejects(() => serveBridge({ name: () => "lab-pc", host: "0.0.0.0", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, { jobs: {}, mail: {}, tunnels: {} }), { name: "BindRefused" });
 });
 
 // TST-261003 · level: unit · module: MOD-bridge-http
@@ -99,7 +99,7 @@ test("TST-261011: serveBridge names a loopback port already in use", async (t) =
   const first = await running(t);
   const port = Number(new URL(first.address).port);
   const folder = await mkdtemp(join(tmpdir(), "agent-m-bridge-http-"));
-  await assert.rejects(() => serveBridge({ host: "127.0.0.1", port, origin: ORIGIN, dataFolder: folder, paused: () => false }, { jobs: {}, mail: {}, tunnels: {} }), { name: "PortInUse" });
+  await assert.rejects(() => serveBridge({ name: () => "lab-pc", host: "127.0.0.1", port, origin: ORIGIN, dataFolder: folder, paused: () => false }, { jobs: {}, mail: {}, tunnels: {} }), { name: "PortInUse" });
 });
 
 // TST-261004 · level: unit · module: MOD-bridge-http
@@ -126,10 +126,10 @@ test("TST-261004: pairAnew persists and rotates the token", async (t) => {
 // expect: the token still pairs the person and remains in the user-only data folder
 test("TST-261005: a restarted Bridge keeps its pairing token", async (t) => {
   const folder = await mkdtemp(join(tmpdir(), "agent-m-bridge-http-"));
-  const first = await serveBridge({ host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, { jobs: {}, mail: {}, tunnels: {} });
+  const first = await serveBridge({ name: () => "lab-pc", host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, { jobs: {}, mail: {}, tunnels: {} });
   const token = first.token;
   await first.close();
-  const second = await serveBridge({ host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, { jobs: {}, mail: {}, tunnels: {} });
+  const second = await serveBridge({ name: () => "lab-pc", host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, { jobs: {}, mail: {}, tunnels: {} });
   t.after(() => second.close());
   assert.equal(second.token, token);
   assert.equal((await request(second, "/v1/pair", { method: "GET" })).status, 200);

@@ -12,7 +12,7 @@
 // Run: node --test tests/repository-hosts-file-pages.test.mjs
 //
 // Module: MOD-repository-hosts
-// Guards: UC-006; UC-008; UC-018; WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; NO TEXT TRAVELS IN A URL; A CREDENTIAL IS NEVER PLACED IN A URL
+// Guards: UC-006; UC-008; UC-018; WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; NO TEXT TRAVELS IN A URL; A CREDENTIAL IS NEVER PLACED IN A URL; A REJECTION REMOVES THE PROPOSAL
 // Level: unit
 //
 // Each test states its input and its expected result before it runs (given / input / expect).
@@ -105,4 +105,18 @@ test("MOD-repository-hosts webLinks — a GitLab project has no new-file page (G
     connect(GITLAB).webLinks().newFile(RECORD_PATH, RECORD)]);
   assert.equal(typeof github, "string", "known positive: GitHub offers the page for this path and record");
   assert.equal(gitlab, null, "GitLab offers none");
+});
+
+// ---------------------------------------------------------------- the page that deletes a file
+
+// TST-2026271031 · level: unit · module: MOD-repository-hosts
+// guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; A REJECTION REMOVES THE PROPOSAL
+// given: the path docs/use-cases/UC-001 the first.md; the GitHub repository alice/agent-m and the GitLab project grp/sub/thesis-tool, connected without a token; known positive: GitHub's editor of the path is https://github.com/alice/agent-m/edit/main/… (TST-472539)
+// input: webLinks().deleteFile(path) on each
+// expect: GitHub's page that deletes the file from the default branch, https://github.com/alice/agent-m/delete/main/docs/use-cases/UC-001%20the%20first.md (it answers a person who is not signed in by sending them to sign in, as the editor does, read 2026-10-27); null on GitLab, which has no such page; no request is made
+test("MOD-repository-hosts webLinks — the page that deletes a file (GitHub, GitLab)", () => {
+  const path = "docs/use-cases/UC-001 the first.md";
+  const [github, gitlab] = withoutRequests(() => [connect(GITHUB).webLinks().deleteFile(path), connect(GITLAB).webLinks().deleteFile(path)]);
+  assert.equal(github, "https://github.com/alice/agent-m/delete/main/docs/use-cases/UC-001%20the%20first.md", "GitHub");
+  assert.equal(gitlab, null, "GitLab");
 });

@@ -35,7 +35,7 @@ async function dashboardAtBridge(t) {
   // Capture native fetch before the dashboard replaces global fetch. The repository handler forwards only the
   // controlled loopback Bridge request and supplies the same Pages-origin context as bridge-http's HTTP tests.
   const folder = await mkdtemp(join(tmpdir(), "agent-m-280-release-"));
-  const bridge = await serveBridge({ host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, { jobs: {}, mail: {}, tunnels: {} });
+  const bridge = await serveBridge({ name: () => "lab-pc", host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, { jobs: {}, mail: {}, tunnels: {} });
   const calls = [];
   const server = await repoServer({ files: {}, handlers: [async (url, init) => {
     if (url.hostname !== "127.0.0.1" || url.pathname !== "/v1/pair") return null;

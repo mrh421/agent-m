@@ -47,13 +47,15 @@ function unmatchedRealises(artifact, text, requirements) {
       what: `realises "${value}", which matches no requirement`, fix: "use an existing requirement name or remove it" }));
 }
 
+// GitHub's pages of MOD-artifact-edits' fallbackEditLinks, one item each: the link and, for a page that writes a text, the text to paste; a page that deletes
+// a file (its text null) carries none. false, drawing nothing, for a refusal.
 export function fallbackPages(target, pages) {
   if (pages.refused) return false;
   const list = el("ul", "pages");
   for (const page of pages) {
-    list.append(el("li", null, link(page.url, "github-page", `Open GitHub's page for ${page.path}`),
+    list.append(el("li", null, link(page.url, "github-page", page.text === null ? `Open GitHub's page that deletes ${page.path}` : `Open GitHub's page for ${page.path}`),
       page.differs ? el("p", "problem", "The file differs on the default branch; compare before committing.") : "",
-      el("pre", "clipboard-text", page.text)));
+      page.text === null ? "" : el("pre", "clipboard-text", page.text)));
   }
   target.replaceChildren(el("p", null, "There is no token: GitHub's page opens for each file, and you commit them there."), list);
   return true;

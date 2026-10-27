@@ -79,7 +79,7 @@ const posix = (path) => path.split(sep).join("/");
 /**
  * grep({ pattern, path?, include? }, context) -> Promise<string> — the lines that match the regular expression `pattern` in the files git lists below `path`
  * (a folder or a file; the checkout by default), only those whose name matches the glob `include` where it is given; at most 100, in opencode's form. A
- * file of a restricted source the drafter's place is not allowed is not read, and its refusal is named at the end.
+ * file whose link leads out of the checkout, and a file of a restricted source the drafter's place is not allowed, is not read, and its refusal is named at the end.
  */
 export async function grep({ pattern, path, include }, context) {
   if (!pattern) return "pattern is required";
@@ -97,10 +97,13 @@ export async function grep({ pattern, path, include }, context) {
   files: for (const file of await listed(dir)) {
     if ((only && file !== only) || !wanted(file)) continue;
     const absolute = join(dir, file);
-    const why = barred(context, posix(relative(root, absolute)));
+    // A listed file is read through its links as every path is: one that leads out of the checkout is refused, never read.
+    const real = inside(root, posix(relative(root, absolute)));
+    if (real.refused) { refused.push(real.refused); continue; }
+    const why = barred(context, real.relative);
     if (why) { refused.push(why); continue; }
     let bytes;
-    try { bytes = readFileSync(absolute); } catch { continue; }
+    try { bytes = readFileSync(real.path); } catch { continue; }
     if (bytes.subarray(0, 4096).includes(0)) continue;
     const lines = bytes.toString("utf8").split(/\r?\n/);
     for (let index = 0; index < lines.length; index++) {

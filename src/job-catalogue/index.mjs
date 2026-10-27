@@ -18,11 +18,12 @@ import { finding } from "../text-tools/index.mjs";
 
 /**
  * A kind's definition as read, its prompt and the schema of its draft loaded with it. `prompt` is "" and `answer` null for
- * a kind without a participant, which has neither.
+ * a kind without a participant, which has neither. `toolLimit` is null wherever the definition leaves `tool_limit` out,
+ * whether or not it names tools.
  * @typedef {{ name: string, serves: string[], participant: "one" | "none", needs: Capability[], resources: "none" |
  *   "product", preconditions: string[], recipes: Array<{ name: string, optional: boolean }>, checks: string[],
  *   personDecides: string[], reviewer: string | null, reviewers: number, steps: string[], gatePoints: Array<"before-write" |
- *   "before-merge" | "question">, review: "person" | "none", writer: string, limit: number, tools: string[], toolLimit: number, purpose: string,
+ *   "before-merge" | "question">, review: "person" | "none", writer: string, limit: number, tools: string[], toolLimit: number | null, purpose: string,
  *   prompt: string, answer: object | null }} KindDefinition
  */
 
@@ -107,7 +108,7 @@ async function read(name, folder) {
     reviewer: typeof fields.reviewer === "string" ? fields.reviewer : null,
     reviewers: typeof fields.reviewers === "number" ? fields.reviewers : 0,
     steps: list(fields.steps), gatePoints: list(fields.gate_points), review: fields.review, writer: fields.writer,
-    limit: fields.limit, tools: list(fields.tools), toolLimit: typeof fields.tool_limit === "number" ? fields.tool_limit : 0,
+    limit: fields.limit, tools: list(fields.tools), toolLimit: typeof fields.tool_limit === "number" ? fields.tool_limit : null,
     purpose,
     prompt: participant === "one" ? await own(`./${folder}/prompt.md`) : "",
     answer: participant === "one" ? JSON.parse(await own(`./${folder}/answer.schema.json`)) : null,

@@ -95,7 +95,7 @@ function theBridge() {
     for (const folder of [bin, work, data, answers]) mkdirSync(folder);
     for (const file of [calls, codexCalls]) writeFileSync(file, "");
     // opencode answers a task with the event in `answers/next` (the folder it runs in in place of @PWD@), and writes down the folder of each start of a task; codex, installed and not offered, writes down every call it gets.
-    script(bin, "opencode", `case "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';;
+    script(bin, "opencode", `case "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; models) echo opencode/big-pickle;;
 run) printf '%s\\n' "$PWD" >> ${calls}; sed "s|@PWD@|$PWD|" ${answers}/next
 printf '%s\\n' '{"type":"step_finish","part":{"tokens":{"input":11,"output":7}}}';; esac`);
     script(bin, "codex", `printf '%s\\n' "$*" >> ${codexCalls}\ncase "$*" in '--version') echo 'codex 1.2.3';; 'login status') echo 'Logged in';; *) echo ok;; esac`);

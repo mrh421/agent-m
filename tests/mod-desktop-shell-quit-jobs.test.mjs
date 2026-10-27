@@ -76,7 +76,7 @@ async function world(run) {
   script(bin, "git", `printf '.' >> ${gits}; ${slow}exec ${REAL_GIT} "$@"`); script(bin, "sleep", `exec ${REAL_SLEEP} "$@"`);
   const answer = JSON.stringify({ draft: { decision: "passed", reason: "ok" }, answers: [] });
   const event = JSON.stringify({ type: "text", part: { text: answer } });
-  script(bin, "opencode", `case "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';;
+  script(bin, "opencode", `case "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; models) echo opencode/big-pickle;;
 run) printf '%s\\n' "opencode started" >> ${calls}; while [ ! -e ${gate} ]; do sleep 0.02; done
 printf '%s\\n' '${event}' '{"type":"step_finish","part":{"tokens":{"input":1,"output":1}}}';; esac`);
   script(bin, "claude", `case "$1" in --version) echo 2.1.300;; auth) exit 0;;

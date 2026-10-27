@@ -14,7 +14,9 @@ within the team (`EVERY TEAM RUNS SPRINTS OF ITS OWN`).
   - `## Review`, the review of the increment;
   - `## Unfinished items`: `to the backlog`, the items that go back to the backlog, and `into the next sprint`, those that
     go into the team's next sprint; the reasons follow as text;
-  - `## Retrospective`.
+  - `## Retrospective`;
+  - `## Increment given up` when the Product Owner gives up the increment of a closed sprint whose branch was not merged:
+    `at`, the day; `by`, the Product Owner; `reason`, why.
 - A sprint record may hold other sections of its own, such as notes taken while the sprint runs.
 
 ```json
@@ -47,7 +49,12 @@ within the team (`EVERY TEAM RUNS SPRINTS OF ITS OWN`).
         "to the backlog": { "type": "list", "required": false, "item": { "type": "identifier", "of": ["ITM"] } },
         "into the next sprint": { "type": "list", "required": false, "item": { "type": "identifier", "of": ["ITM"] } }
       } },
-    { "heading": "## Retrospective", "repeat": false }
+    { "heading": "## Retrospective", "repeat": false },
+    { "heading": "## Increment given up", "repeat": false, "fields": {
+      "at": { "type": "date", "required": true },
+      "by": { "type": "text", "required": true },
+      "reason": { "type": "text", "required": true }
+    } }
   ]
 }
 ```

@@ -39,7 +39,7 @@ async function run(input) {
   const folder = mkdtempSync(join(tmpdir(), "agent-m-813-loopback-"));
   let bridge;
   try {
-    bridge = await serveBridge({ host: input.host, port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, {});
+    bridge = await serveBridge({ name: () => "lab-pc", host: input.host, port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, {});
     return {
       outcome: "started",
       addressIsLoopback: /^http:\/\/(127\.0\.0\.1|\[::1\]):\d+$/.test(bridge.address),

@@ -28,9 +28,9 @@ function withFetch(t, fetch) { const prior = globalThis.fetch; globalThis.fetch 
   }
 const FAULTS = {
   "TST-316901": ['driverRequest(config, driverPrompt(input), options.signal)', 'driverRequest(config, `${input.prompt} ${input.parts[0].text}`, options.signal)'],
-  "TST-316902": ['return { text: answerOf(body, config.kind), usage: usageOf(body?.usage) };', 'return { text: answerOf(body, config.kind), usage: { inputTokens: 0, outputTokens: 0, minutes: null, cost: null } };'],
-  "TST-316903": ['if (error?.name === "AbortError") throw error;', 'if (error?.name === "AbortError") return {};'],
-  "TST-316904": ['throw new EndpointFailed(diagnoseEndpoint({ status: response.status, message }, config, where));', 'return {};'],
+  "TST-316902": ['return { text, usage: usageOf(body?.usage) };', 'return { text, usage: { inputTokens: 0, outputTokens: 0, minutes: null, cost: null } };'],
+  "TST-316903": ['if (error?.name === "AbortError") throw error;\n      diagnosis = diagnoseEndpoint(error, config, where);', 'if (error?.name === "AbortError") return {};\n      diagnosis = diagnoseEndpoint(error, config, where);'],
+  "TST-316904": ['throw new EndpointFailed(diagnosis);', 'return {};'],
 };
 
 // TST-316901 · level: release · module: MOD-endpoint-calls

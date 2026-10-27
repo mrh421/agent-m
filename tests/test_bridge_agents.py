@@ -25,7 +25,14 @@ REGISTER = ROOT / "src" / "agent-processes" / "agents.md"
 LOGIN = {
     "claude": ("auth status", "exit 0", "exit 1"),
     "codex": ("login status", "exit 0", "exit 1"),
-    "opencode": ("auth list", "echo '1 credentials'", "echo '0 credentials'"),
+    "opencode": ("models", "echo opencode/big-pickle", ":"),
+}
+
+# What a fixture prints as its answer "ok" to a task, in the output its register row reads (agents.md), per agent.
+ANSWER = {
+    "claude": """echo '{"type":"result","subtype":"success","is_error":false,"result":"ok"}'""",
+    "codex": "echo ok",
+    "opencode": "echo ok",
 }
 
 JS = """
@@ -85,7 +92,7 @@ def fixture_agent(folder: Path, name: str, version: str, logged_in: bool) -> Non
     executable(folder, name, f"""case "$*" in
   '--version') echo '{version}';;
   '{login}') {yes if logged_in else no};;
-  *) printf '%s' "$*" > "{folder}/args"; /usr/bin/env > "{folder}/env"; echo ok;;
+  *) printf '%s' "$*" > "{folder}/args"; /usr/bin/env > "{folder}/env"; {ANSWER[name]};;
 esac""")
 
 

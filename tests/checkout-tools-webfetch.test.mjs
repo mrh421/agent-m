@@ -47,8 +47,7 @@ test("TST-1240050: webfetch gives a page as markdown, text or html, marked as we
 
 // TST-1240051 · level: unit · module: MOD-checkout-tools
 // guards: UC-049
-// given: the web server of TST-1240050, which also declares a body of 5 MB and one byte at /declared-big, sends one at /streamed-big, never answers /slow and
-//   answers anything else with 404
+// given: the web server of TST-1240050, which also declares a body of 5 MB and one byte at /declared-big, sends one at /streamed-big, never answers /slow and answers anything else with 404
 // input: webfetch ftp://example.test/x; /declared-big; /streamed-big; /missing; /slow with timeout 1
 // expect: "URL must start with http:// or https://"; "Response too large (exceeds 5MB limit)" twice; "Request failed with status code: 404"; "Request timed out"
 test("TST-1240051: webfetch refuses other schemes, bodies over 5 MB, failed statuses and a timeout in opencode's words", async (t) => {

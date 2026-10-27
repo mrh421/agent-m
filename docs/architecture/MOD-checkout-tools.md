@@ -19,11 +19,11 @@ provides:
 ## Responsibility
 
 It belongs to Participants and jobs (ARC-046). It gives a model endpoint that works in the checkout of a job's product —
-in CI or on a Bridge — the tools a coding agent works with: reading, writing and editing the checkout's files, running
+in CI — the tools a coding agent works with: reading, writing and editing the checkout's files, running
 commands in it, searching it, and fetching a web page; and the prompt that names the endpoint's environment and how it
 uses those tools. Each tool is a strategy of the job runner, which carries a call out when the endpoint makes it in the
 execution loop of MOD-endpoint-calls (Vibe Coding, ch. 11). The tools are ported from opencode, under its MIT licence,
-whose notice every file that ports its code keeps. It runs in Node only: the programs that run such jobs register its
+whose notice every file that ports its code keeps. It runs in Node only: the Workflows register its
 strategies; the browser does not, and keeps the read-only tools of MOD-job-runner. It keeps nothing.
 
 ## Parts
@@ -53,12 +53,17 @@ arguments are rows of MOD-job-catalogue's `tools.md`, kept once (`ONE DEFINITION
 | `webfetch` | reach the web | a page by its http or https address, as markdown, text or html, within `timeout` seconds — 30 by default, at most 120 —, at most 5 MB, refused in opencode's words otherwise; its text begins by saying that it is web content, not a registered source |
 
 Every path a tool is given is read against the job's checkout, `JobContext`'s `product.checkout`, and resolved through
-every symbolic link. A path that lies outside, a link that leads out, and a job without a checkout are refused, the
-refusal naming why. `read`, `edit` and `grep` refuse a path whose content is a restricted source's that the drafter's
+every symbolic link, and so is every file `grep` reads among those git lists. A path that lies outside, a link that
+leads out, and a job without a checkout are refused, the refusal naming why; `grep` names each listed file it refuses at
+the end of its answer. `read`, `edit` and `grep` refuse a path whose content is a restricted source's that the drafter's
 place is not allowed, in MOD-job-runner's words (`RESTRICTED CONTENT GOES ONLY WHERE ITS SOURCE PERMITS`). A command of
 `bash` runs with the rights of the program that runs the job, as a coding agent's command does; only its working folder
 is held inside the checkout. The environment variables the registering program names — the endpoint's key and every
-variable a CI secret fills — are not in its environment (`A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET`). A
+variable a CI secret fills — are not in its environment (`A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET`). On
+the server's own runners that program — and with it every tool, in its process and in `bash` — runs as the model's own
+user, who holds no key and no token and may not use sudo, while the key stays with the machine's user in the key holder
+(MOD-workflow-entries, *The model's user*); there no credential is within a command's reach (`NO MODEL READS A
+CREDENTIAL`). A
 tool answers each failure of its own as text and throws nothing, so that every call gets a result.
 
 **The prompt**, `prompt.md`, about forty lines: the environment — the working folder, the platform, the date, and

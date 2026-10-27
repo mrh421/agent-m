@@ -167,7 +167,8 @@ async function until(condition, what) {
 const rowOf = (target, id) => find(target, (node) => node.localName === "tr" && node.getAttribute("data-id") === id)[0];
 const badgeOf = (row) => byClass(row, "span", "badge")[0]?.textContent;
 const recordTextOf = (id, path, body) => recordOf(id, path, body)[1];
-const areaOf = (target) => find(target, (node) => node.localName === "textarea")[0];
+// The editor's text area, not the reason field of Reject.
+const areaOf = (target) => find(target, (node) => node.localName === "textarea" && !node.className.split(" ").includes("reject-reason"))[0];
 const saveButton = (target) => find(target, (node) => node.localName === "button" && node.textContent === "Save")[0];
 const type = (target, text) => {
   const area = areaOf(target);

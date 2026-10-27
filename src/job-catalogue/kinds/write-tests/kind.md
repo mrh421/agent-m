@@ -35,7 +35,6 @@ tools:
   - grep
   - glob
   - webfetch
-tool_limit: 200
 ---
 ## Purpose
 

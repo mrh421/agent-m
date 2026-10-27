@@ -195,7 +195,7 @@ test("spec-entry/<id>/edit — Save writes the entry in its own queue and makes 
   assert.ok(hrefs.includes(`https://github.com/alice/thesis-tool/commit/${fake.head()}`), String(hrefs));
   assert.ok(hrefs.includes(`#spec-entry/id=${ENTRY}`), String(hrefs));
   // UC-006 3a: the saved entry is shown again — its page, with the saved proposal and no editor.
-  await until(() => find(target, (node) => node.localName === "textarea").length === 0 && target.textContent.includes("a PDF file, always."), "the entry to be shown again");
+  await until(() => find(target, (node) => node.localName === "textarea" && !node.className.split(" ").includes("reject-reason")).length === 0 && target.textContent.includes("a PDF file, always."), "the entry to be shown again");
 });
 
 // TST-680206 · level: unit · module: MOD-review-pages

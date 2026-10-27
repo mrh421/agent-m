@@ -15,8 +15,9 @@ file states under Data. Its front matter holds, in this order:
 - `gate_points` — `before-write`, `before-merge`, `question`;
 - `review` — `person` or `none`; `writer` — the strategy that writes the result; `limit` — the default number of
   correction rounds;
-- `tools` and `tool_limit` — the tools of `tools.md` its drafter may be offered, and the most tool calls of one exchange;
-  both left out for a kind that offers none.
+- `tools` — the tools of `tools.md` its drafter may be offered; left out for a kind that offers none;
+- `tool_limit` — the most tool calls of one exchange, a number; left out, no number of calls ends the exchange, whether or
+  not the kind names tools.
 
 Its body is one section, `## Purpose`, saying in a paragraph what the kind does.
 

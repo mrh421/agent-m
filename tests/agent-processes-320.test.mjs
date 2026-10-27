@@ -88,21 +88,21 @@ test("TST-320002: discovery names missing supported commands without a task", as
 // level: unit
 // module: MOD-agent-processes
 // guards: THE BRIDGE FINDS THE INSTALLED AGENTS; A LOCAL AGENT USES THE PERSON'S OWN LOGIN; UC-011
-// given: a controlled Claude executable that records its complete argument vector and its standard input, rejects a constructed inherited ANTHROPIC_API_KEY at its task invocation, and returns exactly one word otherwise.
+// given: a controlled Claude executable that records its complete argument vector and its standard input, rejects a constructed inherited ANTHROPIC_API_KEY at its task invocation, and otherwise prints Claude Code's JSON result line whose result is exactly one word.
 // input: testAgent(the discovered public Claude Agent).
-// expect: its documented print-mode task `claude -p` reads the one-word request on its standard input and returns `{ answered: true, version }`; no other agent executable is reachable.
+// expect: its documented print-mode task `claude -p --output-format json` reads the one-word request on its standard input and returns `{ answered: true, version }`; no other agent executable is reachable.
 test("TST-320003: harmless agent test sends a one-word task", async () => {
   const folder = fixture();
   const priorKey = process.env.ANTHROPIC_API_KEY;
   try {
     const record = join(folder, "arguments");
-    command(folder, "claude", `case \"$*\" in '--version') echo 2.1.300;; 'auth status') echo '{\"authMethod\":\"claude.ai\"}';; *) IFS= read -r input; [ -z \"$ANTHROPIC_API_KEY\" ] && [ \"$#\" = 1 ] && [ \"$1\" = '-p' ] && [ \"$input\" = 'Reply with one word: ok.' ] && printf '%s\\n' \"$@\" \"$input\" > ${record} && echo yes || exit 64;; esac`);
+    command(folder, "claude", `case \"$*\" in '--version') echo 2.1.300;; 'auth status') echo '{\"authMethod\":\"claude.ai\"}';; *) IFS= read -r input; [ -z \"$ANTHROPIC_API_KEY\" ] && [ \"$*\" = '-p --output-format json' ] && [ \"$input\" = 'Reply with one word: ok.' ] && printf '%s\\n' \"$@\" \"$input\" > ${record} && echo '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"yes\",\"usage\":{\"input_tokens\":3,\"output_tokens\":1}}' || exit 64;; esac`);
     process.env.ANTHROPIC_API_KEY = "constructed-parent-fixture-key";
     const agent = (await withPath(folder, () => installedAgents())).find((value) => value.name === "claude");
     const answer = await withPath(folder, () => testAgent(agent));
     assert.deepEqual(answer, { answered: true, version: "2.1.300" });
     const argv = readFileSync(record, "utf8").trim().split("\n");
-    assert.deepEqual(argv, ["-p", "Reply with one word: ok."]);
+    assert.deepEqual(argv, ["-p", "--output-format", "json", "Reply with one word: ok."]);
   } finally {
     if (priorKey === undefined) delete process.env.ANTHROPIC_API_KEY;
     else process.env.ANTHROPIC_API_KEY = priorKey;
@@ -121,12 +121,12 @@ test("TST-320004: harmless agent refusal is named", async () => {
   const folder = fixture();
   try {
     const record = join(folder, "arguments");
-    command(folder, "claude", `case \"$*\" in '--version') echo 2.1.300;; 'auth status') echo '{\"authMethod\":\"claude.ai\"}';; *) IFS= read -r input; [ \"$#\" = 1 ] && [ \"$1\" = '-p' ] && [ \"$input\" = 'Reply with one word: ok.' ] && printf '%s\\n' \"$@\" \"$input\" > ${record} && { echo refused >&2; exit 23; } || exit 64;; esac`);
+    command(folder, "claude", `case \"$*\" in '--version') echo 2.1.300;; 'auth status') echo '{\"authMethod\":\"claude.ai\"}';; *) IFS= read -r input; [ \"$*\" = '-p --output-format json' ] && [ \"$input\" = 'Reply with one word: ok.' ] && printf '%s\\n' \"$@\" \"$input\" > ${record} && { echo refused >&2; exit 23; } || exit 64;; esac`);
     const agent = (await withPath(folder, () => installedAgents())).find((value) => value.name === "claude");
     const answer = await withPath(folder, () => testAgent(agent));
     assert.deepEqual(answer, { answered: false, reason: "refused" });
     const argv = readFileSync(record, "utf8").trim().split("\n");
-    assert.deepEqual(argv, ["-p", "Reply with one word: ok."]);
+    assert.deepEqual(argv, ["-p", "--output-format", "json", "Reply with one word: ok."]);
   } finally { rmSync(folder, { recursive: true, force: true }); }
 });
 

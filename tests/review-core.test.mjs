@@ -2,7 +2,7 @@
 // MOD-spec-document, MOD-text-tools and MOD-artifact-edits. Deterministic, no network. Run: node --test tests/*.test.mjs
 //
 // Module: MOD-approvals
-// Guards: STATUS IS DERIVED FROM THE RECORDS; AN APPROVAL NAMES THE EXACT TEXT; AN ACCEPTED SPEC CHANGE IS WRITTEN WITH ITS APPROVAL; A STALE APPROVAL IS NOT APPLIED; A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT; ADDING A PRODUCT CREATES ITS LAYOUT; GITLAB PRODUCTS ARE SUPPORTED; A GITLAB PRODUCT USES A PROJECT ACCESS TOKEN; A PRODUCT IS NAMED BY ITS ADDRESS; UC-001; UC-006; UC-008
+// Guards: STATUS IS DERIVED FROM THE RECORDS; AN APPROVAL NAMES THE EXACT TEXT; AN ACCEPTED SPEC CHANGE IS WRITTEN WITH ITS APPROVAL; A STALE APPROVAL IS NOT APPLIED; A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT; A PROPOSAL IS REJECTED WITH A REASON; A REJECTION REMOVES THE PROPOSAL; WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; ADDING A PRODUCT CREATES ITS LAYOUT; GITLAB PRODUCTS ARE SUPPORTED; A GITLAB PRODUCT USES A PROJECT ACCESS TOKEN; A PRODUCT IS NAMED BY ITS ADDRESS; UC-001; UC-006; UC-008; UC-023
 // Level: unit
 //
 // SPEC.md names this file as the check of requirements of several modules. The checks of the other modules live in
@@ -10,6 +10,8 @@
 // makes this file red. Those files are not matched by tests/*.test.mjs, so CI runs each check once. The dashboard's writes are
 // those of its modules, checked with them: accepting in tests/approvals-accept.test.mjs and tests/spec-changes-accept.test.mjs,
 // saving an edit in tests/artifact-edits-save.test.mjs, adding a product and the product settings in the tests of MOD-settings-pages.
+// Rejecting is checked here: a reviewed file (MOD-approvals) in this file, a SPEC change entry and the Reject on the pages in
+// tests/review-core.d/.
 // The product a check writes into is held by tests/memory-host.mjs.
 
 import test from "node:test";
@@ -18,8 +20,11 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { blobSha } from "../src/text-tools/index.mjs";
 import { readDocument } from "../src/documents/index.mjs";
-import { approvalSchema, statusOf } from "../src/approvals/index.mjs";
+import * as approvals from "../src/approvals/index.mjs";
 import { queues, acceptEntries } from "../src/spec-changes/index.mjs";
+
+// rejectShown is read off the module, so that a module without it fails the tests that call it and not the whole file.
+const { approvalSchema, statusOf, rejectShown } = approvals;
 import { sectionText, replaceSection } from "../src/spec-document/index.mjs";
 import { reviewLayoutCommit } from "../src/artifact-edits/index.mjs";
 import { memoryHost } from "./memory-host.mjs";
@@ -145,6 +150,105 @@ test("an entry already written in the queue's decisions is not written twice", a
   const done = await acceptEntries(product.host, [await shown05()], "alice", WHEN, NO_SOURCES);
   assert.deepEqual(product.commits(), []);
   assert.match(done.refused[0].reason, /already/);
+});
+
+// ---------------------------------------------------------------- rejecting a reviewed file (queue 2026-10-27, A proposal is rejected with a reason)
+// A PROPOSAL IS REJECTED WITH A REASON · A REJECTION REMOVES THE PROPOSAL · A STALE APPROVAL IS NOT APPLIED ·
+// WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK · NO TEXT TRAVELS IN A URL (UC-008 3f, UC-023 5b). MOD-approvals' rejectShown;
+// the rejection of a SPEC change entry is MOD-spec-changes' (tests/review-core.d/spec-changes-reject.test.mjs), the Reject on the
+// pages MOD-review-pages' (tests/review-core.d/review-pages-reject.test.mjs).
+
+const UC1 = "docs/use-cases/UC-001-a.md", UC2 = "docs/use-cases/UC-002-b.md";
+const UC1_CHANGED = "---\nid: UC-001\n---\n# one, and more\n";
+const REASON = "It widens the use case beyond what the SPEC asks.";
+// A product whose UC-001 was accepted with the text B_UC1 and then changed to UC1_CHANGED, and whose UC-002 was never accepted.
+async function changedProduct() {
+  const product = memoryHost(batchRepo({ [approvalPath("UC-001", await blobSha(B_UC1))]: recordText({ kind: "use-case", file: UC1, blob: await blobSha(B_UC1) }) }));
+  const { commit } = await product.host.readSnapshot("main");
+  await product.host.commitFiles({ branch: "main", expectedHead: commit, files: [{ path: UC1, text: UC1_CHANGED }], message: "an edit" });
+  return { product, made: product.commits().length };
+}
+// The same host, read without a token: GitHub answers that it may not be written (MOD-repository-hosts, RepositoryInfo.canWrite).
+const withoutToken = (host) => ({ ...host, repositoryInfo: async () => ({ defaultBranch: "main", canWrite: false }) });
+
+// TST-2026271001 · level: unit · module: MOD-approvals
+// guards: A PROPOSAL IS REJECTED WITH A REASON
+// given: the changed UC-001 and the never-accepted UC-002, each shown with its current blob; known positive: with a reason, rejectShown writes
+// input: rejectShown with no reason, an empty one and one of blanks only
+// expect: each a TypeError before anything is written; no commit
+test("TST-2026271001: Reject without a reason writes nothing", async () => {
+  const { product, made } = await changedProduct();
+  for (const reason of [undefined, "", "  \n "]) {
+    await assert.rejects(rejectShown(product.host, { path: UC1, blob: await blobSha(UC1_CHANGED) }, "alice", reason), TypeError, JSON.stringify(reason));
+  }
+  assert.equal(product.commits().length, made, "nothing written");
+  assert.ok((await rejectShown(product.host, { path: UC2, blob: await blobSha(B_UC2) }, "alice", REASON)).commit, "known positive: with a reason it writes");
+});
+
+// TST-2026271002 · level: unit · module: MOD-approvals
+// guards: A REJECTION REMOVES THE PROPOSAL; STATUS IS DERIVED FROM THE RECORDS
+// given: UC-001 accepted with the text B_UC1, then changed; its record names B_UC1's blob
+// input: rejectShown of UC-001 as shown now, by alice, with a reason
+// expect: one commit on the head that was read, which writes UC-001 back to B_UC1 byte for byte and nothing else; its message names UC-001, alice and the reason; UC-001 is accepted again
+test("TST-2026271002: rejecting a changed use case restores its accepted text in one commit whose message holds the reason", async () => {
+  const { product, made } = await changedProduct();
+  const head = (await product.host.readSnapshot("main")).commit;
+  const done = await rejectShown(product.host, { path: UC1, blob: await blobSha(UC1_CHANGED) }, "alice", REASON);
+  const commits = product.commits().slice(made);
+  assert.equal(commits.length, 1, "one commit");
+  assert.equal(commits[0].expectedHead, head, "on the head that was read");
+  assert.deepEqual(commits[0].files, [{ path: UC1, text: B_UC1 }], "the accepted text back, nothing else");
+  assert.match(commits[0].message, /UC-001/);
+  assert.match(commits[0].message, /alice/);
+  assert.ok(commits[0].message.includes(REASON), "the reason in the message");
+  assert.ok(done.commit);
+  assert.equal(statusOf(UC1, await blobSha(B_UC1), await product.host.readSnapshot("main")), "accepted");
+});
+
+// TST-2026271003 · level: unit · module: MOD-approvals
+// guards: A REJECTION REMOVES THE PROPOSAL
+// given: UC-002, which no record names; known positive: UC-001's rejection writes its text back (TST-2026271002)
+// input: rejectShown of UC-002 as shown, with a reason
+// expect: one commit that deletes UC-002 and nothing else, its message holding the reason; the file has left the working tree
+test("TST-2026271003: rejecting a never-accepted use case removes the file", async () => {
+  const { product, made } = await changedProduct();
+  await rejectShown(product.host, { path: UC2, blob: await blobSha(B_UC2) }, "alice", REASON);
+  const commits = product.commits().slice(made);
+  assert.equal(commits.length, 1, "one commit");
+  assert.deepEqual(commits[0].files, [{ path: UC2, delete: true }]);
+  assert.ok(commits[0].message.includes(REASON));
+  assert.equal(product.files()[UC2], undefined, "UC-002 has left the working tree");
+});
+
+// TST-2026271004 · level: unit · module: MOD-approvals
+// guards: A STALE APPROVAL IS NOT APPLIED; A REJECTION REMOVES THE PROPOSAL
+// given: UC-001 changed after it was shown (the blob shown is another than the head's), and UC-001 at its accepted text
+// input: rejectShown with the blob shown before the change; rejectShown of the accepted text
+// expect: ChangedSinceShown and NothingToReject, nothing written
+test("TST-2026271004: a rejection of a text that is no longer the current one writes nothing", async () => {
+  const { product, made } = await changedProduct();
+  await assert.rejects(rejectShown(product.host, { path: UC1, blob: await blobSha("an older text\n") }, "alice", REASON), { name: "ChangedSinceShown" });
+  await assert.rejects(rejectShown(product.host, { path: "docs/use-cases/UC-003-c.md", blob: await blobSha(B_UC1) }, "alice", REASON), { name: "ChangedSinceShown" }, "a file that is gone");
+  const accepted = memoryHost(batchRepo({ [approvalPath("UC-001", await blobSha(B_UC1))]: recordText({ kind: "use-case", file: UC1, blob: await blobSha(B_UC1) }) }));
+  await assert.rejects(rejectShown(accepted.host, { path: UC1, blob: await blobSha(B_UC1) }, "alice", REASON), { name: "NothingToReject" });
+  assert.equal(product.commits().length, made, "nothing written");
+  assert.equal(accepted.commits().length, 0, "nothing written");
+});
+
+// TST-2026271005 · level: unit · module: MOD-approvals
+// guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; NO TEXT TRAVELS IN A URL
+// given: the changed UC-001 and the never-accepted UC-002 of a product on github.com, read without a token
+// input: rejectShown of each, with a reason
+// expect: nothing written; for UC-001 GitHub's editor of its file with the accepted text returned beside the link; for UC-002 GitHub's page that deletes it, with no text; no link carries a text
+test("TST-2026271005: without a token, a rejection opens GitHub's pages, prepared as far as GitHub allows", async () => {
+  const { product, made } = await changedProduct();
+  const host = withoutToken(product.host);
+  const restored = await rejectShown(host, { path: UC1, blob: await blobSha(UC1_CHANGED) }, "alice", REASON);
+  const removed = await rejectShown(host, { path: UC2, blob: await blobSha(B_UC2) }, "alice", REASON);
+  const web = "https://github.com/memory-owner/memory-repository";
+  assert.deepEqual(restored.fallback.map(({ url, path, text }) => ({ url, path, text })), [{ url: `${web}/edit/main/${UC1}`, path: UC1, text: B_UC1 }]);
+  assert.deepEqual(removed.fallback.map(({ url, path, text }) => ({ url, path, text })), [{ url: `${web}/delete/main/${UC2}`, path: UC2, text: null }]);
+  assert.equal(product.commits().length, made, "nothing written");
 });
 
 // ---------------------------------------------------------------- GitLab products (queue 2026-09-24b)

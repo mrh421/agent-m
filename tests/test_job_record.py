@@ -255,7 +255,7 @@ class TestJobRecord(unittest.TestCase):
     # TST-1132002 · level: release · module: MOD-job-ledger
     # guards: A JOB IS RECORDED IN ITS PRODUCT REPOSITORY
     # given: the cases under "A conversation held in the tab": the real prompt bar with recording off; a conversation of two messages, and one that hands its task over
-    # input: the messages sent, and the person's click on Hand over
+    # input: the messages sent, and the hand-over the participant proposes, which goes on without a further click
     # expect: the conversation leaves no record under docs/jobs/ and starts no workflow; the same conversation with its task handed over leaves exactly one record in the product
     def test_a_conversation_held_in_the_tab_leaves_no_record(self):
         for loaded in bar.cases(RECORDED + " - a conversation in the tab", DATA):

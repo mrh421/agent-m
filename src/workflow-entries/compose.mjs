@@ -13,8 +13,9 @@
 // label —; AGENT_M_PRODUCT_DIR, the product's checkout; AGENT_M_TOKEN_NAME, the name of the secret that holds the person's Agent M token, and
 // AGENT_M_TOKEN, its value; AGENT_M_KEY_NAMES, the names of the secrets that hold the agents' keys, separated by blanks, each of which the
 // workflow gives the entry as a variable of that name — on the agent's machine only the one at the place AGENT_M_KEY names —; AGENT_M_PART, the machine
-// (`agent` or `write`), and AGENT_M_RESULT_DIR, the folder of the result between them; GITHUB_OUTPUT, the file of a step's outputs. The instance is checked
-// out into `instance/` of GITHUB_WORKSPACE, from which the entry runs.
+// (`agent` or `write`), and AGENT_M_RESULT_DIR, the folder of the result between them; AGENT_M_MODEL_USER, on the hosted agent's machine, the OS user as which a
+// hand-over to a model endpoint runs; GITHUB_OUTPUT, the file of a step's outputs. The instance is checked out into `instance/` of GITHUB_WORKSPACE, from which
+// the entry runs.
 
 import { parseAddress, connect } from "../repository-hosts/index.mjs";
 import { registerStrategies } from "../job-runner/index.mjs";
@@ -36,7 +37,8 @@ const path = globalThis.process?.getBuiltinModule?.("node:path");
  * CiEnvironment — { entry: string, service: "github" | "gitlab", event: { name: string | null, payload: object | null }, checkout: string,
  * repository: string, branch: string | null, agentM: { commit: string | null }, token: string | null, now: Date, job: { runner: string | null,
  * productDir: string | null, instanceDir: string | null, actor: string | null, runUrl: string | null, tokenName: string, personToken: string | null,
- * keys: Record<string, string | null>, summaryFile: string | null }, tests?: { expected: string | null, runner: string | null, pullRequest: number | null } } — what an entry reads from the workflow's environment; `job` is what a product's job workflow adds:
+ * keys: Record<string, string | null>, summaryFile: string | null, part: "agent" | "write" | null, resultDir: string | null, agentKey: string | null, modelUser: string | null,
+ * keyHolder: string | null, outputFile: string | null }, tests?: { expected: string | null, runner: string | null, pullRequest: number | null } } — what an entry reads from the workflow's environment; `job` is what a product's job workflow adds:
  * the runner, the checkouts, the run's address, the name and value of the person's token and each key secret's value by its name, and the file GITHUB_STEP_SUMMARY names
  * for the run's summary, where it is set. `token` is the workflow's own token, by its name GITHUB_TOKEN, never by value in a file; `branch` the branch the workflow runs for.
  * `service` is `gitlab` where GITLAB_CI is `true`, else `github`; a GitLab job's variables are read as gitlabEnvironment states. `tests`, for the entries
@@ -131,11 +133,14 @@ function testsOf(env, more) {
 }
 
 // The machine a job workflow's job is (src/runtimes/workflow/github.yml, gitlab.yml): AGENT_M_PART `agent` or `write`, else null, where it is neither — the plan —; the
-// result's folder, AGENT_M_RESULT_DIR; and, on the agent's machine, the key it was given, AGENT_M_KEY, by its place among AGENT_M_KEY_NAMES from 1, 0 for none.
+// result's folder, AGENT_M_RESULT_DIR; and, on the agent's machine, the key it was given, AGENT_M_KEY, by its place among AGENT_M_KEY_NAMES from 1, 0 for none; the
+// model's user, AGENT_M_MODEL_USER, as which a hand-over to a model endpoint runs there (model-user.mjs); and, on that user's side, AGENT_M_KEY_HOLDER, the address of
+// the key holder through which it reaches the endpoint.
 function partOf(env) {
   const part = ["agent", "write"].includes(env.AGENT_M_PART) ? env.AGENT_M_PART : null;
   const at = /^\d+$/.test(env.AGENT_M_KEY ?? "") ? Number(env.AGENT_M_KEY) : 0;
-  return { part, resultDir: part ? env.AGENT_M_RESULT_DIR || null : null, agentKey: part === "agent" ? Object.keys(keysOf(env))[at - 1] ?? null : null };
+  return { part, resultDir: part ? env.AGENT_M_RESULT_DIR || null : null, agentKey: part === "agent" ? Object.keys(keysOf(env))[at - 1] ?? null : null,
+    modelUser: part === "agent" ? env.AGENT_M_MODEL_USER || null : null, keyHolder: part === "agent" ? env.AGENT_M_KEY_HOLDER || null : null };
 }
 
 // Each key secret's value by its name: AGENT_M_KEY_NAMES lists the names, separated by blanks, and the workflow gives each as a variable of that name.

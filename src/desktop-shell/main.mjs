@@ -80,7 +80,7 @@ export async function start(electron, supplied = {}) {
     : ({ address: bridge.address, token: bridge.token, instance: config.instance, paused, pairedWith: bridge.pairedWith(), settings: bridge.settings, publicKey: bridge.key.publicKey, tunnels: await bridge.tunnels() });
   const restart = async () => {
     if (bridge) await bridge.close();
-    bridge = await compose({ instance: repositoryAddress(config.instance), origin: config.origin, dataFolder: config.dataFolder, port: config.port, paused: () => paused });
+    bridge = await compose({ instance: repositoryAddress(config.instance), origin: config.origin, dataFolder: config.dataFolder, port: config.port, paused: () => paused, version: config.version });
     startupFailure = null;
     return bridgeState();
   };

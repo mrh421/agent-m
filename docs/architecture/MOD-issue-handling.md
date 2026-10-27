@@ -13,7 +13,6 @@ uses:
   - MOD-mail-records.issueLabels
   - MOD-mail-records.noteText
   - MOD-mail-records.IssueText
-  - MOD-spec-changes.queues
   - MOD-spec-document.parseSpec
   - MOD-spec-document.requirementNamesIn
   - MOD-identifiers.kindOfIdentifier
@@ -65,10 +64,11 @@ prefills is a document of the item schema of MOD-documents, written by Process (
   comments the reason and closes the issue. Crosses the network to the product's tracker. Errors: Access's
   `TokenRefused`, `MissingPermission`, `RateLimited`, `Unreachable`.
 - `backlogItemFrom(issue: IssueText & { title: string, address: string }, cls: IssueClass, analysis: { violated: string |
-  null, modules: string[] }, queues: object[]) -> { item: Document, place: "top" | "bottom" }` — the backlog item a
+  null, modules: string[] }, changed: string[]) -> { item: Document, place: "top" | "bottom" }` — the backlog item a
   person checks before adding it (UC-033): its title from the issue's title, its outcome from the issue's description,
   its origin the issue's address, what it realises — for a bug the requirement the analysis names as violated, for a
-  change the requirements of the queue entries that name this issue as their origin (from MOD-spec-changes' `queues`) —,
+  change the requirements `changed` names: those the entries of the queues that name this issue change or add, which
+  the caller finds with MOD-spec-changes' `queues` and `entryView` —,
   and the modules the analysis names, which the person confirms or corrects (`A BACKLOG ITEM NAMES WHAT IT REALISES`, `A
   BACKLOG ITEM NAMES THE MODULES IT CHANGES`); placed at the top for a bug and at the bottom for a change unless the
   person moves it. Errors: `NotClassified` for an issue without a class — no item is offered.
@@ -83,14 +83,17 @@ prefills is a document of the item schema of MOD-documents, written by Process (
   null }) -> Promise<void>` — the comment `closed-with` and the issue closed; run when the pull request of a bug fix or of
   an item from the issue is merged. Errors: Access's.
 - `issueStrategies` — of MOD-job-runner's type `Strategies`:
-  - recipe `issue-context` — for analysing an issue: one part with the issue's title, text and comments; parts with the
+  - recipe `issue-context` — for analysing an issue, and for drafting the change it asks for: one part with the issue's title, text and comments; parts with the
     requirements the issue names, and the use cases, tests and modules it names together with the requirements the trace
-    graph links to them — each with its text from the snapshot. An issue that names nothing gets the whole SPEC. The
+    graph links to them — each with its text from the snapshot. An issue that names nothing gets the whole SPEC. A job
+    without the parameter `issue` gets no part, as `draft?` gives none without a draft: a change by prompt has no issue,
+    and `analyse-issue` and `fix-bug` are started only from an issue's route, which always gives it. The
     issue's text from a mail is neutral by construction; no mail is ever a part.
   - recipe `fix-inputs` — for fixing a bug: the parts of `issue-context`; the confirmed analysis — the violated
     requirement, whether code or a test is wrong, the modules —; the implementation inputs of those modules from
-    MOD-run-planner's recipe `implementation-inputs`; and the instruction to write first a regression test that fails on
-    the reported behaviour, with invented data only, never the reporter's (UC-012). Report data is in the issue only as
+    MOD-run-planner's recipe `implementation-inputs`, given them as its parameter `modules`; and the instruction to
+    write first a regression test that fails on the reported behaviour, with invented data only, never the reporter's
+    (UC-012). Report data is in the issue only as
     the product's pseudonymisation left it, which the part says (`A PARTICIPANT THAT WRITES TO A REPOSITORY NEVER RECEIVES
     A MAIL`).
 
@@ -98,7 +101,7 @@ prefills is a document of the item schema of MOD-documents, written by Process (
 
 ## Files
 
-It reads the SPEC, the change queues, and the files the trace graph needs, from a snapshot. It writes comments and
+It reads the SPEC and the files the trace graph needs, from a snapshot. It writes comments and
 labels and closes issues in the product's tracker through Access; the item is written by Process's `saveItems`.
 
 ## Uses
@@ -107,7 +110,6 @@ labels and closes issues in the product's tracker through Access; the item is wr
   person's token; `MOD-repository-hosts.Snapshot` — the files its recipes read.
 - `MOD-mail-records.issueLabels`, `MOD-mail-records.noteText`, `MOD-mail-records.IssueText` — the labels and comments
   Agent M writes on an issue, defined once there.
-- `MOD-spec-changes.queues` — the entries of a change that name the issue.
 - `MOD-spec-document.parseSpec`, `MOD-spec-document.requirementNamesIn` — the requirements an issue names, with their
   text.
 - `MOD-identifiers.kindOfIdentifier` — the use cases, tests and modules an issue names.

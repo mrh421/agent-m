@@ -5,8 +5,8 @@
 """SPEC section 14 - the check named tests/test_conversation_not_recorded.py, for the two requirements MOD-prompt-bar decides.
 
 The cases live in tests/test_conversation_not_recorded.md. This file only loads them and asks node to start the real prompt bar
-(startPromptBar of src/prompt-bar/) on a page of a product or of the instance, to send the messages of a case, to click Hand over
-as a person and to save an edit the way the review pages do, over a fake repository host for each of the two repositories and a
+(startPromptBar of src/prompt-bar/) on a page of a product or of the instance, to send the messages of a case, to follow the hand-over
+the participant proposes, which goes on without a further click, and to save an edit the way the review pages do, over a fake repository host for each of the two repositories and a
 fake model endpoint. The fakes are the adapter: they hold the repositories' files, keep every commit attempt and every workflow
 start, and answer the endpoint with the replies of the case. The check then looks for the needles the case lists - words that
 appear in the Markdown file and nowhere else - in every commit message, every file of every commit, every job record, and, with
@@ -150,8 +150,7 @@ for (const step of input.steps) {
     await settle();
     said.push(...byClass(target, "answer").map((node) => node.textContent));
   } else if (step.handOver) {
-    await until(() => byClass(target, "queue").length > 0, "Hand over is offered");
-    byClass(target, "queue")[0].dispatchEvent(personal());
+    // The person's Send was the request: the hand-over goes on without a further click (UC-049, MOD-prompt-bar), and the job is followed.
     await until(() => byClass(target, "following").some((node) => node.textContent.includes("State:")), "the job is followed");
   } else if (step.save) {
     // The person saves an edit the participant proposed, as the review pages do: one commit with the edit and the job's provenance lines, which name no message.

@@ -32,6 +32,13 @@ function endpointUrl(baseUrl, path) {
   return `${baseUrl.replace(/\/+$/, "")}${path}`;
 }
 
+// The header that carries an endpoint's key on every request this module sends: `x-api-key` on Anthropic, `Authorization: Bearer <key>` on an
+// OpenAI-compatible endpoint; none without a key.
+function keyHeaders(kind, key) {
+  if (key === null || key === undefined) return {};
+  return kind === "anthropic" ? { "x-api-key": key } : { Authorization: `Bearer ${key}` };
+}
+
 function requestFor(config) {
   return providerRequest(config, PROBE_PROMPT, { maxTokens: 64, tools: [PROBE_TOOL] });
 }
@@ -78,8 +85,8 @@ function providerRequest(config, prompt, { maxTokens = config.kind === "anthropi
       "content-type": "application/json",
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true",
+      ...keyHeaders(config.kind, config.key),
     };
-    if (config.key !== null) headers["x-api-key"] = config.key;
     const body = { model: config.model, max_tokens: maxTokens,
       messages: messages ? anthropicMessages(messages) : [{ role: "user", content: prompt }] };
     if (system) body.system = system;
@@ -91,8 +98,7 @@ function providerRequest(config, prompt, { maxTokens = config.kind === "anthropi
     };
   }
 
-  const headers = { "content-type": "application/json" };
-  if (config.key !== null) headers.Authorization = `Bearer ${config.key}`;
+  const headers = { "content-type": "application/json", ...keyHeaders(config.kind, config.key) };
   const history = [...(system ? [{ role: "system", content: system }] : []), ...(messages ? openaiMessages(messages) : [{ role: "user", content: prompt }])];
   const body = maxTokens === null ? { model: config.model, messages: history } : { model: config.model, messages: history, max_tokens: maxTokens };
   if (tools.length) body.tools = tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.input } }));
@@ -122,10 +128,6 @@ function usageOf(usage) {
   const outputTokens = usage.completion_tokens ?? usage.output_tokens ?? null;
   if (inputTokens === null && outputTokens === null) return null;
   return { inputTokens, outputTokens, minutes: null, cost: null };
-}
-
-function answerOf(body, kind) {
-  return kind === "anthropic" ? body?.content?.find((part) => part.type === "text")?.text : body?.choices?.[0]?.message?.content;
 }
 
 // A call whose arguments are not JSON keeps them as `invalid: { text, message }` — the text it sent and why it cannot be read —, for the loop to answer.
@@ -196,7 +198,8 @@ export function endpointDriver(config, participant, exchange = endpointExchange,
     const where = typeof window === "undefined" ? "node" : "browser";
     const response = await sentWithRetries(config, driverRequest(config, driverPrompt(input), options.signal), where, options.signal);
     const body = await response.json();
-    return { text: answerOf(body, config.kind), usage: usageOf(body?.usage) };
+    const { text } = exchangeAnswer(body, config.kind);
+    return { text, usage: usageOf(body?.usage) };
   } };
 }
 
@@ -226,9 +229,8 @@ export async function testEndpoint(config) {
 // configuration has one; config.model is not read. One request, nothing stored; a failure is the diagnosis testEndpoint gives.
 export async function listModels(config) {
   const where = typeof window === "undefined" ? "node" : "browser";
-  const headers = config.kind === "anthropic"
-    ? { "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", ...(config.key === null ? {} : { "x-api-key": config.key }) }
-    : (config.key === null ? {} : { Authorization: `Bearer ${config.key}` });
+  const headers = { ...(config.kind === "anthropic" ? { "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" } : {}),
+    ...keyHeaders(config.kind, config.key) };
   try {
     const response = await endpointResponse(config, { url: endpointUrl(config.baseUrl, "/models"), init: { method: "GET", headers } }, where);
     if (response.ok) return { models: ((await response.json())?.data ?? []).map((model) => model?.id).filter((id) => typeof id === "string") };
@@ -253,9 +255,8 @@ const contextOf = (entry) => {
 // where the endpoint states none, or a request fails. Nothing is stored.
 export async function modelContext(config) {
   const where = typeof window === "undefined" ? "node" : "browser";
-  const headers = config.kind === "anthropic"
-    ? { "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true", ...(config.key === null ? {} : { "x-api-key": config.key }) }
-    : (config.key === null ? {} : { Authorization: `Bearer ${config.key}` });
+  const headers = { ...(config.kind === "anthropic" ? { "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" } : {}),
+    ...keyHeaders(config.kind, config.key) };
   const listed = async (path) => {
     try {
       const response = await endpointResponse(config, { url: endpointUrl(config.baseUrl, path), init: { method: "GET", headers } }, where);
@@ -301,4 +302,45 @@ export function diagnoseEndpoint(error, config, where) {
   }
 
   return { reason: "not reachable", message, routes: [] };
+}
+
+// The headers the key holder does not take over from its caller — those of the connection, those fetch sets itself, every header that carries a key —, and
+// those of the endpoint's answer it does not pass on, since fetch has already decoded the body and the server measures it anew.
+const NOT_FORWARDED = new Set(["host", "connection", "keep-alive", "transfer-encoding", "upgrade", "proxy-connection", "te", "trailer", "content-length",
+  "accept-encoding", "authorization", "x-api-key"]);
+const NOT_ANSWERED = new Set(["connection", "keep-alive", "transfer-encoding", "content-encoding", "content-length"]);
+
+/**
+ * holdKey(config: { kind: "openai-compatible" | "anthropic", baseUrl: string, key: string | null }) -> Promise<{ address: string, close() -> Promise<void> }> — the key
+ * holder (NO MODEL READS A CREDENTIAL): a server on 127.0.0.1 at a free port, `address` being `http://127.0.0.1:<port>`, that sends each request it receives, through
+ * this module's sender of a single request, to the same path below `config.baseUrl` — the method, the body and the caller's headers, without any header that carries a key — with the key in
+ * the header keyHeaders gives, and answers with the endpoint's status, headers and body; a redirect is answered, not followed. A request whose target is not a path
+ * of that endpoint is answered 400 and sent nowhere; one the endpoint does not answer, 502 with the diagnosis's message. Node only: Node's server module is taken
+ * when it is called.
+ */
+export async function holdKey(config) {
+  const origin = new URL(endpointUrl(config.baseUrl, "/")).origin;
+  const server = globalThis.process.getBuiltinModule("node:http").createServer(async (request, response) => {
+    const answer = (status, text) => { response.writeHead(status, { "content-type": "text/plain" }); response.end(text); };
+    const path = request.url.startsWith("/") && !request.url.startsWith("//") ? request.url : null;
+    if (path === null || new URL(endpointUrl(config.baseUrl, path)).origin !== origin) return answer(400, "The key holder forwards only a path of its endpoint.");
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const headers = { ...Object.fromEntries(Object.entries(request.headers).filter(([name]) => !NOT_FORWARDED.has(name.toLowerCase()))), ...keyHeaders(config.kind, config.key) };
+    let forwarded;
+    try {
+      forwarded = await endpointResponse(config, { url: endpointUrl(config.baseUrl, path), init: { method: request.method, headers, redirect: "manual",
+        body: ["GET", "HEAD"].includes(request.method) ? undefined : Buffer.concat(chunks) } }, "node");
+    } catch (error) {
+      return answer(502, `The endpoint did not answer: ${error?.diagnosis?.message ?? error?.message ?? error}`);
+    }
+    const body = Buffer.from(await forwarded.arrayBuffer());
+    response.writeHead(forwarded.status, Object.fromEntries([...forwarded.headers].filter(([name]) => !NOT_ANSWERED.has(name.toLowerCase()))));
+    response.end(body);
+  });
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  return {
+    address: `http://127.0.0.1:${server.address().port}`,
+    close: () => new Promise((resolve) => { server.closeAllConnections?.(); server.close(() => resolve()); }),
+  };
 }

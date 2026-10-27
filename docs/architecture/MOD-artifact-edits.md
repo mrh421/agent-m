@@ -55,7 +55,7 @@ PRODUCT CREATES ITS LAYOUT`). It runs in the browser and in Node.
 
 - `index.mjs` — the interface.
 - `save.mjs` — saving one file on its opened blob, keeping its identifier, and a group file's single places.
-- `fallback.mjs` — GitHub's editor and new-file pages without a token.
+- `fallback.mjs` — GitHub's editor, new-file and delete pages without a token.
 - `layout.mjs` — the review layout of a new product.
 - `strategies.mjs` — the recipe, check and writer of `editStrategies`.
 
@@ -109,9 +109,10 @@ The review layout it writes into a product, skipping whatever exists:
   string[] }>` — `saveFile` for the group file `docs/groups/<kind>.md`, named by its kind: that file and nothing else,
   committed directly to the default branch (`A REGROUPING IS COMMITTED DIRECTLY`, `REGROUPING LEAVES THE GROUPED FILE
   UNCHANGED`). Crosses the network; the errors of `saveFile`.
-- `fallbackEditLinks(files: Array<{ path: string, text: string, existing: boolean }>, snapshot: Snapshot) ->
-  Array<{ url: string, path: string, text: string, differs: boolean }> | { refused: "gitlab" }` — without a token, one
-  GitHub page per file: the editor for an existing file, the new-file page for a new one; the link carries the path
+- `fallbackEditLinks(files: Array<{ path: string, text: string | null, existing: boolean }>, snapshot: Snapshot) ->
+  Array<{ url: string, path: string, text: string | null, differs: boolean }> | { refused: "gitlab" }` — without a token, one
+  GitHub page per file: the page that deletes a file whose text is `null` (a rejection, MOD-approvals' `commitRejection`),
+  else the editor for an existing file, the new-file page for a new one; the link carries the path
   only and the text goes to the clipboard, never into the link (`NO TEXT TRAVELS IN A URL`, `WITHOUT A TOKEN, GITHUB'S
   WEB INTERFACE IS THE FALLBACK`). `differs` says that the file on the default branch is no longer what the edit started
   from. A GitLab product has no fallback (`A GITLAB PRODUCT IS WRITTEN WITH A TOKEN`).

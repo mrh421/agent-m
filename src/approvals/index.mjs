@@ -3,8 +3,8 @@
 // changed — of every reviewed file of a snapshot from one pass over docs/approvals/ (status.mjs); approvalStrategies with
 // the recipes use-cases and use-case-with-neighbours and the precondition rests-on-accepted for requirements and use cases
 // (strategies.mjs), its other recipes and preconditions are not built yet; acceptShown, acceptanceBlockers and
-// fallbackAcceptLink (accept.mjs); lastAcceptedText, the text the most recent record of an identifier names (status.mjs);
-// and statusOf, the status of one reviewed file (status.mjs).
+// fallbackAcceptLink (accept.mjs); rejectShown and commitRejection, rejecting what was shown (reject.mjs); lastAcceptedText, the text
+// the most recent record of an identifier names (status.mjs); and statusOf, the status of one reviewed file (status.mjs).
 //
 // Module: MOD-approvals
 //
@@ -17,7 +17,8 @@
 // (MOD-identifiers.kindOfIdentifier) — it never reads a record's text. The strategies read the use cases and the SPEC through
 // the product's snapshot of the job's context, whose read fetches a file once. lastAcceptedText, acceptShown and
 // acceptanceBlockers read through the host and the snapshot they are given, and fallbackAcceptLink asks MOD-repository-hosts
-// for the address of a page without making a request. It uses MOD-documents, MOD-identifiers, MOD-repository-hosts,
+// for the address of a page without making a request. rejectShown and commitRejection read and write through the host they are given, and
+// hand back MOD-artifact-edits' pages without a token. It uses MOD-artifact-edits, MOD-documents, MOD-identifiers, MOD-repository-hosts,
 // MOD-spec-document and MOD-text-tools only through their index.mjs. Every other file of this folder is private to it.
 
 // Schema, in the type below, is MOD-documents' type of that name; Snapshot is MOD-repository-hosts'.
@@ -45,4 +46,5 @@ export const approvalSchema = loadSchema(
 
 export { statuses, statusOf, lastAcceptedText } from "./status.mjs";
 export { acceptShown, acceptanceBlockers, fallbackAcceptLink } from "./accept.mjs";
+export { rejectShown, commitRejection } from "./reject.mjs";
 export { approvalStrategies } from "./strategies.mjs";

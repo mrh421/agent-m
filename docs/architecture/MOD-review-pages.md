@@ -51,6 +51,7 @@ uses:
   - MOD-approvals.acceptShown
   - MOD-approvals.acceptanceBlockers
   - MOD-approvals.fallbackAcceptLink
+  - MOD-approvals.rejectShown
   - MOD-approvals.approvalSchema
   - MOD-approvals.approvalStrategies
   - MOD-spec-changes.queues
@@ -60,6 +61,7 @@ uses:
   - MOD-spec-changes.entrySections
   - MOD-spec-changes.entryView
   - MOD-spec-changes.acceptEntries
+  - MOD-spec-changes.rejectEntry
   - MOD-spec-changes.specStrategies
   - MOD-artifact-edits.saveFile
   - MOD-artifact-edits.keptIdentifier
@@ -102,7 +104,7 @@ provides:
 
 It belongs to the Site (ARC-038). Its one responsibility is the review flow of every reviewed kind of artifact, written
 once as a template method: a list with statuses; one file with its difference to its last accepted text; accepting one,
-the ticked ones or all shown; editing; the draft of a change asked for in the prompt bar; drafting; and arranging groups.
+the ticked ones or all shown; rejecting one, with a reason; editing; the draft of a change asked for in the prompt bar; drafting; and arranging groups.
 A kind takes part through its
 **descriptor** — data —, and the flow calls the service the descriptor names for each decision, once. The kinds are use
 cases, architecture decisions, module files, SPEC change entries and release test reports; arranging groups covers every
@@ -130,6 +132,7 @@ It runs in a browser, loaded by `docs/index.html` through MOD-site-frame.
 - `file-edit.mjs`, `edit.mjs`, `entry-edit.mjs` — the editors of a reviewed file, of a requirement, and of an open SPEC
   entry in place.
 - `spec-entries.mjs` — what the flow asks of the kind whose files are the entries of a change queue.
+- `reject.mjs` — *Reject* beside *Accept*: the field for the reason and the button, and GitHub's pages without a token.
 - `kinds.mjs` — the five descriptors.
 - `jobs.mjs` — preparing, starting and following the drafting jobs of a kind, and letting a result that waits for the
   person go on.
@@ -154,7 +157,8 @@ ReviewKind = {
   draftKinds: string[],                                                 // kinds of MOD-job-catalogue that draft it
   changeKinds: string[],                                                // the kind that changes one of its files, to which a conversation hands a change
   save: "file" | "entry" | null,                                        // MOD-artifact-edits.saveFile, MOD-spec-changes.saveEntry, or never edited
-  accept: "records" | "queue" | "release",                              // MOD-approvals.acceptShown, MOD-spec-changes.acceptEntries, MOD-release-evidence.acceptAndRelease
+  accept: "records" | "queue" | "release",                              // MOD-approvals.acceptShown, MOD-spec-changes.acceptEntries, MOD-release-evidence.acceptAndRelease;
+                                                                        // its service also rejects: MOD-approvals.rejectShown, MOD-spec-changes.rejectEntry, none for a release
   groupKind: string | null,                                             // its group file, for arranging
   sections: string[]                                                    // the extra sections shown with a file
 }
@@ -192,11 +196,17 @@ ReviewKind = {
     names (`A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT`), in a box of its own that scrolls, opened with its
     first change in the middle of the box; its extra sections; beside an open file a job
     wrote, the notes of that job's end record — a realised name it removed, a use case that realises none (UC-007 4a,
-    4b); *Accept*, *Edit*. Its subject for the prompt bar names the file and its version — the use case, or the architecture
+    4b); *Accept*, *Edit*; and, for a use case, decision or module file that is not accepted and a SPEC entry that is not
+    decided — open, stale or waiting for its anchor —, *Reject* below them, with a field for the reason
+    (`A PROPOSAL IS REJECTED WITH A REASON`): a click without a reason writes nothing, says so and puts the focus in the field;
+    with one, the kind's service rejects the item shown on its blob (MOD-approvals' `rejectShown`, MOD-spec-changes'
+    `rejectEntry`) and the page is drawn again with the commit named, or, where the item changed after it was shown, with
+    that said and nothing written. A release test report is not rejected. Its subject for the prompt bar names the file and its version — the use case, or the architecture
     file —, as context (MOD-prompt-bar's `Subject`), with `draft` as its draft route. Without a token for GitHub, *Accept* and
     *Edit* open GitHub's prefilled pages, the text never in the
-    address (`NO TEXT TRAVELS IN A URL`); for a GitLab product without a token, neither is offered, and the token's step
-    is linked.
+    address (`NO TEXT TRAVELS IN A URL`), and *Reject* lists the pages its service hands back — one that deletes a file,
+    or the editor with the text to paste — with the reason to commit each with; for a GitLab product without a token,
+    neither *Accept* nor *Edit* is offered, *Reject* names the token's step, and the token's step is linked.
   - `<k>/all` — *Review all*: every open or changed file of the kind in sequence, a changed one as its difference, in a box
     of its own that scrolls, opened with its first change in the middle of the box, a new one in full, and *Accept all N shown*: one commit with one record per file shown; a file that changed after it was
     shown, or that names a requirement or use case not yet accepted, is left out and named (`SEVERAL FILES ARE ACCEPTED IN
@@ -298,12 +308,14 @@ and `docs/participants.md` of the instance.
   requirements it lists are the head's SPEC's, as are those the drafting of the architecture lists, which reads
   `SPEC.md` while the head's graph is not stored and shows no earlier graph.
 - MOD-approvals.statuses, MOD-approvals.removedFiles, MOD-approvals.statusOf, MOD-approvals.lastAcceptedText, MOD-approvals.acceptShown,
-  MOD-approvals.acceptanceBlockers, MOD-approvals.fallbackAcceptLink — statuses, the files removed since their acceptance, and acceptance; MOD-approvals.approvalSchema —
+  MOD-approvals.acceptanceBlockers, MOD-approvals.fallbackAcceptLink — statuses, the files removed since their acceptance, and acceptance;
+  MOD-approvals.rejectShown — rejecting a use case, decision or module file; MOD-approvals.approvalSchema —
   the schema an approval record is read with, on `<k>/history` too.
 - MOD-spec-changes.queues, MOD-spec-changes.openQueueOf, MOD-spec-changes.proposeSection, MOD-spec-changes.saveEntry,
   MOD-spec-changes.entrySections, MOD-spec-changes.entryView, MOD-spec-changes.acceptEntries — SPEC edits, an open entry
   saved in place, the sections a draft of the conversation holds, SPEC entries and their acceptance in the queue's order, with the product's links and
-  the instance's register, so that an entry whose requirement names no linked source is named and not accepted.
+  the instance's register, so that an entry whose requirement names no linked source is named and not accepted;
+  MOD-spec-changes.rejectEntry — rejecting an entry.
 - MOD-artifact-edits.saveFile, MOD-artifact-edits.saveGroupFile, MOD-artifact-edits.fallbackEditLinks — saves;
   MOD-artifact-edits.keptIdentifier — a drafted change's identifier restored before the editor opens.
 - MOD-release-evidence.acceptAndRelease — accepting an open release test report.

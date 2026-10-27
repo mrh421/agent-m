@@ -13,7 +13,7 @@
 // each test says. The key of each endpoint is a marker no other text holds. Where the module file leaves a reading open, the test states the one it
 // takes, and the pull request names it:
 //   - The ask's body is `{ endpoint, input }` with `endpoint` bridgeApi's endpoint configuration and `input` the prompt, a text; the answer to the
-//     post is `{ ask }`, and the read gives `{ state, text, usage, error }` as an agent's ask does.
+//     post is `{ ask }`, and the read gives `{ state, text, calls, usage, error }` as an agent's ask does, `calls` `[]` since it is no exchange.
 //   - A failed ask's `error` is the endpoint's diagnosis: its reason, then its message, with the key, where the endpoint echoes it, replaced by `[key]`.
 //   - A body with an `endpoint` is an endpoint ask whatever else it holds; an endpoint that is no configuration, or an input that is no text, is
 //     invalid-request.
@@ -77,7 +77,7 @@ async function rejection(promise) {
 // guards: A RUNTIME IS INTERCHANGEABLE; UC-003; UC-011
 // given: a model server (openai-compatible) that holds its answer until released, then answers "Drafted." with 5 prompt and 3 completion tokens
 // input: POST /v1/ask with { endpoint, input }; GET /v1/ask/{ask} before the server answers and after it
-// expect: the post answers { ask } alone; the first read { state: "running", text: null, usage: null, error: null }; then { state: "done", text: "Drafted.", usage: { inputTokens: 5, outputTokens: 3, minutes: null, cost: null }, error: null }; the server was asked once, at /v1/chat/completions, with the input as the user message and the model of the configuration
+// expect: the post answers { ask } alone; the first read { state: "running", text: null, calls: [], usage: null, error: null }; then { state: "done", text: "Drafted.", calls: [], usage: { inputTokens: 5, outputTokens: 3, minutes: null, cost: null }, error: null }; the server was asked once, at /v1/chat/completions, with the input as the user message and the model of the configuration
 test("an endpoint ask is running, then done with the endpoint's text and usage", async () => {
   const hold = gate();
   const model = await server(ok("Drafted.", { prompt_tokens: 5, completion_tokens: 3 }), { hold });
@@ -86,11 +86,12 @@ test("an endpoint ask is running, then done with the endpoint's text and usage",
     const posted = await post(handlers, { endpoint: endpointOf(model.base), input: "Draft the thing." });
     assert.deepEqual(Object.keys(posted), ["ask"]);
     await until(() => model.seen.length === 1, "the model server to be asked");
-    assert.deepEqual(await read(handlers, posted.ask), { state: "running", text: null, usage: null, error: null });
+    const running = await read(handlers, posted.ask);
     hold.release();
+    assert.deepEqual(running, { state: "running", text: null, calls: [], usage: null, error: null });
     const done = await finished(handlers, posted.ask);
 
-    assert.deepEqual(done, { state: "done", text: "Drafted.", usage: { inputTokens: 5, outputTokens: 3, minutes: null, cost: null }, error: null });
+    assert.deepEqual(done, { state: "done", text: "Drafted.", calls: [], usage: { inputTokens: 5, outputTokens: 3, minutes: null, cost: null }, error: null });
     assert.deepEqual(await read(handlers, posted.ask), done);
     assert.equal(model.seen.length, 1);
     assert.equal(model.seen[0].url, "/v1/chat/completions");
@@ -110,7 +111,7 @@ test("an endpoint ask sends the key in the provider's header and in no url", asy
     const handlers = jobHandlers();
     const first = await post(handlers, { endpoint: endpointOf(anthropic.base, { kind: "anthropic" }), input: "Hello." });
     const second = await post(handlers, { endpoint: endpointOf(compatible.base), input: "Hello." });
-    assert.deepEqual(await finished(handlers, first.ask), { state: "done", text: "From Anthropic.", usage: { inputTokens: 7, outputTokens: 2, minutes: null, cost: null }, error: null });
+    assert.deepEqual(await finished(handlers, first.ask), { state: "done", text: "From Anthropic.", calls: [], usage: { inputTokens: 7, outputTokens: 2, minutes: null, cost: null }, error: null });
     assert.equal((await finished(handlers, second.ask)).text, "From a compatible server.");
 
     assert.equal(anthropic.seen[0].headers["x-api-key"], KEY);
@@ -119,13 +120,37 @@ test("an endpoint ask sends the key in the provider's header and in no url", asy
   } finally { await anthropic.close(); await compatible.close(); }
 });
 
+// TST-1237002 · level: unit · module: MOD-bridge-jobs
+// guards: UC-049; A RUNTIME IS INTERCHANGEABLE
+// given: a model server that holds its answer until released, then answers "Blue." with 2 prompt and 1 completion tokens; and one that refuses the key with 401
+// input: POST /v1/ask with { endpoint, input } to each; GET /v1/ask/{ask} while the first runs, after it is done, and after the second has failed
+// expect: every read holds the field calls, and it is [] — running, done and failed alike, since an endpoint's input ask is no exchange of a tool loop; the done read holds the text "Blue." beside it
+test("an endpoint's input ask holds calls: [] while running, when done and when failed", async () => {
+  const hold = gate();
+  const model = await server(ok("Blue.", { prompt_tokens: 2, completion_tokens: 1 }), { hold });
+  const refusing = await server(() => ({ status: 401, body: { error: { message: "Incorrect API key provided." } } }));
+  try {
+    const handlers = jobHandlers();
+    const { ask } = await post(handlers, { endpoint: endpointOf(model.base), input: "Say Blue." });
+    await until(() => model.seen.length === 1, "the model server to be asked");
+    const running = await read(handlers, ask);
+    hold.release();
+    const done = await finished(handlers, ask);
+    assert.equal(running.state, "running");
+    assert.deepEqual(running.calls, []);
+    assert.equal(done.text, "Blue.", "known positive: the endpoint answered");
+    assert.deepEqual(done.calls, []);
+    const failed = await finished(handlers, (await post(handlers, { endpoint: endpointOf(refusing.base), input: "Say Blue." })).ask);
+    assert.equal(failed.state, "failed");
+    assert.deepEqual(failed.calls, []);
+  } finally { await model.close(); await refusing.close(); }
+});
+
 // TST-472086 · level: unit · module: MOD-bridge-jobs
 // guards: A REMOTE INTERFACE NAMES HOW IT FAILS; UC-003
-// given: a model server that refuses the key with 401 and a message that quotes the key; one that cannot be reached (its port closed); one that answers every
-//   request with a rate limit and retry-after-ms 0
+// given: a model server that refuses the key with 401 and a message that quotes the key; one that cannot be reached (its port closed); one that answers every request with a rate limit and retry-after-ms 0
 // input: POST /v1/ask to each; GET until it ends — for the unreachable one, with this test's timers mocked and advanced, since its five retries wait 2 s to 30 s
-// expect: refused: state failed, text and usage null, an error that names "key refused" and the endpoint's words with the key replaced by [key], after one
-//   request; unreachable: failed naming "not reachable"; rate-limited: failed naming "rate limited", after six requests — the request and five retries
+// expect: refused: state failed, text and usage null, an error that names "key refused" and the endpoint's words with the key replaced by [key], after one request; unreachable: failed naming "not reachable"; rate-limited: failed naming "rate limited", after six requests — the request and five retries
 test("a refused key, an unreachable server and a rate limit are failed asks with the endpoint's own words", async (t) => {
   const refusing = await server(() => ({ status: 401, body: { error: { message: `Incorrect API key provided: ${KEY}.` } } }));
   const limited = await server(() => ({ status: 429, headers: { "retry-after-ms": "0" }, body: { error: { message: "Too many requests today." } } }));

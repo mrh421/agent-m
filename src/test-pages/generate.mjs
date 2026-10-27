@@ -179,10 +179,13 @@ async function render(target, context, params = {}) {
       writers = writers.filter((writer) => !implementers.has(writer.name));
       for (const writer of left) notes.push(el("p", "left-out", `${writer.name} is left out: it implemented what the release tests check, and release tests are written by a participant other than the implementer.`));
       if (left.length && !writers.length) {
-        const first = el("a", null, "UC-017");
-        first.setAttribute("href", "#use-case/id=UC-017");
-        const second = el("a", null, "UC-002");
-        second.setAttribute("href", "#use-case/id=UC-002");
+        // Each leads to its use case only through the context's go, as the frame's button (MOD-test-pages; views.mjs does the same).
+        const [first, second] = ["UC-017", "UC-002"].map((id) => {
+          const lead = el("button", "btn", id);
+          lead.setAttribute("type", "button");
+          lead.addEventListener("click", () => context.go("use-case", { id }));
+          return lead;
+        });
         notes.push(el("p", "release-needs-another", "Release tests need a participant other than the implementer; the only participant that fills the role is the implementer. See ", first, " and ", second,
           ". The other levels can still be generated: leave release unticked."));
       }

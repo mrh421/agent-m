@@ -19,6 +19,8 @@ realises:
   - A GITLAB PRODUCT IS WRITTEN WITH A TOKEN
   - SEVERAL FILES ARE ACCEPTED IN ONE CLICK
   - A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT
+  - A PROPOSAL IS REJECTED WITH A REASON
+  - A REJECTION REMOVES THE PROPOSAL
 ---
 # UC-008 Review and accept a use case
 
@@ -83,6 +85,10 @@ sequenceDiagram
 - **2a. The use case changed since it was last accepted.** Above the text, the dashboard shows the
   difference to the text the most recent approval record for this identifier names — also when the file
   was renamed since. The reviewer reads only what changed and accepts as in step 3.
+- **3f. The reviewer rejects.** The reviewer presses **Reject** and types the reason. In one commit
+  under the reviewer's own account, with the reason in its message, the dashboard restores the text the
+  most recent approval record names, or removes the file when no record names one. The use case is then
+  shown as accepted, or no longer listed.
 - **5a. The file is edited after acceptance.** Its SHA changes, no record names it, and the
   dashboard shows it as changed since acceptance — without anyone resetting a status.
 

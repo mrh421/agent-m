@@ -72,7 +72,8 @@ const lines = (...parts) => parts.filter((part) => typeof part === "string" && p
 
 /**
  * subjectOf({ title, params, context, shown }) -> Subject — the subject of the route `trace` shown with these `params` and this `context`;
- * `shown` is what the route has kept while it was drawn: `target` (what it has drawn), `ref` (the version shown, which the version choice may have changed from `params.ref`), `onDefaultBranch`, `spec` (as parseSpec reads it),
+ * `shown` is what the route has kept while it was drawn: `target` (what it has drawn), `ref` (the version shown, which the version choice may have changed from `params.ref`), `onDefaultBranch`, `asOf` (latestGraph's line where the
+ * version shown is the earlier one drawn while the head's graph is stored, else null), `spec` (as parseSpec reads it),
  * `source` (the person's, or null), and `requirements` (names) and `groups` ({ heading, path, names }) in the order they were opened; null where
  * the route was not drawn with this context. `key` tells the view, the version, what is open and the product apart.
  */
@@ -96,8 +97,10 @@ export function subjectOf({ title, params, context, shown }) {
       paramsFor: () => ({ page: lines(pageText(), `Open: ${about}`, ...names), requirements: [...names], ...own() }),
       draftRoute: `${DRAFT_ROUTE}/subject=${encoded(key)}`, withhold: null, refuses: [] };
   };
-  if (name !== undefined && shown.onDefaultBranch) return changing(`requirement=${encoded(name)}`, [name], name);
-  if (name === undefined && group !== undefined && shown.onDefaultBranch) {
+  // The current state: the default branch, or the earlier version drawn while the head's graph is stored, which alone carries latestGraph's line (`asOf`).
+  const current = shown.onDefaultBranch || (shown.asOf ?? null) !== null;
+  if (name !== undefined && current) return changing(`requirement=${encoded(name)}`, [name], name);
+  if (name === undefined && group !== undefined && current) {
     return changing(`requirements=${encoded(JSON.stringify(group.names))}`, group.names, group.heading);
   }
   const requirement = name === undefined ? undefined : shown.spec.requirements.get(name);

@@ -186,7 +186,7 @@ For the conversation cases, the keys are those of tests/test_conversation_not_re
 
 ```json
 {
-  "given": "With recording off, the person sends two messages and presses Hand over on the task the participant proposes.",
+  "given": "With recording off, the person sends two messages, and the participant proposes handing its task over, which goes on without a further click.",
   "input": {
     "recording": false,
     "page": "product",

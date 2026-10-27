@@ -6,6 +6,7 @@ realises:
 follows:
   - ARC-041
 uses:
+  - MOD-artifact-edits.fallbackEditLinks
   - MOD-repository-hosts.Host
   - MOD-repository-hosts.Snapshot
   - MOD-repository-hosts.readSnapshot
@@ -34,6 +35,8 @@ provides:
   - acceptShown
   - acceptanceBlockers
   - fallbackAcceptLink
+  - rejectShown
+  - commitRejection
   - approvalStrategies
 ---
 # MOD-approvals Approval records and the status of reviewed files
@@ -43,7 +46,8 @@ provides:
 It belongs to Specification and design (ARC-041). It keeps every reviewed file — use case, architecture decision,
 module file, SPEC change entry, release test report — open until an approval record names its exact text, and derives
 every status from those records alone (`STATUS IS DERIVED FROM THE RECORDS`). It composes an acceptance as one commit
-under the accepting person's account (`ACCEPTANCE IS A COMMIT BY THE ACCEPTING PERSON`), and offers the job kinds the
+under the accepting person's account (`ACCEPTANCE IS A COMMIT BY THE ACCEPTING PERSON`), composes a rejection as one
+commit under the rejecting person's account with the reason in its message (`A REJECTION REMOVES THE PROPOSAL`), and offers the job kinds the
 recipes of use cases and of the architecture and the preconditions that a draft rests on accepted artifacts. It runs in
 the browser and in Node.
 
@@ -53,6 +57,7 @@ the browser and in Node.
 - `approval-record.schema.md` — the schema of the approval record, in MOD-documents' schema language.
 - `status.mjs` — statuses, the removed files and the last accepted text.
 - `accept.mjs` — composing an acceptance commit, the blockers, GitHub's prefilled page.
+- `reject.mjs` — rejecting a reviewed file that was shown, and the one commit of every rejection, or GitHub's pages for it.
 - `strategies.mjs` — the recipes and preconditions of `approvalStrategies`.
 - **Taken over, outside this folder** (`CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT`; the count in `docs/measurements/2026-10-17_code-outside-every-module.md`). Each file goes as stated, in this module's own implementation jobs:
   - `tests/test_approval_records.py`: rewritten on this module, or removed with the old core.
@@ -137,6 +142,26 @@ never written. A decision or module file that a record names and the snapshot no
   the record itself — a link carries nothing else, never the reviewed text (`NO TEXT TRAVELS IN A URL`, `WITHOUT A
   TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK`); the path and the record are returned as well, for a copy button when
   the prefill does not arrive. For a product on a GitLab server it refuses (`A GITLAB PRODUCT IS WRITTEN WITH A TOKEN`).
+- `rejectShown(host: Host, shown: { path: string, blob: string }, person: string, reason: string) -> Promise<{ commit: string } |
+  { fallback: Array<{ url: string, path: string, text: string | null, differs: boolean }> }>` — rejects the use case,
+  architecture decision or module file that was shown (`A PROPOSAL IS REJECTED WITH A REASON`, `A REJECTION REMOVES THE
+  PROPOSAL`): through `commitRejection`, the file's text becomes the one `lastAcceptedText` gives for its identifier, at the
+  path the file has now, or the file is deleted when no record names one. No record is written. Throws, before anything is
+  written: a TypeError for a missing or blank reason, and for a path that is no use case, decision or module file;
+  `ChangedSinceShown { path }` when the head no longer holds the blob shown (`A STALE APPROVAL IS NOT APPLIED`);
+  `NothingToReject { path }` when the blob shown is the accepted text. Considers: called only as the direct result of a
+  person's click. Crosses the network; fails as `commitRejection`, and with the errors of `lastAcceptedText`.
+- `commitRejection(host: Host, head: Snapshot, rejection: { id: string, files: Array<{ path: string, text: string } | {
+  path: string, delete: true }> }, person: string, reason: string) -> Promise<{ commit: string } | { fallback: Array<{ url:
+  string, path: string, text: string | null, differs: boolean }> }>` — the files of a rejection of `id` in one commit on
+  the default branch, on the head that was read, made with the person's token; its message names `id`, the person and the
+  reason. Without a token (`RepositoryInfo.canWrite` false), or when GitHub refuses the commit with `PermissionMissing`,
+  nothing is written and GitHub's pages for the same files come back — MOD-artifact-edits' `fallbackEditLinks`, a deleted
+  file as its text `null` (`WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK`); GitHub's pages change one file each,
+  so the person commits one page after another. Used by `rejectShown` and by MOD-spec-changes' `rejectEntry`, so that
+  every rejection is committed and fallen back from in one place. Errors: a TypeError for a missing or blank reason and
+  `TokenRequired` for a product on a GitLab server without a token, before anything is written; `Moved`, `TokenRefused`,
+  `PermissionMissing` on GitLab, `RateLimited`, `Unreachable`.
 - `approvalStrategies: Strategies` — the strategies this module offers the job runner (ARC-046):
   - recipe `use-cases` — every use case of the product, each with its status, as one part per file, which carries its
     use case as an artifact keyed by the key of its format;
@@ -164,12 +189,15 @@ never written. A decision or module file that a record names and the snapshot no
 - Reads `docs/approvals/*.md` and every reviewed file — `docs/use-cases/UC-*.md`, `docs/architecture/ARC-*.md`,
   `docs/architecture/MOD-*.md`, `docs/tests/releases/v*.md` — and `SPEC.md` for the requirements a file names.
 - Writes `docs/approvals/<ID>-<blob12>.md`, only by adding a file, never by changing or deleting one.
+- On a rejection, writes the rejected use case, decision or module file back to its last accepted text, or deletes it;
+  and commits the files of a SPEC change entry's rejection that MOD-spec-changes hands it.
 
 ## Uses
 
 - MOD-repository-hosts.Host, Snapshot, readSnapshot, readHistory — the files of a commit, the head before a commit, the
   order of records and an earlier text of a file.
-- MOD-repository-hosts.commitFiles — the acceptance commit on an expected head.
+- MOD-repository-hosts.commitFiles — the acceptance commit and the rejection commit on an expected head.
+- MOD-artifact-edits.fallbackEditLinks — GitHub's pages for the files of a rejection without a token.
 - MOD-repository-hosts.webLinks — GitHub's new-file page without a token.
 - MOD-documents.Schema, loadSchema, readDocument, writeDocument — reading and writing records by their schema, and reading the
   names a use case or decision declares; MOD-documents.artifactSchemas — the key of each format, for the artifacts a

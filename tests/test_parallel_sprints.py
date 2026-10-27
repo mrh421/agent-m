@@ -6,16 +6,16 @@
 - EVERY TEAM RUNS SPRINTS OF ITS OWN — runs sprints of several teams of one product at the same time, and checks that each
   team's sprints are its own: numbered within the team, holding what the team selected, and unchanged by another team's
   sprint starting or closing;
-- A SPRINT HOLDS ITS ITEMS UNTIL THEY REACH THE DEFAULT BRANCH — follows held items through their sprint's close and the
-  merges into the default branch, and checks that an item stays held until its change is merged there or it returns to the
-  backlog;
+- A SPRINT HOLDS ITS ITEMS UNTIL THEY REACH THE DEFAULT BRANCH — follows held items through their sprint's close, the
+  merges into the default branch and an increment given up, and checks that an item stays held until its change is merged
+  there, it returns to the backlog or its increment is given up;
 - SPRINTS OF DIFFERENT TEAMS CHANGE NO MODULE THE OTHER CHANGES OR USES — plans a sprint while other teams' sprints hold
   items, compares the modules each item changes and uses with those of the held items, and checks that no item sharing a
   module is selectable and that each refusal names the holding sprint, the item and the module;
 - SPRINT PLANNING SHOWS WHAT THE OTHER TEAMS' SPRINTS HOLD — checks that each item another team's sprint holds comes with
   its sprint, the modules it changes and the modules they use.
 
-MOD-work-plans' heldItems, conflicts, startSprint and closeSprint, asked through node over the fixture product of tests/parallel_sprints_fixture.py:
+MOD-work-plans' heldItems, itemStates, conflicts, startSprint and closeSprint, asked through node over the fixture product of tests/parallel_sprints_fixture.py:
 two teams, team1 running sprint 01, team2 having closed sprint 01 and running sprint 02. Every expectation is read from the
 fixture's data, never from the code under test. A team closes and starts its sprints through closeSprint and startSprint,
 over a fake of the repository host; its sprint planning is the Backlog page of the real dashboard with Plan sprint open.
@@ -29,6 +29,7 @@ from parallel_sprints_fixture import (CURRENT, ITEMS, PULL_REQUESTS, SELECTIONS,
 from jsrun import js
 
 CLOSED = "docs/backlog/sprints/team2/01.md"
+RUNNING_ON_ITS_BRANCH = "docs/backlog/sprints/team1/01.md"
 
 
 def by_sprint(entries: list) -> dict:
@@ -148,6 +149,29 @@ class ASprintHoldsItsItemsUntilTheyReachTheDefaultBranch(unittest.TestCase):
         got = by_sprint(held("unknown"))
         self.assertEqual(got["team2/01"], ["ITM-002"])
         self.assertEqual(got["team1/01"], SELECTIONS[CURRENT["team1"]])
+
+
+    # TST-1232001 · level: component · module: MOD-work-plans
+    # guards: A SPRINT HOLDS ITS ITEMS UNTIL THEY REACH THE DEFAULT BRANCH; UC-041
+    # given: team1's sprint 01 of the fixture, on its own branch sprint/team1/01, ITM-001 merged into that branch (pull request 3), ITM-003 with an open pull request; its record closed (## Review, ## Unfinished items sending ITM-003 and ITM-005 back to the backlog, ## Retrospective), its branch not merged into main
+    # input: heldItems with that closed record, and with that record followed by ## Increment given up (at, by, reason); itemStates of ITM-001 over the fixture's pull requests
+    # expect: closed only, team1/01 still holds ITM-001 (known positive); given up, team1/01 holds none of its items; ITM-001 stays done
+    def test_a_sprint_whose_increment_is_given_up_holds_none_of_its_items_and_its_done_items_stay_done(self):
+        merged = next(pr for pr in PULL_REQUESTS if pr["branch"] == "work/ITM-001")
+        self.assertEqual((merged["state"], merged["base"]), ("merged", "sprint/team1/01"))
+        closed = (FIX / RUNNING_ON_ITS_BRANCH).read_text(encoding="utf-8") + (
+            "\n## Review\n\nThe increment is ITM-001, merged into the sprint's branch.\n\n"
+            "## Unfinished items\n\nto the backlog: ITM-003, ITM-005\ninto the next sprint:\n\n"
+            "ITM-003 and ITM-005 wait for the mail's layout.\n\n## Retrospective\n\nThe team merges its branch sooner.\n")
+        given_up = closed + "\n## Increment given up\n\nat: 2026-10-20\nby: Product Owner\nreason: the store is built anew\n"
+        sprint = RUNNING_ON_ITS_BRANCH.split("sprints/")[1][:-3]
+        self.assertEqual(by_sprint(held(texts={RUNNING_ON_ITS_BRANCH: closed})).get(sprint), ["ITM-001"],
+                         "known positive: closed, its increment not merged, the sprint holds its done item")
+        self.assertNotIn(sprint, by_sprint(held(texts={RUNNING_ON_ITS_BRANCH: given_up})), "given up, it holds none of its items")
+        states = js(prelude({RUNNING_ON_ITS_BRANCH: given_up}) + f"""
+            return workPlans.itemStates(items, null, {{ statuses: new Map(), queues: [], jobs: [],
+              pullRequests: {json.dumps(PULL_REQUESTS)}, gates: [], workflow: null }});""")
+        self.assertEqual(next(s["state"] for s in states if s["item"] == "ITM-001"), "done", "its done item stays done")
 
 
 class SprintsOfDifferentTeamsChangeNoModuleTheOtherChangesOrUses(unittest.TestCase):

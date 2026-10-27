@@ -7,7 +7,7 @@ repository, so that a text found in a commit, a commit message, a file or a reco
 conversation is held on (`page`: a page of the product `alice/thesis-tool`, or of the instance `alice/agent-m`), the replies the fake model
 endpoint gives in turn (`replies`: the tool calls of a model that can use tools, or an answer, which may propose a hand-over), the steps in
 order (`send` a message to a participant; `save` an edit the person saves, as one commit with the job's provenance lines; `handOver` the
-person's click on Hand over), the `needles` to look for, and for the counter-proofs `plant` (a text put into the job record after the run) and
+hand-over the participant proposes, followed without a further click), the `needles` to look for, and for the counter-proofs `plant` (a text put into the job record after the run) and
 `omit` (a text taken out of the conversation record before it is looked at). `expected` names only what the case asserts, out of: `found`
 and `foundCount` (each needle: where, and in how many places, it was found among every commit message, every file of every commit and every
 job record), `conversationFiles` (how many records lie under docs/conversations/ in each repository), `conversationPaths` (whether every
@@ -20,7 +20,7 @@ the conversation records of that repository hold it), `commits` and `strayReques
 
 ```json
 {
-  "given": "The instance does not record conversations. On a page of the product the person asks tooler (a model endpoint that can use tools), which reads SPEC.md, then asks for a change of the notes and saves the edit, then asks it to run the tests; the answer proposes handing the task to GitHub Actions and the person clicks Hand over.",
+  "given": "The instance does not record conversations. On a page of the product the person asks tooler (a model endpoint that can use tools), which reads SPEC.md, then asks for a change of the notes and saves the edit, then asks it to run the tests; the answer proposes handing the task to GitHub Actions, which goes on without a further click.",
   "input": {
     "recording": false,
     "page": "product",

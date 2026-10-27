@@ -231,7 +231,8 @@ async function runJobOf(env, composed, participants, row, handOver = null) {
     if (prepared.blocking.length > 0 || prepared.notFitting.length > 0) {
       throw Object.assign(new Error(prepared.blocking.map((found) => found.what).join("; ") || "the job does not fit its participant"), { name: "NotStartable" });
     }
-    const config = endpoint ? { name: "hand-over", ...endpoint, key: job.keys[secretName] ?? null } : null;
+    // On the model's user's side of the agent's machine (model-user.mjs) the endpoint is reached through the key holder, which adds the key; this side holds none.
+    const config = endpoint ? { name: "hand-over", ...endpoint, ...(job.keyHolder ? { baseUrl: job.keyHolder, key: null } : { key: job.keys[secretName] ?? null }) } : null;
     const driver = !endpoint ? await driverOf(participant, record.params ?? {}, secretName, job.keys[secretName], instance.checkout)
       : inCheckout ? endpointDriver(config, participant, undefined, { system: await checkoutPrompt({ folder: context.product.checkout, now: env.now }) })
         : endpointDriver(config, participant);
@@ -452,7 +453,8 @@ async function runHandOver(env, composed, listed, row, inputs) {
   // The key: for a model endpoint, the secret the input `secret` names, which the job workflow must name among its keys (`AGENT_M_KEY_NAMES`, by own property, so that no other
   // variable is read); for any other hand-over, the secret the participant's route names.
   const secret = inputs.endpoint ? (typeof inputs.secret === "string" && inputs.secret ? inputs.secret : null) : SECRET_OF.exec(participant.route ?? "")?.[1];
-  if (secret && !(Object.hasOwn(env.job.keys, secret) && env.job.keys[secret])) {
+  // On the model's user's side the key holder holds that key, which it was started with only where the machine had it (model-user.mjs).
+  if (secret && !(inputs.endpoint && env.job.keyHolder) && !(Object.hasOwn(env.job.keys, secret) && env.job.keys[secret])) {
     const unnamed = !Object.hasOwn(env.job.keys, secret);
     return notRun(unnamed
       ? `${secret} is missing: the job workflow names no such key, so no secret of that name reaches the run; the job workflow is installed again from Settings, which names the keys of the participants' routes and of this browser's endpoints. Nothing was written.`

@@ -175,8 +175,12 @@ On GitLab each job's name begins with `agent-m-`. How a job comes to receive onl
 
 The agent's machine is the agent's job: it receives the one key of the participant the run names, never the person's
 token. It reads the product with the workflow's own read access — GitHub's checkout, GitLab's clone of the project — and
-clones the instance without a token; it installs no coding agent: a start that names an `endpoint` runs that endpoint's
-job in Agent M's own loop, with the tools of MOD-checkout-tools in the product's checkout (MOD-workflow-entries). It writes nothing to the
+clones the instance without a token; on GitHub neither checkout keeps the workflow's token (`persist-credentials:
+false`), since nothing on that machine fetches with it (`NO MODEL READS A CREDENTIAL`). It installs no coding agent: a
+start that names an `endpoint` runs that endpoint's job in Agent M's own loop, with the tools of MOD-checkout-tools in
+the product's checkout (MOD-workflow-entries). On the server's runners the agent's job names the model's user,
+`AGENT_M_MODEL_USER: "agent-m-model"`, as whom that job runs beside the key holder (MOD-workflow-entries, *The model's
+user*); a self-hosted runner's names none (`""`). It writes nothing to the
 product: what the job commits lands in the run's result, which it leaves as an artifact of the job — on GitHub kept one
 day, on GitLab kept one hour and downloadable by no one, only the jobs of the pipeline that need it taking it. The
 writing machine is the job that writes: it runs no agent and calls no model, downloads the result, refuses it where it

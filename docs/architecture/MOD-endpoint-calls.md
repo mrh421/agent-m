@@ -22,6 +22,7 @@ provides:
   - listModels
   - modelContext
   - diagnoseEndpoint
+  - holdKey
 ---
 # MOD-endpoint-calls The driver of model endpoints
 
@@ -63,6 +64,15 @@ through its Bridge — its test or a job's request —, the browser sends the co
 to that Bridge; the Bridge then sends the key only to the endpoint, in that endpoint request's authorisation header. It never appears in an
 address and is never written anywhere (`A CREDENTIAL IS NEVER PLACED IN A URL`, `NO SECRET IN THE REPOSITORY`).
 
+**The key holder** keeps a key out of a program that calls the endpoint: it holds the key, in Node, and forwards each
+request it receives on `127.0.0.1` to the same path below the endpoint's `baseUrl`, adding the key in its kind's header —
+`x-api-key` on Anthropic, `Authorization: Bearer` on an OpenAI-compatible endpoint, the one header every request of this
+module carries it in, and sends each through this module's sender of a single request, so that the key goes only where
+the module sends every request: the configured endpoint. A caller's own key headers are dropped; a request whose target
+is not a path of that endpoint is answered 400 and sent nowhere; a redirect is answered, not followed. The program whose requests it forwards — the model's
+user's side of a hosted job's agent machine (MOD-workflow-entries) — is given the holder's address as the endpoint's
+`baseUrl` and no key (`NO MODEL READS A CREDENTIAL`).
+
 ## Interfaces
 
 - `EndpointConfig` — `{ name: string, kind: "openai-compatible" | "anthropic", baseUrl: string, model: string, key: string
@@ -92,12 +102,15 @@ address and is never written anywhere (`A CREDENTIAL IS NEVER PLACED IN A URL`, 
     offered tool's is read as that tool's.
   - **The same call three times in a row** — the same tool with the same arguments — is not carried out the third time;
     its result says so and asks for other arguments or another way.
-  - **The limit.** It makes at most `tools.limit` calls, a refused one counted; at the limit it asks the endpoint once more
-    without offering tools, adding opencode's maximum-steps text, which asks for a summary of what is done and what remains.
+  - **The limit.** Where `tools.limit` is a number, it makes at most that many calls, a refused one counted; at the limit
+    it asks the endpoint once more without offering tools, adding opencode's maximum-steps text, which asks for a summary
+    of what is done and what remains. Where it is `null`, no number of calls ends the loop: it ends when the endpoint
+    answers without a call, or when it is cancelled through the signal.
   - **The output limit.** Every request of the loop asks for at most 32000 tokens, or, for a participant with a declared
     `context`, at most what the context leaves. An answer the endpoint ended at that limit — finish reason `length`, stop
     reason `max_tokens` — is followed by a message that tells it so and asks it to continue where it stopped or to make
-    smaller edits; the continuation counts as one call of the limit, and the answer returned is the parts joined.
+    smaller edits; the continuation counts as one call of the limit, where there is one, and the answer returned is the
+    parts joined.
   - **A full context.** For a participant with a declared `context`, each message's size estimated as MOD-job-runner's
     `estimate` does: once what the conversation uses leaves less than a quarter of the context, at most 32000 tokens, the
     oldest tool results beyond the newest 40000 tokens of them are replaced by the visible marker `[old tool result
@@ -146,6 +159,10 @@ address and is never written anywhere (`A CREDENTIAL IS NEVER PLACED IN A URL`, 
   failed call: a call a browser refused for want of a cross-origin permission or of the opt-in header a provider requires
   for calls from a browser, with the routes that would work instead; a refused key; an unknown model; a used-up rate
   limit; an unreachable address.
+- `holdKey({ kind, baseUrl, key }: { kind: "openai-compatible" | "anthropic", baseUrl: string, key: string | null }) ->
+  Promise<{ address: string, close() -> Promise<void> }>` — the key holder, listening at `address`
+  (`http://127.0.0.1:<port>`), as *Data* describes it; the endpoint's status, headers and body are its answer, 502 where
+  the endpoint does not answer. Node only; crosses the network to the endpoint alone.
 
 ## Files
 

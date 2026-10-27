@@ -44,6 +44,8 @@ realises:
   - ONE CLICK PER DECISION
   - EVERY STEP EXPLAINS ITSELF
   - AN ARCHITECTURE JOB RECEIVES THE CHAPTERS ON MODELING, ARCHITECTURE, DESIGN AND IMPLEMENTATION
+  - A PROPOSAL IS REJECTED WITH A REASON
+  - A REJECTION REMOVES THE PROPOSAL
 ---
 # UC-023 Modify the architecture
 
@@ -139,6 +141,10 @@ sequenceDiagram
 - **4c. The module's folder holds no code yet.** The list says "no code yet" — the change costs nothing in code.
 - **5a. The reviewer edits before accepting.** The edit is saved as in step 3, and the impact list is
   derived again for the new text.
+
+- **5b. The reviewer rejects.** The reviewer presses **Reject** and types the reason. In one commit
+  under the reviewer's own account, with the reason in its message, the changed decision or module returns to the
+  text its most recent approval record names, and a new one leaves the working tree; no code changes.
 
 ## Postcondition
 

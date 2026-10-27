@@ -480,11 +480,9 @@ test("TST-377012: UC-019 8 a follow-up instruction repeats steps 5 to 7 and give
 // level: system
 // module: MOD-prompt-bar; MOD-runtimes
 // guards: UC-019; UC-049; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON
-// given: the page of a use case with UC-007 and UC-008 in the product, recording off; the participant answers with a hand-over of the kind derive-use-cases — whose result does not wait for the
-//   author, so that the tab does not run it (UC-049 4a.2) — on the requirement A LOAN HAS A DUE DATE with the task HANDED_TASK
+// given: the page of a use case with UC-007 and UC-008 in the product, recording off; the participant answers with a hand-over of the kind derive-use-cases — whose result does not wait for the author, so that the tab does not run it (UC-049 4a.2) — on the requirement A LOAN HAS A DUE DATE with the task HANDED_TASK
 // input: the author presses Send on MESSAGE — no further click
-// expect: the bar shows Kind: derive-use-cases, Works on: the requirement, the task, and no button Hand over; exactly one job record is written, for the kind derive-use-cases on the requirement with the route "ci hosted",
-// and it holds neither the author's message nor the participant's answer nor the words of the task; exactly one start of agent-m-jobs.yml on main carries the task byte for byte, and no conversation record exists
+// expect: the bar shows Kind: derive-use-cases, Works on: the requirement, the task, and no button Hand over; exactly one job record is written, for the kind derive-use-cases on the requirement with the route "ci hosted", and it holds neither the author's message nor the participant's answer nor the words of the task; exactly one start of agent-m-jobs.yml on main carries the task byte for byte, and no conversation record exists
 const HANDED_TASK = "Add the alternative flow 2b to UC-007: when the service fails, Agent M reports the error and writes nothing.";
 const MESSAGE = "please run the correction loop for this change on GitHub Actions";
 const ANSWER = "This is work for GitHub Actions, where the correction loop runs.";

@@ -121,7 +121,7 @@ async function world(run, { gated = false, fails = false } = {}) {
   script(bin, "git", `exec ${REAL_GIT} "$@"`);
   script(bin, "sleep", `exec ${REAL_SLEEP} "$@"`);
   const event = JSON.stringify({ type: "text", part: { text: JSON.stringify({ draft: { decision: "passed", reason: "@PWD@" }, answers: [] }) } }).replace("@PWD@", `'"$PWD"'`);
-  script(bin, "opencode", `case "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';;
+  script(bin, "opencode", `case "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; models) echo opencode/big-pickle;;
 run) printf '%s\\n' "$PWD $*" >> ${calls}; ${gated ? `while [ ! -e ${gate} ]; do sleep 0.02; done; ` : ""}${fails ? "echo boom >&2; exit 3; " : ""}printf '%s\\n' ok >> ${finished}
 printf '%s\\n' '${event}' '{"type":"step_finish","part":{"tokens":{"input":11,"output":7}}}';; esac`);
   const instance = repository(root, "instance", { "docs/participants.md": PARTICIPANTS, "marker.md": "v1\n" });

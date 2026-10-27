@@ -154,7 +154,8 @@ The rest of its surface faces the person, not another module:
 - **Start.** One Bridge runs per user; a second start opens the first one's window. The shell makes the data folder, and
   through MOD-tunnels the key pair (`THE BRIDGE CREATES ITS OWN SSH KEY`); registers with the job runner the strategies of
   every kind a Bridge may run; starts the server on `127.0.0.1` at the settings' port, for the instance's origin, with
-  the handlers of MOD-bridge-jobs, MOD-mail-protocols and MOD-tunnels (`THE LOCAL BRIDGE BINDS TO LOOPBACK ONLY`); opens
+  the name of the settings in force and the version of `build.json`, `null` for a start without it, and with the
+  handlers of MOD-bridge-jobs, MOD-mail-protocols and MOD-tunnels (`THE LOCAL BRIDGE BINDS TO LOOPBACK ONLY`); opens
   the tunnels (`THE BRIDGE OPENS ITS TUNNELS ITSELF`); and, unless paused, starts watching the served products, so that
   their runs go on while no tab is open (`A RUN CONTINUES WITHOUT A CLICK BETWEEN ITS JOBS`). A port in use is shown with
   a field for another; a data folder that cannot be written is shown with its path.

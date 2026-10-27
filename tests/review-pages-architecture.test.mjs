@@ -356,7 +356,7 @@ test("MOD-review-pages decision/<id>/edit and module/<id>/edit — Save commits 
     const [{ change }] = fake.writes();
     assert.equal(change.expectedHead, read, `${id}: on the head the editor opened`);
     assert.deepEqual(change.files, [{ path, text: edited }], `${id}: only the file, with the edited text`);
-    await until(() => find(target, (node) => node.localName === "textarea").length === 0 && target.textContent.includes(route === "decision" ? "two small modules" : "to a member"), `${id} to be shown again`);
+    await until(() => find(target, (node) => node.localName === "textarea" && !node.className.split(" ").includes("reject-reason")).length === 0 && target.textContent.includes(route === "decision" ? "two small modules" : "to a member"), `${id} to be shown again`);
     assert.equal(badgeOf(target), "open", `${id}: shown again from its page, open`);
     assert.ok(find(target, (node) => node.localName === "a" && (node.getAttribute("href") ?? "").endsWith(`/commit/${fake.head()}`)).length >= 1, `${id}: the commit is linked`);
   }

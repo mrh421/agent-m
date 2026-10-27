@@ -41,7 +41,7 @@ const call = (address, method, path, token) => new Promise((resolve, reject) => 
   request.end(method === "POST" ? "{}" : undefined);
 });
 
-const start = (folder) => serveBridge({ host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, handlers);
+const start = (folder) => serveBridge({ name: () => "lab-pc", host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder: folder, paused: () => false }, handlers);
 
 async function routes(input, folder) {
   const bridge = await start(folder);

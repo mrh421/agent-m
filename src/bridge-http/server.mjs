@@ -35,7 +35,7 @@ export async function serveBridge(config, handlers) {
     if (paired?.renewals !== pairingRenewals(config.dataFolder)) paired = { origin, renewals: pairingRenewals(config.dataFolder) };
     const startsWork = request.method === "POST" && (path === "/v1/jobs" || path === "/v1/ask" || path.startsWith("/v1/probes/") || path.startsWith("/v1/mail/"));
     if (config.paused() && startsWork) { error(response, 503, "paused", "Bridge is paused.", config.origin); log(503); return; }
-    if (request.method === "GET" && path === "/v1/pair") { reply(response, 200, { bridge: { name: "Bridge", version: "unreleased", platform: process.platform }, origin: config.origin }, config.origin); log(200); return; }
+    if (request.method === "GET" && path === "/v1/pair") { reply(response, 200, { bridge: { name: config.name(), version: config.version ?? null, platform: process.platform }, origin: config.origin }, config.origin); log(200); return; }
     const selected = bridgeApi.routes.map((candidate) => [candidate, match(candidate, request.method, path)]).find(([_candidate, params]) => params !== null);
     const route = selected?.[0], params = selected?.[1];
     if (route?.path === "/v1/tunnels") {

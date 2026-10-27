@@ -18,7 +18,7 @@ const ORIGIN = "https://akmaier.github.io";
 
 async function running(t, { folder, paused = () => false } = {}) {
   const dataFolder = folder ?? await mkdtemp(join(tmpdir(), "agent-m-bridge-http-1003-"));
-  const server = await serveBridge({ host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder, paused }, { jobs: {}, mail: {}, tunnels: {} });
+  const server = await serveBridge({ name: () => "lab-pc", host: "127.0.0.1", port: 0, origin: ORIGIN, dataFolder, paused }, { jobs: {}, mail: {}, tunnels: {} });
   let closing = null;
   const close = () => (closing ??= server.close());
   t.after(close);

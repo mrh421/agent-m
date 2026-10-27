@@ -1,5 +1,5 @@
 // The tools a kind may offer, as data — MOD-job-catalogue's tools.md, read with tools.schema.md; toolsOf, and the `tools` and
-// `toolLimit` that kindOf gives each kind (ITM-484).
+// `toolLimit` that kindOf gives each kind (ITM-484); a kind that leaves `tool_limit` out has none (ITM-1240).
 // Run: node --test tests/job-catalogue-tools.test.mjs
 //
 // Module: MOD-job-catalogue
@@ -92,15 +92,15 @@ const CHECKOUT = ["read", "write", "edit", "bash", "grep", "glob", "webfetch"];
 // guards: ONE DEFINITION, THREE DRIVERS
 // given: the catalogue as shipped; known positive: the four kinds above and the seven kinds that change code or run tests name tools
 // input: kindOf of every kind of kindNames()
-// expect: every kind but those eleven has tools [] and a toolLimit of 0
-test("kindOf — a kind that names no tools has an empty list and a limit of 0", async () => {
+// expect: every kind but those eleven has tools [] and a toolLimit of null, since its definition leaves tool_limit out
+test("kindOf — a kind that names no tools has an empty list and no limit", async () => {
   const offering = ["converse", "change-requirements", "change-use-case", "change-architecture", ...CODING];
   let seen = 0;
   for (const name of await kindNames()) {
     const kind = await kindOf(name);
     if (offering.includes(name)) { assert.ok(kind.tools.length > 0, name); continue; }
     seen += 1;
-    assert.deepEqual([kind.tools, kind.toolLimit], [[], 0], name);
+    assert.deepEqual([kind.tools, kind.toolLimit], [[], null], name);
   }
   assert.equal(seen, 15, "the other 15 kinds were looked at");
 });
@@ -109,13 +109,32 @@ test("kindOf — a kind that names no tools has an empty list and a limit of 0",
 // guards: ONE DEFINITION, THREE DRIVERS
 // given: the catalogue as shipped
 // input: kindOf of each kind that changes code or runs tests — implement, refactor, fix-bug, write-tests, propose-tests, run-tests, check-resource —; and toolsOf of the tools each names
-// expect: each names read, write, edit, bash, grep, glob and webfetch, in that order, and a toolLimit that is a positive whole number of at least 100, since such work takes many calls; each of those tools is a row of tools.md, so that toolsOf gives it
+// expect: each names read, write, edit, bash, grep, glob and webfetch, in that order, and a toolLimit of null — no number of calls ends its work; each of those tools is a row of tools.md, so that toolsOf gives it
 test("kindOf — the kinds that change code or run tests offer the tools of the checkout", async () => {
   for (const name of CODING) {
     const kind = await kindOf(name);
     assert.deepEqual(kind.tools, CHECKOUT, name);
-    assert.ok(Number.isInteger(kind.toolLimit) && kind.toolLimit >= 100, `${name} has a limit of tool calls for coding work`);
+    assert.equal(kind.toolLimit, null, `${name} has no limit of tool calls`);
     assert.deepEqual((await catalogue.toolsOf(kind.tools)).map((tool) => tool.name), CHECKOUT, name);
+  }
+});
+
+// TST-1240101 · level: unit · module: MOD-job-catalogue
+// guards: ONE DEFINITION, THREE DRIVERS
+// given: the catalogue as shipped; known positive: converse, change-requirements, change-use-case and change-architecture state a tool_limit
+// input: the text of kinds/<name>/kind.md and kindOf(name) for each of the seven kinds that change code or run tests, and kindOf of the four read-and-draft kinds
+// expect: no definition of the seven holds a tool_limit line, and kindOf gives each of them a toolLimit of null, not 200 and not 0; each of the four read-and-draft kinds has a toolLimit of exactly 30
+test("TST-1240101: the code kinds leave tool_limit out and read as null; the read-and-draft kinds keep 30", async () => {
+  for (const name of ["converse", "change-requirements", "change-use-case", "change-architecture"]) {
+    assert.match(readFileSync(new URL(`../src/job-catalogue/kinds/${name}/kind.md`, import.meta.url), "utf8"), /^tool_limit: 30$/m, `known positive: ${name} states it`);
+    assert.equal((await kindOf(name)).toolLimit, 30, name);
+  }
+  for (const name of CODING) {
+    const text = readFileSync(new URL(`../src/job-catalogue/kinds/${name}/kind.md`, import.meta.url), "utf8");
+    assert.doesNotMatch(text, /^tool_limit:/m, `${name} leaves tool_limit out`);
+    const kind = await kindOf(name);
+    assert.ok(kind.tools.length > 0, `${name} still names its tools`);
+    assert.strictEqual(kind.toolLimit, null, name);
   }
 });
 

@@ -30,8 +30,11 @@ COUNTER = "AN UNSUPPORTED ENDPOINT SAYS SO: counter-proofs"
 # The adapter. `input` is the case's input; the value is, per entry (`test`, `models`, `exchange`), the Diagnosis the call reported with `named`
 # (the reason is not the generic `endpoint error` and its message is not empty) and `messageHas` (the case's wording found in the message).
 WORLD = r"""
-const saved = { window: globalThis.window, fetch: globalThis.fetch };
+const saved = { window: globalThis.window, fetch: globalThis.fetch, setTimeout: globalThis.setTimeout };
 if (input.where === "browser") globalThis.window = {}; else delete globalThis.window;
+// MOD-endpoint-calls sends a request that failed with a server error or a network error again, at most five times, 2 s doubled each time,
+// at most 30 s: a wait of a second or more is collapsed to none, so that the diagnosis of the last failure is read without the waits.
+globalThis.setTimeout = (callback, ms, ...rest) => saved.setTimeout(callback, ms >= 1000 ? 0 : ms, ...rest);
 globalThis.fetch = async () => {
   if (input.fetch.rejects !== undefined) throw new TypeError(input.fetch.rejects);
   return new Response(JSON.stringify({ error: { message: input.fetch.body } }), { status: input.fetch.status, headers: { "content-type": "application/json" } });
@@ -52,6 +55,7 @@ try {
 } finally {
   if (saved.window === undefined) delete globalThis.window; else globalThis.window = saved.window;
   globalThis.fetch = saved.fetch;
+  globalThis.setTimeout = saved.setTimeout;
 }
 return out;
 """

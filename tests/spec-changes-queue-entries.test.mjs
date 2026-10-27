@@ -375,12 +375,9 @@ test("queue-entries — two queues of one day in one repository get the day and 
 
 // TST-1360301 · level: unit · module: MOD-spec-changes
 // guards: A REVIEWED ARTIFACT ENTERS THE DEFAULT BRANCH AS OPEN; A HOSTED JOB WRITES WITH THE PERSON'S TOKEN FROM A CI SECRET; UC-049
-// given: a product that is its own instance, held in two checkouts with two hosts — as a hosted job holds it, where only the product's checkout writes into the job's
-//   result (JOB-20261026-2019-0155: the instance's push was refused) —; both snapshots name the repository https://github.com/alice/product; a result with a candidate
-//   for the product and one that constrains the process
+// given: a product that is its own instance, held in two checkouts with two hosts — as a hosted job holds it, where only the product's checkout writes into the job's result (JOB-20261026-2019-0155: the instance's push was refused) —; both snapshots name the repository https://github.com/alice/product; a result with a candidate for the product and one that constrains the process
 // input: the writer
-// expect: both queues are committed through the product's host, none through the instance's; the second commit's expectedHead is the first commit, so the two follow
-//   each other in one repository
+// expect: both queues are committed through the product's host, none through the instance's; the second commit's expectedHead is the first commit, so the two follow each other in one repository
 test("queue-entries — a product that is its own instance in two checkouts writes both queues through the product's host", async () => {
   const f = fixture();
   const web = "https://github.com/alice/product";

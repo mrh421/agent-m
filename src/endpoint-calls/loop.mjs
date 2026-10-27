@@ -88,7 +88,8 @@ function prune(messages, context, used, force = false) {
 /**
  * toolLoop(config, input, { exchange, context, system, signal }) -> Promise<{ text, usage }> — the execution loop: each request one call of
  * `exchange(config, { messages, tools, maxTokens, system? }, { signal })`, each call the endpoint makes carried out by `input.tools.call` and its result
- * returned, until it answers without one. `context` is the participant's declared context in tokens, or null where it declares none.
+ * returned, until it answers without one. `input.tools.limit` is the most calls, or null where none ends the loop. `context` is the participant's
+ * declared context in tokens, or null where it declares none.
  */
 export async function toolLoop(config, input, { exchange, context = null, system = null, signal }) {
   const { definitions, limit } = input.tools;
@@ -97,9 +98,11 @@ export async function toolLoop(config, input, { exchange, context = null, system
   const used = () => (system ? estimate(system) : 0) + messages.reduce((sum, message) => sum + sizeOf(message), 0);
   const recent = [];
   let offered = definitions, carriedOut = 0, usage = null, cutText = "";
+  // A limit applies only where it is a number; null — a kind that states none — lets no number of calls end the loop.
+  const reached = () => typeof limit === "number" && carriedOut >= limit;
   // At the limit the endpoint is asked once more, with no tools and opencode's maximum-steps text.
   const atLimit = () => {
-    if (carriedOut < limit || offered.length === 0) return;
+    if (!reached() || offered.length === 0) return;
     offered = [];
     messages.push({ role: "user", text: MAX_STEPS_PROMPT });
   };
@@ -135,7 +138,7 @@ export async function toolLoop(config, input, { exchange, context = null, system
     // Every call gets one result, in the order the endpoint made them.
     for (const call of calls) {
       let text;
-      if (carriedOut >= limit) text = `refused: the limit of ${limit} tool calls is reached`;
+      if (reached()) text = `refused: the limit of ${limit} tool calls is reached`;
       else {
         carriedOut += 1;
         const key = `${call.name}\u0000${call.invalid ? call.invalid.text : JSON.stringify(call.args)}`;

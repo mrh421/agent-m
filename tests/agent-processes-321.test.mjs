@@ -64,7 +64,7 @@ const FAULTS = {
     "return process.env;",
   ],
   "TST-321003": [
-    "process.kill(-child.pid, \"SIGKILL\");",
+    "process.kill(-child.pid, signal);",
     "child.kill(\"SIGTERM\");",
   ],
   "TST-321004": [
@@ -118,9 +118,12 @@ const CONTEXT_FINDINGS = [
   { artifact: "SPEC", line: 8, kind: "warning", rule: "ONE STATEMENT PER REQUIREMENT", what: "AGENT_TWO_STATEMENTS", fix: "split or justify the rule" },
 ];
 const occurrences = (text, value) => text.split(value).length - 1;
+// Claude Code's one JSON result line (`claude -p --output-format json`) for an answer; the values are synthetic.
+const claudeResult = (answer, usage = { input_tokens: 13, output_tokens: 5 }) =>
+  JSON.stringify({ type: "result", subtype: "success", is_error: false, result: answer, usage, total_cost_usd: 0.01 }) + "\n";
 
 async function contextTasks(t, extra, verify) {
-  for (const [name, prefix] of [["claude", ["-p"]], ["codex", ["exec", "-"]], ["opencode", ["run", "--format", "json"]]]) {
+  for (const [name, prefix] of [["claude", ["-p", "--output-format", "json"]], ["codex", ["exec", "-"]], ["opencode", ["run", "--format", "json"]]]) {
     await t.test(name, async () => {
       const folder = realpathSync(fixture()), record = join(folder, "tasks.jsonl");
       try {
@@ -130,7 +133,8 @@ async function contextTasks(t, extra, verify) {
           process.stdin.setEncoding("utf8");
           for await (const chunk of process.stdin) stdin += chunk;
           appendFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), stdin, cwd: process.cwd() }) + "\\n");
-          process.stdout.write(${JSON.stringify(name === "opencode" ? JSON.stringify({ type: "text", part: { text: "fixture answer" } }) + "\n" : "fixture answer\n")});
+          process.stdout.write(${JSON.stringify(name === "opencode" ? JSON.stringify({ type: "text", part: { text: "fixture answer" } }) + "\n"
+            : name === "claude" ? claudeResult("fixture answer") : "fixture answer\n")});
         `);
         const agent = { ...CLAUDE, name };
         const actualDriver = driver(agent, folder);
@@ -197,9 +201,9 @@ test("TST-398019: coding agents receive canonical correction findings exactly on
 // level: unit
 // module: MOD-agent-processes
 // guards: ONE DEFINITION, THREE DRIVERS; UC-010; UC-011
-// given: controlled Claude and OpenCode executables on PATH: Claude emits a text final answer without usage and OpenCode emits published raw JSON text and step-finish usage events.
+// given: controlled Claude and OpenCode executables on PATH: Claude prints its JSON result line with its answer and token usage, and OpenCode emits published raw JSON text and step-finish usage events.
 // input: a DriverInput whose prompt has already been assembled and whose workdir is the fixture folder.
-// expect: each send gives the agent the unchanged prompt on its standard input in that workdir and streams output; Claude returns null for unreported usage and OpenCode maps its reported token counts while leaving undocumented currencyless cost null.
+// expect: each send gives the agent the unchanged prompt on its standard input in that workdir and streams output; Claude and OpenCode map their reported token counts while leaving cost null.
 test("TST-321001: agent driver streams answers with reported or null usage", async () => {
   const folder = fixture();
   const record = join(folder, "record.json");
@@ -210,7 +214,7 @@ test("TST-321001: agent driver streams answers with reported or null usage", asy
       process.stdin.setEncoding("utf8");
       for await (const chunk of process.stdin) stdin += chunk;
       writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), stdin, cwd: process.cwd() }));
-      process.stdout.write("final answer\\n");
+      process.stdout.write(${JSON.stringify(claudeResult("final answer", { input_tokens: 21, output_tokens: 8 }))});
     `);
     executable(folder, "opencode", `
       process.stdout.write(JSON.stringify({ type: "text", part: { text: "reported answer" } }) + "\\n");
@@ -222,13 +226,13 @@ test("TST-321001: agent driver streams answers with reported or null usage", asy
       { onOutput: (chunk) => output.push(chunk) },
     ));
 
-    assert.deepEqual(result, { text: "final answer", usage: null });
+    assert.deepEqual(result, { text: "final answer", usage: { inputTokens: 21, outputTokens: 8, minutes: null, cost: null } });
     assert.deepEqual(JSON.parse(readFileSync(record, "utf8")), {
-      argv: ["-p"],
+      argv: ["-p", "--output-format", "json"],
       stdin: INPUT.prompt,
       cwd: folder,
     });
-    assert.equal(output.join(""), "final answer\n");
+    assert.equal(output.join(""), claudeResult("final answer", { input_tokens: 21, output_tokens: 8 }));
     assert.deepEqual(await withPath(folder, () => driver(OPENCODE, folder).send({ ...INPUT, workdir: folder })), {
       text: "reported answer",
       usage: { inputTokens: 13, outputTokens: 5, minutes: null, cost: null },
@@ -257,7 +261,7 @@ test("TST-321002: local and CI invocations keep credentials out of command argum
       process.stdin.setEncoding("utf8");
       for await (const chunk of process.stdin) stdin += chunk;
       appendFileSync(target, JSON.stringify({ argv: process.argv.slice(2), stdin, key: process.env.ANTHROPIC_API_KEY ?? null }) + "\\n");
-      process.stdout.write("ok\\n");
+      process.stdout.write(${JSON.stringify(claudeResult("ok"))});
     `);
     await withEnvironment({ CI: undefined, GITHUB_ACTIONS: undefined, ANTHROPIC_API_KEY: "local-parent-key" }, () =>
       withPath(folder, () => driver(CLAUDE, folder).send({ ...INPUT, workdir: folder })));
@@ -265,12 +269,12 @@ test("TST-321002: local and CI invocations keep credentials out of command argum
       withPath(folder, () => driver({ ...CLAUDE, loggedIn: false }, folder, "ANTHROPIC_API_KEY").send({ ...INPUT, workdir: folder })));
 
     assert.deepEqual(JSON.parse(readFileSync(localRecord, "utf8")), {
-      argv: ["-p"],
+      argv: ["-p", "--output-format", "json"],
       stdin: INPUT.prompt,
       key: null,
     });
     assert.deepEqual(JSON.parse(readFileSync(ciRecord, "utf8")), {
-      argv: ["-p"],
+      argv: ["-p", "--output-format", "json"],
       stdin: INPUT.prompt,
       key: "ci-secret-fixture",
     });

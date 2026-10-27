@@ -17,7 +17,7 @@
 //     installedAgents finds installed; one installed and not named is neither offered nor missing; one named and not found is missing.
 //   - An agent is ready when it is logged in and its working folder is set; a folder left empty is not set.
 //   - The probe's `args` is `{ agent: <name> }`; the ask's body is `{ agent, input }` with `input` the prompt, as bridgeApi has it.
-//   - An ask's answer is `{ state, text, usage, error }`; `error` is the failure's message with the agent's last output; an ask the Bridge
+//   - An ask's answer is `{ state, text, calls, usage, error }`, `calls` `[]` since an agent's ask is no exchange of a tool loop; `error` is the failure's message with the agent's last output; an ask the Bridge
 //     does not know is not-found; an ask is kept in memory only.
 // Each test states its input and its expected result before it runs (given / input / expect); where a test expects an agent not to be
 // started, the same call is first shown to start it. The counter-proofs are recorded in the pull request.
@@ -36,6 +36,14 @@ const fs = process.getBuiltinModule("node:fs");
 
 const script = (folder, name, body) => writeFileSync(join(folder, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
 const GATE = "gate", CALLS = "calls";
+// Claude Code's answer to `claude -p --output-format json`: one `result` line, shaped as tests/fixtures/agent-processes/claude-result.json; the values are synthetic.
+const CLAUDE_RESULT = JSON.stringify({ type: "result", subtype: "success", is_error: false, api_error_status: null, duration_ms: 1000, duration_api_ms: 900,
+  num_turns: 1, result: "ok", stop_reason: "end_turn", session_id: "00000000-0000-4000-8000-000000000326", total_cost_usd: 0.001,
+  usage: { input_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 1, output_tokens_details: { thinking_tokens: 0 },
+    server_tool_use: { web_search_requests: 0, web_fetch_requests: 0 }, service_tier: "standard", cache_creation: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 0 },
+    iterations: [{ input_tokens: 5, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, type: "message" }] },
+  modelUsage: { "fixture-model": { inputTokens: 5, outputTokens: 1, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, costUSD: 0.001 } },
+  permission_denials: [], terminal_reason: "completed", uuid: "00000000-0000-4000-8000-000000000001" });
 // A computer: a folder that is the whole PATH, with the agents given — claude: { loggedIn }, codex, opencode: { gated, fails } — and the
 // working folders of the offered agents.
 function computer({ claude = null, codex = null, opencode = null } = {}) {
@@ -46,12 +54,12 @@ function computer({ claude = null, codex = null, opencode = null } = {}) {
   const log = `printf '%s\\n' "$0 $*" >> ${calls}`;
   const input = `/bin/cat >> ${calls}; printf '\\n' >> ${calls}`;
   if (claude) {
-    script(bin, "claude", `${log}\ncase "$*" in '--version') echo '2.1.300';; 'auth status') ${claude.loggedIn ? "echo '{\"authMethod\":\"claude.ai\"}'" : "exit 1"};; *) ${claude.answers === false ? "exit 2" : "echo ok"};; esac`);
+    script(bin, "claude", `${log}\ncase "$*" in '--version') echo '2.1.300';; 'auth status') ${claude.loggedIn ? "echo '{\"authMethod\":\"claude.ai\"}'" : "exit 1"};; *) ${claude.answers === false ? "exit 2" : `printf '%s\\n' '${CLAUDE_RESULT}'`};; esac`);
   }
   if (codex) script(bin, "codex", `${log}\ncase "$*" in '--version') echo 'codex 1.2.3';; 'login status') echo 'Logged in';; *) echo ok;; esac`);
   if (opencode) {
     const events = `printf '%s\\n' '{"type":"text","part":{"text":"drafted in '"$(pwd)"'"}}' '{"type":"step_finish","part":{"tokens":{"input":11,"output":7}}}'`;
-    script(bin, "opencode", `${log}\ncase "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; run) ${input}; ${opencode.gated ? `while [ ! -e ${gate} ]; do /bin/sleep 0.02; done` : ":"}; ${opencode.fails ? "echo boom >&2; exit 3" : events};; esac`);
+    script(bin, "opencode", `${log}\ncase "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; models) echo opencode/big-pickle;; run) ${input}; ${opencode.gated ? `while [ ! -e ${gate} ]; do /bin/sleep 0.02; done` : ":"}; ${opencode.fails ? "echo boom >&2; exit 3" : events};; esac`);
   }
   const folders = { claude: join(root, "work-claude"), codex: join(root, "work-codex"), opencode: join(root, "work-opencode") };
   for (const folder of Object.values(folders)) mkdirSync(folder);
@@ -165,7 +173,7 @@ test("POST /v1/probes/agent — testAgent's answer for the offered agent, invali
 // guards: UC-011; A LOCAL AGENT USES THE PERSON'S OWN LOGIN
 // given: a computer with opencode, which waits for a gate and then answers with the folder it runs in and reports 11 input and 7 output tokens; opencode offered with its working folder
 // input: POST /v1/ask with { agent: "opencode", input: <a prompt> }; GET /v1/ask/{ask} before the gate opens and after it
-// expect: the answer to the post is { ask } with a text; the first read { state: "running", text: null, usage: null, error: null }; after the gate { state: "done", text: <the agent's answer, naming its working folder>, usage: { inputTokens: 11, outputTokens: 7, minutes: null, cost: null }, error: null }, and the same on a second read; a second ask has another identifier and leaves the first as it was
+// expect: the answer to the post is { ask } with a text; the first read { state: "running", text: null, calls: [], usage: null, error: null }; after the gate { state: "done", text: <the agent's answer, naming its working folder>, calls: [], usage: { inputTokens: 11, outputTokens: 7, minutes: null, cost: null }, error: null }, and the same on a second read; a second ask has another identifier and leaves the first as it was
 test("POST /v1/ask and GET /v1/ask/{ask} — an ask running, then done with its text and usage, in the agent's working folder", async () => {
   const machine = computer({ opencode: { gated: true } });
   await onComputer(machine, async () => {
@@ -176,11 +184,12 @@ test("POST /v1/ask and GET /v1/ask/{ask} — an ask running, then done with its 
     const read = () => call(handlers, "GET /v1/ask/{ask}", { params: { ask: posted.ask } });
 
     await until(() => machine.calls().some((line) => /opencode run/.test(line)), "the agent to be started");
-    assert.deepEqual(await read(), { state: "running", text: null, usage: null, error: null });
+    const running = await read();
     machine.release();
+    assert.deepEqual(running, { state: "running", text: null, calls: [], usage: null, error: null });
     const done = await until(async () => { const now = await read(); return now.state === "done" ? now : null; }, "the ask to be done");
 
-    assert.deepEqual(done, { state: "done", text: `drafted in ${machine.folders.opencode}`, usage: { inputTokens: 11, outputTokens: 7, minutes: null, cost: null }, error: null });
+    assert.deepEqual(done, { state: "done", text: `drafted in ${machine.folders.opencode}`, calls: [], usage: { inputTokens: 11, outputTokens: 7, minutes: null, cost: null }, error: null });
     assert.deepEqual(await read(), done, "a second read gives the same answer");
     const second = await call(handlers, "POST /v1/ask", { body: { agent: "opencode", input: "Draft again." } });
     assert.notEqual(second.ask, posted.ask, "each ask has an identifier of its own");
@@ -210,6 +219,36 @@ test("GET /v1/ask/{ask} — a failed ask with its error", async () => {
   });
 });
 
+// TST-1237001 · level: unit · module: MOD-bridge-jobs
+// guards: UC-049; UC-011
+// given: a computer with an opencode that waits for a gate, then answers and reports 11 input and 7 output tokens; and a computer with an opencode that fails with "boom"
+// input: POST /v1/ask with { agent: "opencode", input } on each; GET /v1/ask/{ask} while the first runs, after it is done, and after the second has failed
+// expect: every read holds the field calls, and it is [] — running, done and failed alike, since an agent's ask is no exchange of a tool loop; the done read holds the agent's text beside it
+test("GET /v1/ask/{ask} — an agent's answer holds calls: [] while running, when done and when failed", async () => {
+  const machine = computer({ opencode: { gated: true } });
+  await onComputer(machine, async () => {
+    const handlers = jobHandlers({ agents: offered(machine, "opencode") });
+    const { ask } = await call(handlers, "POST /v1/ask", { body: { agent: "opencode", input: "Say Blue." } });
+    const read = () => call(handlers, "GET /v1/ask/{ask}", { params: { ask } });
+    await until(() => machine.calls().some((line) => /opencode run/.test(line)), "the agent to be started");
+    const running = await read();
+    machine.release();
+    const done = await until(async () => { const now = await read(); return now.state === "done" ? now : null; }, "the ask to be done");
+    assert.equal(running.state, "running");
+    assert.deepEqual(running.calls, []);
+    assert.equal(done.text, `drafted in ${machine.folders.opencode}`, "known positive: the agent answered");
+    assert.deepEqual(done.calls, []);
+  });
+  const failing = computer({ opencode: { fails: true } });
+  await onComputer(failing, async () => {
+    const handlers = jobHandlers({ agents: offered(failing, "opencode") });
+    const { ask } = await call(handlers, "POST /v1/ask", { body: { agent: "opencode", input: "Say Blue." } });
+    const failed = await until(async () => { const now = await call(handlers, "GET /v1/ask/{ask}", { params: { ask } }); return now.state === "running" ? null : now; }, "the ask to end");
+    assert.equal(failed.state, "failed");
+    assert.deepEqual(failed.calls, []);
+  });
+});
+
 // TST-472082 · level: unit · module: MOD-bridge-jobs
 // guards: THE BRIDGE FINDS THE INSTALLED AGENTS; UC-011
 // given: a computer with opencode and codex, opencode offered with a folder, codex installed and not offered, claude named without a folder
@@ -224,6 +263,7 @@ test("POST /v1/ask — an agent not offered, one without a working folder and an
     const first = await ask({ agent: "opencode", input: "Draft." });
     assert.equal(typeof first.ask, "string", "known positive");
     await until(() => machine.calls().some((line) => /opencode run/.test(line)), "the first ask to start");
+    await until(async () => (await call(handlers, "GET /v1/ask/{ask}", { params: { ask: first.ask } })).state === "done", "the first ask to be done");
     const before = machine.calls().length;
     for (const body of [{ agent: "codex", input: "Draft." }, { agent: "nobody", input: "Draft." }, { agent: "claude", input: "Draft." },
       { agent: "opencode", input: { prompt: "Draft." } }, { agent: "opencode" }]) {
@@ -231,7 +271,6 @@ test("POST /v1/ask — an agent not offered, one without a working folder and an
     }
     assert.equal(machine.calls().length, before, "no agent was started by a refused ask");
     assert.equal((await rejection(call(handlers, "GET /v1/ask/{ask}", { params: { ask: "nobody-asked" } }))).code, "not-found");
-    await until(async () => (await call(handlers, "GET /v1/ask/{ask}", { params: { ask: first.ask } })).state === "done", "the first ask to be done");
   });
 });
 

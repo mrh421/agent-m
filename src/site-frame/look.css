@@ -168,6 +168,11 @@ details.explain > div { margin-top: .5rem; padding: .6rem .8rem; background: var
 .dadd { background: var(--add); }
 .ddel { background: var(--del); text-decoration: line-through; opacity: .85; }
 .accepted-diff { border-color: var(--warn); }
+/* Reject beside Accept: its panel, and the field for the reason across the panel's width. */
+.reject { border-color: var(--bad); }
+.reject label { display: block; margin: .5rem 0; }
+.reject textarea { display: block; box-sizing: border-box; width: 100%; min-height: 4.5rem; margin-top: .3rem; font: inherit; color: var(--fg);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: .5rem; resize: vertical; }
 .accepted-diff .diff { max-height: 420px; overflow: auto; }
 
 @media (max-width: 599px) {

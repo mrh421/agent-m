@@ -26,6 +26,8 @@ realises:
   - WITHOUT A TOKEN, THE INSTANCE'S WORKFLOW WRITES THE CHANGE
   - A QUEUE IS ACCEPTED IN ITS ORDER
   - SEVERAL FILES ARE ACCEPTED IN ONE CLICK
+  - A PROPOSAL IS REJECTED WITH A REASON
+  - A REJECTION REMOVES THE PROPOSAL
 ---
 # UC-006 Approve a specification change
 
@@ -91,8 +93,9 @@ sequenceDiagram
   **Accept ticked** writes them in the order of the queue's index, in one commit, each with its record.
   An entry whose heading another entry creates is offered only together with or after that entry, and
   the dashboard names it.
-- **4a. The reviewer rejects.** No record is committed; the entry stays open until it is removed
-  from the queue by a commit.
+- **4a. The reviewer rejects.** The reviewer presses **Reject** and types the reason. In one commit
+  under the reviewer's own account, with the reason in its message, the dashboard removes the entry from
+  its queue; no approval record is written, and the SPEC is unchanged.
 
 ## Postcondition
 

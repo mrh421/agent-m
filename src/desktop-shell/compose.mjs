@@ -64,10 +64,11 @@ export function createBridgeJobRuntime(settings, { instance, paused, startWatchi
   return { start, pause: () => stop("pause"), resume: start, close: () => stop("quit") };
 }
 
-export async function compose({ instance, origin, dataFolder, port = bridgeApi.defaultPort, paused = () => false }) {
+export async function compose({ instance, origin, dataFolder, port = bridgeApi.defaultPort, paused = () => false, version = null }) {
   const settings = loadSettings(dataFolder, port === 0 ? {} : { port });
   const key = await ensureKey(dataFolder);
-  const bridge = await serveBridge({ host: "127.0.0.1", port: port === 0 ? 0 : settings.port, origin, dataFolder, paused },
+  // The pair answer names the Bridge by the settings in force and its release by build.json's version, null for a start without it.
+  const bridge = await serveBridge({ host: "127.0.0.1", port: port === 0 ? 0 : settings.port, origin, dataFolder, paused, name: () => settings.name, version },
     composeBridgeHandlers(settings));
   await openTunnels(dataFolder, settings.tunnels, Number(new URL(bridge.address).port));
   const jobs = createBridgeJobRuntime(settings, { instance, paused, startWatching, stopWatching });
