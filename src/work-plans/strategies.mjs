@@ -1,5 +1,5 @@
 // strategies.mjs — the recipes, checks and writers of `workStrategies` (MOD-work-plans, Parts: strategies.mjs; Interfaces: workStrategies). Of it, this file has the recipes
-// `architecture-and-model` (UC-045 step 2), `backlog-inputs` (UC-032 step 2) and `sprint-facts` (UC-041 step 2), the checks `plan-checks` (UC-045), `backlog-checks` (UC-032 step 3) and `sprint-record-checks` (UC-041 1a) and the writer `sprint-record` (UC-041 6); the other recipes, checks and writers are not built yet.
+// `architecture-and-model` (UC-045 step 2), `backlog-inputs` (UC-032 step 2) and `sprint-facts` (UC-041 step 2), the checks `plan-checks` (UC-045), `backlog-checks` (UC-032 step 3) and `sprint-record-checks` (UC-041 1a) and the writers `backlog-items` (UC-032 4) and `sprint-record` (UC-041 6); the other recipes, checks and writers are not built yet.
 //
 // Module: MOD-work-plans
 //
@@ -18,7 +18,7 @@ import { isTestFile, testDeclarations } from "../test-document/index.mjs";
 import { systemDecisions, traceGraph } from "../trace-graph/index.mjs";
 import { finding } from "../text-tools/index.mjs";
 import { backlogFindings, planFindings } from "./checks.mjs";
-import { closeSprint } from "./saves.mjs";
+import { closeSprint, saveItems, WorkPlansError } from "./saves.mjs";
 import { sprintFacts } from "./facts.mjs";
 import { selectionOf as selectionOfRecord } from "./sprints.mjs";
 import { planOrderSchema, sprintSchema } from "./schemas.mjs";
@@ -367,5 +367,41 @@ async function sprintRecord(result, context) {
   return { commits: [commit], files: written, pullRequest: null, shown: null, notes: [] };
 }
 
-/** workStrategies: MOD-job-runner's Partial<Strategies> with the recipes architecture-and-model, backlog-inputs and sprint-facts, the checks plan-checks, backlog-checks and sprint-record-checks and the writer sprint-record, the six built so far. */
-export const workStrategies = { recipes: { "architecture-and-model": architectureAndModel, "backlog-inputs": backlogInputs, "sprint-facts": sprintFactsRecipe }, checks: { "plan-checks": planChecks, "backlog-checks": backlogChecks, "sprint-record-checks": sprintRecordChecks }, writers: { "sprint-record": sprintRecord } };
+const BACKLOG_RULE = "THE BACKLOG LIVES IN THE PRODUCT REPOSITORY";
+const TEST_LEVELS = ["unit", "component", "system", "release"];
+
+/**
+ * The writer backlog-items(result, context) -> Promise<WriteOutcome> — the drafted items of a job of the kind `propose-items` through saveItems (UC-032 step 4): `result.draft` is the answer of the kind, which
+ * backlog-checks has checked; `architecture` the module files of the job's snapshot; `head` the snapshot's commit; `trailers` provenanceLines of the job. Each entry becomes a new item: `origin` the requirements and
+ * use cases it realises; `## Outcome` its `outcome`, `## Acceptance` one bullet for each entry of `acceptance`; `builds_on` its `buildsOn`; `class` and `of` are not written, an entry classed duplicate is saved like
+ * the others. Its `tests` are the levels its acceptance names as unit, component, system or release tests and its `level` the highest of them (unit: module, component: subsystem, system or release: system); a
+ * subsystem's `integrates` is the one decision that all its modules follow. An entry whose acceptance names no level, or whose modules follow no one decision at the level subsystem, is refused with ItemsRefused
+ * { findings } and nothing is written. Commits once, to the product's default branch; the outcome names the commit and the files, and holds the warnings of saveItems as notes, one line each: the item, "warning:" and what it says. Throws what saveItems throws.
+ */
+async function backlogItems(result, context) {
+  const { snapshot, host } = context.product;
+  const schemas = artifactSchemas();
+  const architecture = await Promise.all(snapshot.paths.filter((each) => MODULE_FILE.test(each)).sort().map(async (each) => readDocument(schemas.module, each, (await snapshot.read(each)) ?? "")));
+  const followed = (name) => asList(architecture.find((one) => one.id === name)?.fields.follows);
+  const refusals = [];
+  const items = asList(result.draft?.items).map((entry) => {
+    const acceptance = asList(entry.acceptance).map(String);
+    const tests = TEST_LEVELS.filter((level) => acceptance.some((line) => new RegExp(`\\b${level} tests?\\b`, "i").test(line)));
+    const level = tests.some((one) => one === "system" || one === "release") ? "system" : tests.includes("component") ? "subsystem" : tests.includes("unit") ? "module" : null;
+    const refuse = (what, fix) => refusals.push(finding({ artifact: String(entry.title), line: 1, kind: "error", rule: BACKLOG_RULE, what, fix }));
+    if (level === null) refuse("its acceptance names no tests of a level", "name unit, component, system or release tests in the acceptance criteria");
+    const modules = asList(entry.modules);
+    const decisions = modules.map(followed).reduce((common, each) => common.filter((one) => each.includes(one)), modules.length ? followed(modules[0]) : []);
+    if (level === "subsystem" && decisions.length !== 1) refuse("its modules follow no one subsystem decision, so that the item integrates none", "name the modules of one subsystem, or the tests of another level");
+    const realises = asList(entry.realises);
+    return { fields: { title: entry.title, level, realises, modules, ...(level === "subsystem" && decisions.length === 1 ? { integrates: decisions[0] } : {}), builds_on: asList(entry.buildsOn), tests, origin: realises },
+      sections: [{ heading: "## Outcome", text: `\n${entry.outcome ?? ""}\n\n` }, { heading: "## Acceptance", text: `\n${acceptance.map((line) => `- ${line}`).join("\n")}\n` }] };
+  });
+  if (refusals.length) throw new WorkPlansError("ItemsRefused", { findings: refusals }, `The items are not saved: ${refusals.map((one) => `${one.artifact} ${one.what}`).join("; ")}.`);
+  const trailers = provenanceLines({ agentM: context.agentM, jobId: context.jobId, kind: context.kind.name, participant: result.drafter ?? { name: "none", model: null }, rounds: result.rounds.length });
+  const { commit, written, warnings } = await saveItems(host, { items, removed: [] }, { architecture, head: snapshot.commit, trailers });
+  return { commits: [commit], files: written, pullRequest: null, shown: null, notes: warnings.map((one) => `${one.artifact} warning: ${one.what}`) };
+}
+
+/** workStrategies: MOD-job-runner's Partial<Strategies> with the recipes architecture-and-model, backlog-inputs and sprint-facts, the checks plan-checks, backlog-checks and sprint-record-checks and the writers backlog-items and sprint-record, the seven built so far. */
+export const workStrategies = { recipes: { "architecture-and-model": architectureAndModel, "backlog-inputs": backlogInputs, "sprint-facts": sprintFactsRecipe }, checks: { "plan-checks": planChecks, "backlog-checks": backlogChecks, "sprint-record-checks": sprintRecordChecks }, writers: { "backlog-items": backlogItems, "sprint-record": sprintRecord } };

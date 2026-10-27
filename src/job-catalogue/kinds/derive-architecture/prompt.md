@@ -20,6 +20,12 @@ Every decision names the requirements or use cases that force it. Keep the SPEC'
 design principles. Return every file — the decision that states the system, the subsystems' decisions, the module files
 and the further decisions — with its `path`, its whole `text` and the `class` `new`.
 
+## The task as the person gave it
+
+The task, where one is given, is the work asked for, within what the inputs below allow.
+
+{{instruction}}
+
 ## The whole SPEC
 
 {{whole-spec}}

@@ -7,6 +7,7 @@ follows:
   - ARC-046
 uses:
   - MOD-job-runner.runJob
+  - MOD-job-runner.failedBecause
   - MOD-job-runner.provenanceLines
   - MOD-job-runner.driverPrompt
   - MOD-job-runner.Driver
@@ -15,6 +16,7 @@ uses:
   - MOD-job-runner.JobResult
   - MOD-job-runner.Strategies
   - MOD-job-runner.WriteOutcome
+  - MOD-job-runner.taskRefusal
   - MOD-job-ledger.startRecord
   - MOD-job-ledger.appendToRecord
   - MOD-job-ledger.jobCost
@@ -176,11 +178,12 @@ On GitLab each job's name begins with `agent-m-`. How a job comes to receive onl
 The agent's machine is the agent's job: it receives the one key of the participant the run names, never the person's
 token. It reads the product with the workflow's own read access — GitHub's checkout, GitLab's clone of the project — and
 clones the instance without a token; on GitHub neither checkout keeps the workflow's token (`persist-credentials:
-false`), since nothing on that machine fetches with it (`NO MODEL READS A CREDENTIAL`). It installs no coding agent: a
+false`), and on GitLab the clone's remote is set to the project's address without the job's token before anything runs,
+since nothing on that machine fetches with it (`NO MODEL READS A CREDENTIAL`). It installs no coding agent: a
 start that names an `endpoint` runs that endpoint's job in Agent M's own loop, with the tools of MOD-checkout-tools in
-the product's checkout (MOD-workflow-entries). On the server's runners the agent's job names the model's user,
-`AGENT_M_MODEL_USER: "agent-m-model"`, as whom that job runs beside the key holder (MOD-workflow-entries, *The model's
-user*); a self-hosted runner's names none (`""`). It writes nothing to the
+the product's checkout (MOD-workflow-entries); a coding agent runs where the runner has it installed. Every agent's job,
+of every route on both servers, names the model's user, `AGENT_M_MODEL_USER: "agent-m-model"`, as whom a model's run
+works beside the key holder where the machine can make that user (MOD-workflow-entries, *The model's user*). It writes nothing to the
 product: what the job commits lands in the run's result, which it leaves as an artifact of the job — on GitHub kept one
 day, on GitLab kept one hour and downloadable by no one, only the jobs of the pipeline that need it taking it. The
 writing machine is the job that writes: it runs no agent and calls no model, downloads the result, refuses it where it
@@ -251,7 +254,8 @@ pins — the commit the run's checkout of the instance is at —, not the commit
   nothing is appended anywhere: builds the drafter's and the reviewers' drivers from their routes — an
   endpoint's driver from its configuration, `endpointDriver` where its `bridge` is `null` and `bridgeDriver` with the
   endpoint on the Bridge its `bridge` names, and an agent on a Bridge through `bridgeDriver`, each Bridge by its name among
-  `bridges` —, appends a gate reached and the end to the job's record through the host, where it has one, and returns the
+  `bridges` —, appends a gate reached and the end to the job's record through the host, where it has one — `failed`, with
+  no result and MOD-job-runner's `failedBecause` as its reason, where that names one, else `done` —, and returns the
   result for the page to show. Only the driver of an endpoint the tab calls itself is given the kind's tools (MOD-job-runner's
   `ToolUse`) — called directly, or through the Bridge its configuration names, where `bridgeDriver` carries each request of
   the loop as one `ask`. Fails as the
@@ -329,7 +333,9 @@ pins — the commit the run's checkout of the instance is at —, not the commit
   on a Bridge, hands it over with `handOver` and the task. `prepared` is the job of the kind the participant named, with
   the task as its instruction, prepared by the caller with MOD-job-runner's `prepareJob`; a job it reports as blocking or
   not fitting is refused with its findings. A kind with the gate point `before-write` is refused, since such a job would
-  wait for its task at the gate; at `before-merge` the work is written, and its resumption needs no task. Fails with
+  wait for its task at the gate; at `before-merge` the work is written, and its resumption needs no task. A kind that
+  takes no instruction is refused with MOD-job-runner's `taskRefusal`, since its task would reach no prompt (UC-049 4a);
+  the findings stand in that order — blocking, not fitting, `before-write`, the task. Fails with
   `WorkflowMissing` for the CI route of a product without the job workflow, with what the host names, and with what the
   Bridge client names; nothing is queued when the record's commit fails, and a start that the server refuses after the
   commit ends the job's record as failed with the server's reason. A secret the run lacks ends it `not run`, naming the
@@ -357,6 +363,8 @@ through MOD-browser-store, it reads `browser`, and writes it where it is not set
 - `MOD-job-runner.runJob`, `MOD-job-runner.provenanceLines`, `MOD-job-runner.Driver`, `MOD-job-runner.Prepared`,
   `MOD-job-runner.JobContext`, `MOD-job-runner.JobResult`, `MOD-job-runner.Strategies`, `MOD-job-runner.WriteOutcome` —
   running a job in the tab, the drivers it builds, and the writer it offers.
+- `MOD-job-runner.taskRefusal` — the refusal of a hand-over whose kind takes no instruction.
+- `MOD-job-runner.failedBecause` — whether a job run in the tab ends failed, and why.
 - `MOD-job-runner.driverPrompt` — the prepared prompt, current draft and canonical findings sent once through the
   Bridge; tab callers do not pre-render this context for an endpoint or Bridge driver.
 - `MOD-job-ledger.startRecord`, `MOD-job-ledger.appendToRecord`, `MOD-job-ledger.newJobId`, `MOD-job-ledger.JobStart`,

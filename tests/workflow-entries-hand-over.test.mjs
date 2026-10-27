@@ -17,8 +17,12 @@
 // out (the fixture of tests/workflow-entries-job-workflow.test.mjs is the model): the model endpoint is a spy on `fetch` that answers, for the endpoint's address,
 // as the case asks — a fixed draft, a refusal, or a connection that fails — and records every request; the waits between the retries of a failed request are
 // shortened to nothing. The GitHub API, which the entry reaches for a pull request's facts, is a fake answering every other address. The kind is decide-gate, whose recipe `gate-inputs` and writer
-// `gate-record` this file registers: the recipe puts the job's instruction into the prompt, the writer commits the gate's record, and where the case asks for it
-// pushes a branch of its own with the commit message the case plants. Where the module file leaves a reading open, the test states the one it takes, and the
+// `gate-record` this file registers: the recipe gives the gate's fixture, the writer commits the gate's record, and where the case asks for it
+// pushes a branch of its own with the commit message the case plants. A hand-over's task reaches a prompt only through the built-in recipe `instruction`, and a
+// hand-over of a kind that takes none ends failed before the endpoint is asked (MOD-job-runner's taskRefusal; TST-8048006, with check-for-persons). decide-gate takes
+// none in the catalogue, so this file gives it the slot implement's prompt has: its definition as kindOf keeps it for this program names `instruction?` first
+// and its prompt holds `{{instruction}}` under `## The task as the person gave it` — the fixture of a kind that takes the task, its gate record the writer whose
+// commits the cases plant. Where the module file leaves a reading open, the test states the one it takes, and the
 // pull request names it:
 //   - The inputs are those of the job workflow's template: `job`, `task`, `endpoint` (the JSON text of { kind, baseUrl, model }) and `secret` (a secret's name), read from the event's payload.
 //   - The key of a hand-over with an endpoint is the value of the variable the input `secret` names, and no other; AGENT_M_KEY_NAMES passes it (ITM-1188: the workflow file names its keys when it is generated). A name AGENT_M_KEY_NAMES lacks is not run, naming the secret and saying that the job workflow is installed again from Settings.
@@ -33,6 +37,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { kindOf } from "../src/job-catalogue/index.mjs";
 import { startRecord } from "../src/job-ledger/index.mjs";
 import { registerStrategies } from "../src/job-runner/index.mjs";
 import { connect, parseAddress } from "../src/repository-hosts/index.mjs";
@@ -65,7 +70,7 @@ const PARTICIPANTS = text("# Participants of this instance", "",
   "| ci-bot | CI agent | fixture-llm | 100000 | — | read the repository, write to the repository | GitHub's hosted runners | ci hosted secret FIXTURE_KEY |");
 
 // The job's record names the commit of Agent M that runs — the instance's checkout is at it —, so the records are made once the instance exists.
-const jobStart = (id, { agentM, participant = "hand-bot", task = "with the hand-over", params = {}, declares }) => ({ id, ...(declares ? { declares } : {}), kind: "decide-gate", worksOn: ["A LOAN HAS A DUE DATE"], participant,
+const jobStart = (id, { agentM, participant = "hand-bot", task = "with the hand-over", params = {}, declares, kind = "decide-gate" }) => ({ id, ...(declares ? { declares } : {}), kind, worksOn: ["A LOAN HAS A DUE DATE"], participant,
   model: "fixture-llm", route: "ci hosted", run: null, retries: null, startedBy: "alice", start: new Date("2026-10-16T08:00:00Z"), agentM, inputs: [], limit: 2, task,
   destinations: [{ participant, place: "GitHub's hosted runners", parts: ["gate-inputs"] }], params });
 
@@ -107,13 +112,18 @@ function repository(root, name, files, folder) {
 }
 const script = (bin, name, body) => writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
 
-// The strategies this file gives the runner for decide-gate. The recipe puts the job's instruction into the prompt. The writer commits the gate's record through
+// decide-gate as a kind that takes the task (see the head of this file): the recipe `instruction?` first, and its place in the prompt, as implement's prompt has it.
+const gate = await kindOf("decide-gate");
+gate.recipes = [{ name: "instruction", optional: true }, ...gate.recipes.filter((recipe) => recipe.name !== "instruction")];
+gate.prompt = gate.prompt.replace("## The gate,", "## The task as the person gave it\n\nThe task, where one is given, is the work asked for, within what the inputs below allow.\n\n{{instruction}}\n\n## The gate,");
+
+// The strategies this file gives the runner for decide-gate. The recipe gives the gate's fixture. The writer commits the gate's record through
 // the product's host — or, where `plan.pullRequest` is set, as an agent would: on a branch of its own, with a commit message that holds the task when `plan.plant`
 // says so, and returns the address of a pull request.
 let plan = { pullRequest: false, plant: null };
 let pushed = null;
 registerStrategies("tests/workflow-entries-hand-over.test.mjs", {
-  recipes: { "gate-inputs": async (context) => [{ name: "gate-inputs", text: `gate fixture checks docs/a.md. ${context.params.instruction ?? ""}`, size: 0, sources: [], required: true }] },
+  recipes: { "gate-inputs": async () => [{ name: "gate-inputs", text: "gate fixture checks docs/a.md.", size: 0, sources: [], required: true }] },
   writers: { "gate-record": async (result, context) => {
     const body = text("# Gate fixture", "", `decision: ${result.draft.decision}`, `reason: ${result.draft.reason}`);
     if (!plan.pullRequest && !plan.branchOnly) {
@@ -402,6 +412,33 @@ test("TST-498005: a branch whose commit message or pull request text holds the t
       assert.equal(holdsTask(w.originText(`docs/jobs/${JOB}.md`)), false, `${plant}: the record holds no task`);
     });
   }
+});
+
+// ---------------------------------------------------------------- an answer that cannot be read
+
+// TST-2026271046 · level: component · module: MOD-workflow-entries
+// guards: UC-049; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON; A JOB IS RECORDED IN ITS PRODUCT REPOSITORY
+// given: as TST-498001, but the endpoint answers, in every round, JSON whose envelope has no `draft` — `{ "answers": [], "said": "kestrel-raw" }` —; known positive: TST-498001, whose endpoint answers a draft, ends `done`
+// input: onDispatch with the task and the endpoint
+// expect: outcome `failed`, its summary naming "the participant's answer could not be read: the answer has no draft"; on main the commit that ends the job is `end <job>: failed`, and the writer's commit is not there; the record's End says `state: failed`, `reason:` that text — MOD-job-runner's failedBecause —, no result, and `stopped because: unusable`; the answer as received, kestrel-raw, is in the run's summary and log, where the prompt bar reads the answer, and in no commit message and no file of the product — while the request the endpoint answered holds it, the known positive of the search; the task is written nowhere
+test("TST-2026271046: a hand-over whose answer has no draft ends failed with the reason, its answer left in the run and not in the record", async () => {
+  const raw = answer(200, { choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ answers: [], said: "kestrel-raw" }) } }], usage: { prompt_tokens: 11, completion_tokens: 7 } });
+  await world({ records: [HAND_OVER], endpoint: raw }, async (w) => {
+    const status = await w.dispatch(INPUTS);
+    assert.equal(status.outcome, "failed", status.summary);
+    assert.match(status.summary, /the participant's answer could not be read: the answer has no draft/);
+    assert.equal(w.subjects()[0], `end ${JOB}: failed`);
+    assert.ok(!w.subjects().includes("gate fixture decided"), "the writer did not run");
+    const end = w.originText(`docs/jobs/${JOB}.md`).split(/^## End$/m)[1];
+    assert.match(end, /^state: failed$/m);
+    assert.match(end, /^reason: the participant's answer could not be read: the answer has no draft$/m);
+    assert.match(end, /stopped because: unusable/);
+    assert.ok(w.starts().some((request) => (request.answered ?? "").includes("kestrel-raw")), "known positive: the search finds the answer where the endpoint gave it");
+    assert.ok(readFileSync(w.summary, "utf8").includes("kestrel-raw"), "the run's summary holds the answer as received");
+    assert.ok(w.lines().includes("kestrel-raw"), "the log holds the answer as received");
+    assert.equal(w.everything().includes("kestrel-raw"), false, "no commit message and no file of the product holds the answer");
+    assert.equal(holdsTask(w.everything()), false, "the task is written nowhere");
+  });
 });
 
 // ---------------------------------------------------------------- an endpoint the run cannot reach
@@ -828,5 +865,30 @@ test("TST-1192002: a hand-over to an unlisted participant whose record declares 
     assert.match(status.summary, /names the participant nvidia, whom the instance does not list/);
     assert.equal(w.starts().length, 0);
     assert.equal(w.mainHead(), w.head, "main is as it was");
+  });
+});
+
+// ---------------------------------------------------------------- a hand-over of a kind that takes no instruction
+
+// TST-8048006 · level: component · module: MOD-workflow-entries
+// guards: UC-049; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON
+// given: as TST-498001, but the queued job is of kind check-for-persons, whose recipes do not name `instruction` — a run dispatched with a task for it, which the dashboard would have refused; known positive first — the decide-gate job of TST-498001, which takes the task, asks the endpoint once
+// input: onDispatch with the task and the endpoint
+// expect: outcome `failed`; the endpoint is never asked; on main: the commit that takes the job, then the one that ends it, `end <job>: failed`, and no other; the record's End says `state: failed` and its reason, as the summary does, says that the kind check-for-persons takes no instruction and names UC-049; no zebra-498 in the summary, the record, any commit or anything the entry printed
+test("TST-8048006: a dispatched hand-over of a kind that takes no instruction ends failed before the endpoint is asked", async () => {
+  await world({ records: [HAND_OVER] }, async (w) => {
+    const status = await w.dispatch(INPUTS);
+    assert.equal(status.outcome, "done", `known positive: ${status.summary}`);
+    assert.equal(w.starts().length, 1, "known positive: the endpoint was asked");
+  });
+  await world({ records: [{ ...HAND_OVER, kind: "check-for-persons" }] }, async (w) => {
+    const status = await w.dispatch(INPUTS);
+    assert.equal(status.outcome, "failed", status.summary);
+    assert.equal(w.starts().length, 0, "the endpoint was never asked");
+    assert.deepEqual(w.subjects().slice(0, 3), [`end ${JOB}: failed`, `take ${JOB} (https://github.com/alice/thesis-tool/actions/runs/4711)`, "first"]);
+    const end = w.originText(`docs/jobs/${JOB}.md`).split(/^## End$/m)[1];
+    assert.match(end, /state: failed/);
+    for (const said of [end, status.summary]) assert.match(said, /the kind check-for-persons takes no instruction[^\n]*UC-049/);
+    assert.equal(holdsTask(w.everything() + w.lines() + status.summary), false, "the task is written and printed nowhere");
   });
 });

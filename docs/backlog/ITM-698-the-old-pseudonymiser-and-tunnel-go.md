@@ -14,6 +14,9 @@ tests:
   - unit
 origin:
   - the plan of moving the code outside the architecture into it (sprint team1/70), under `CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT` and `docs/measurements/2026-10-17_code-outside-every-module.md`
+built_by:
+  - a47cf17301144f2d987cbbb85828221f0ec6c864
+  - 9d81c5a69c5efbb58b206376c173014169047238
 ---
 # ITM-698 The old pseudonymiser and tunnel go
 

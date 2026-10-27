@@ -448,3 +448,25 @@ test("settings — the statement before an export names the mailbox's password a
   writeSetting(bare.store, "mailbox", graph);
   assert.doesNotMatch(await statement(bare), /Mailbox sign-in/);
 });
+
+// TST-1249102 · level: unit · module: MOD-settings-pages
+// guards: UC-037
+// given: a Bridge whose test finds sending not working ("the SMTP login was refused"); one whose test finds sending working; one that does not answer
+// input: Store and test for each (docs/architecture/MOD-settings-pages.md, route `mailbox`: each test is stored as `last-test:mailbox` "with the `sending` its `test()` gives")
+// expect: the record holds `sending` "the SMTP login was refused", then "works"; for the Bridge that did not answer (a test that threw) the record holds outcome refused and no `sending`
+test("mailbox — Store and test on the IMAP route stores the sending its test gave, and a test that threw stores none", async (t) => {
+  const run = async (bridgeAnswer) => {
+    const b = browser(t, { bridgeAnswer });
+    const page = await b.page();
+    await fill(page);
+    await click(one(page, "mailbox-store-test"));
+    return readSetting(b.store, "last-test:mailbox");
+  };
+  const refused = await run(() => Response.json({ ...TESTED, sending: "the SMTP login was refused" }));
+  assert.equal(refused.outcome, "working", "known positive: the test was recorded");
+  assert.equal(refused.sending, "the SMTP login was refused");
+  assert.equal((await run(() => Response.json(TESTED))).sending, "works");
+  const threw = await run(() => { throw new TypeError("Failed to fetch"); });
+  assert.equal(threw.outcome, "refused", "known positive: the test threw");
+  assert.ok(!("sending" in threw), "a test that threw stores no sending");
+});

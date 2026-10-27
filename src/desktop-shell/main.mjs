@@ -78,6 +78,26 @@ export async function start(electron, supplied = {}) {
   window.webContents.on("will-navigate", (event, url) => { if (!url.startsWith("agent-m://")) { event.preventDefault(); electron.shell.openExternal(url); } });
   const bridgeState = async () => startupFailure ? { failure: startupFailure }
     : ({ address: bridge.address, token: bridge.token, instance: config.instance, paused, pairedWith: bridge.pairedWith(), settings: bridge.settings, publicKey: bridge.key.publicKey, tunnels: await bridge.tunnels() });
+  // The enclosure of an offered agent, by its name; and, for each offered agent with a working folder, whether its enclosure works — else why, and the
+  // one-time step — and whether the agent is logged in there.
+  const enclosureFor = (name) => {
+    const offered = (bridge.settings.agents ?? []).find((agent) => agent.name === name && agent.folder);
+    if (!offered) throw new TypeError("This Bridge offers no such agent with a working folder.");
+    return bridge.enclosures(offered.folder);
+  };
+  const enclosureStates = async () => {
+    const states = {};
+    for (const { name, folder } of (bridge.settings.agents ?? []).filter((agent) => agent.folder)) {
+      const enclosure = bridge.enclosures(folder), state = await enclosure.works();
+      let loggedIn = false;
+      if (state.works) {
+        await enclosure.prepare({ writable: [], readable: [] });
+        loggedIn = (await installedAgents({ enclosure, workdir: folder })).find((agent) => agent.name === name)?.loggedIn === true;
+      }
+      states[name] = { ...state, loggedIn };
+    }
+    return states;
+  };
   const restart = async () => {
     if (bridge) await bridge.close();
     bridge = await compose({ instance: repositoryAddress(config.instance), origin: config.origin, dataFolder: config.dataFolder, port: config.port, paused: () => paused, version: config.version });
@@ -95,7 +115,17 @@ export async function start(electron, supplied = {}) {
       return updates.install(value);
     }
     if (startupFailure) return bridgeState();
-    if (action === "agents") return { platform: platformName(), agents: await installedAgents(), selected: bridge.settings.agents };
+    if (action === "agents") return { platform: platformName(), agents: await installedAgents(), selected: bridge.settings.agents, enclosures: await enclosureStates() };
+    // The one-time step of an agent's enclosure, where the Bridge can take it (on Windows, through the elevation prompt), and the agent's own login step,
+    // in a terminal in its enclosure (ARC-054).
+    if (action === "enclosure-setup") return enclosureFor(value?.name).setUp();
+    if (action === "agent-login") {
+      const agent = (await installedAgents()).find((each) => each.name === value?.name);
+      if (!agent?.login) throw new TypeError("This agent names no login step.");
+      const [command, ...args] = agent.login.split(" ");
+      await enclosureFor(agent.name).openTerminal(command, args);
+      return { opened: true };
+    }
     if (action === "save-agents") {
       saveSettings(config.dataFolder, { ...bridge.settings, agents: Array.isArray(value?.agents) ? value.agents : [], paused });
       return restart();

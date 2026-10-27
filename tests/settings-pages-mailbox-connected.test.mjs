@@ -269,3 +269,25 @@ test("Processing places changed later: the same list and the same notice, stored
   assert.deepEqual(b.commits, []);
   assert.ok(b.reads.every((path) => path === "docs/participants.md"));
 });
+
+// TST-1249101 · level: unit · module: MOD-settings-pages
+// guards: UC-037; A BROWSER SETTING IS TESTED AND CLEARED WHERE IT IS SHOWN
+// given: a stored IMAP connection whose last test is old and holds no `sending`; a Bridge whose test says sending does not work ("the SMTP login was refused"); then one whose test says sending works; then one that is not reachable
+// input: Test on the connected mailbox (docs/architecture/MOD-settings-pages.md, route `mailbox`: "Each test of the mailbox — Store and test here, Test on its line of settings — is stored as its last test, last-test:mailbox, with the sending its test() gives (UC-037 7d)")
+// expect: the record `last-test:mailbox` holds `sending` "the SMTP login was refused", then "works"; after the unreachable Bridge (a test that threw) the record holds no `sending` at all
+test("Test on the connected mailbox stores the sending its test gave, and a test that threw stores none", async (t) => {
+  const b = browser(t);
+  assert.equal(readSetting(b.store, "last-test:mailbox").sending, undefined, "known positive: the old record holds no sending");
+  b.respond(Response.json({ ...TESTED, sending: "the SMTP login was refused" }));
+  const shown = await b.open();
+  await click(one(shown, "mailbox-test"));
+  assert.notEqual(readSetting(b.store, "last-test:mailbox").at, "2026-10-11T08:00:00.000Z", "known positive: the test was recorded");
+  assert.equal(readSetting(b.store, "last-test:mailbox").sending, "the SMTP login was refused");
+  b.respond(Response.json(TESTED));
+  await click(one(shown, "mailbox-test"));
+  assert.equal(readSetting(b.store, "last-test:mailbox").sending, "works");
+  b.respond(() => { throw new TypeError("fetch failed"); });
+  await click(one(shown, "mailbox-test"));
+  assert.equal(readSetting(b.store, "last-test:mailbox").outcome, "refused", "known positive: the test threw");
+  assert.ok(!("sending" in readSetting(b.store, "last-test:mailbox")), "a test that threw stores no sending");
+});

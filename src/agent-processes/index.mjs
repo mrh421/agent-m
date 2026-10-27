@@ -22,6 +22,10 @@ if (findings.length || !register.rows.length) {
 /** @typedef {{ name: string, installed: boolean, version: string | null, loggedIn: boolean | null, login: string,
  *   install: Record<"macos" | "windows" | "linux", string> }} Agent */
 
+/** What an agent is started inside on a Bridge (ARC-054); the Bridge's MOD-agent-enclosure implements it.
+ * @typedef {{ wrap(command: string, args: string[], at: { workdir: string, writable: string[] }): { command: string, args: string[],
+ *   env: Record<string, string>, input: string | null } }} Enclosure */
+
 function json(value, column) {
   try { return JSON.parse(value); } catch { throw new Error(`${OWNER}: ${column} in agents.md is not JSON`); }
 }
@@ -34,15 +38,23 @@ function rowOf(cells) {
     login: json(cells["Login check"], "Login check"),
     keyVariable: cells["Key variable"] ?? null,
     endpoint: cells.Endpoint == null ? null : json(cells.Endpoint, "Endpoint"),
+    keyHolder: cells["Key holder"] == null || cells["Key holder"] === "—" ? null : json(cells["Key holder"], "Key holder"),
     install: { macos: cells["Install macos"], windows: cells["Install windows"], linux: cells["Install linux"] },
   };
 }
 const rows = register.rows.map(({ cells }) => rowOf(cells));
 
-function invoke(command, args, env = ownLoginEnvironment(), input = null) {
+// One command of an agent, waited for; with `enclosed` ({ enclosure, workdir }) started inside the enclosure, in its working folder.
+function invoke(command, args, env = ownLoginEnvironment(), input = null, enclosed = null) {
   return new Promise((resolve) => {
-    let stdout = "", stderr = "";
-    const child = spawn(command, args, { stdio: [input == null ? "ignore" : "pipe", "pipe", "pipe"], env });
+    let stdout = "", stderr = "", cwd;
+    if (enclosed?.enclosure) {
+      const wrapped = enclosed.enclosure.wrap(command, args, { workdir: enclosed.workdir, writable: [] });
+      ({ command, args, env } = wrapped);
+      cwd = enclosed.workdir;
+      if (wrapped.input != null) input = `${wrapped.input}${input ?? ""}`;
+    }
+    const child = spawn(command, args, { stdio: [input == null ? "ignore" : "pipe", "pipe", "pipe"], env, ...(cwd ? { cwd } : {}) });
     if (input != null) {
       child.stdin.on("error", () => {}); // an agent that exits unread is judged by its exit status
       child.stdin.end(input);
@@ -107,22 +119,38 @@ export function agentDriver(agent, options, participant) {
   });
 }
 
-/** @returns {Promise<Agent[]>} */
-export async function installedAgents() {
+/**
+ * keyProvider(keyVariable: string | null) -> { kind: "openai-compatible" | "anthropic", baseUrl: string } | null — the provider a key in that variable is for: the
+ * Key holder of the supported agent whose Key variable it is, the address to which a key holder forwards that agent's requests (NO MODEL READS A CREDENTIAL); null
+ * where no agent reads its key from that variable or the agent cannot be redirected to a key holder. Pure.
+ */
+export function keyProvider(keyVariable) {
+  const row = rows.find((candidate) => candidate.keyVariable === keyVariable && candidate.keyHolder);
+  return row ? { kind: row.keyHolder.kind, baseUrl: row.keyHolder.baseUrl } : null;
+}
+
+/**
+ * installedAgents({ enclosure?, workdir? }) -> Promise<Agent[]> — with an enclosure, the version and the login are asked inside it, in `workdir`, and an
+ * agent whose version command does not answer there is missing: what is said of it is said of the agent as it will run.
+ * @returns {Promise<Agent[]>}
+ */
+export async function installedAgents({ enclosure = null, workdir = null } = {}) {
+  const enclosed = enclosure ? { enclosure, workdir: workdir ?? enclosure.home ?? process.cwd() } : null;
   return Promise.all(rows.map(async (row) => {
-    const version = await invoke(row.command, row.version.args);
-    if (version.error?.code === "ENOENT") return missingAgent(row);
-    const login = await invoke(row.command, row.login.args);
+    const version = await invoke(row.command, row.version.args, undefined, null, enclosed);
+    if (version.error?.code === "ENOENT" || (enclosed && !version.ok)) return missingAgent(row);
+    const login = await invoke(row.command, row.login.args, undefined, null, enclosed);
     const loggedIn = loginMatches(row.login, login);
     return { name: row.name, installed: true, version: versionOf(row, version.stdout), loggedIn, login: row.login.login, install: row.install };
   }));
 }
 
-/** @param {Agent} agent */
-export async function testAgent(agent) {
+/** testAgent(agent, { enclosure?, workdir? }) — the harmless request, inside the enclosure where one is given. @param {Agent} agent */
+export async function testAgent(agent, { enclosure = null, workdir = null } = {}) {
   const row = rows.find((candidate) => candidate.name === agent?.name);
   if (!row || !agent.installed) return { answered: false, reason: "agent is not installed" };
-  const result = await invoke(row.command, row.task.args, ownLoginEnvironment(), "Reply with one word: ok.");
+  const enclosed = enclosure ? { enclosure, workdir: workdir ?? enclosure.home ?? process.cwd() } : null;
+  const result = await invoke(row.command, row.task.args, ownLoginEnvironment(), "Reply with one word: ok.", enclosed);
   if (!result.ok) return { answered: false, reason: (result.stderr || result.error?.message || `exit ${result.status}`).trim() };
   let answer;
   try {

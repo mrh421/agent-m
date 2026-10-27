@@ -7,6 +7,12 @@ several `phrasings` of the same question, each with every detail the result depe
 of `runs`, fixed now. A case that would call a paid service carries the recorded or constructed `response` it uses
 instead. A case that really calls a paid service names the service in `paid`; a case that does not leaves `paid` out. Cover what matters by risk and partition, not every combination.
 
+## The task as the person gave it
+
+The task, where one is given, is the work asked for, within what the inputs below allow.
+
+{{instruction}}
+
 ## The selection, the existing tests that guard it, and the product's external services
 
 {{test-selection}}

@@ -11,6 +11,12 @@ Do not check the modules against the use cases. Return each finding with the `ar
 concerns, the `rule` — the requirement it concerns, by its name in capitals —, `what` does not fit, and the `fix` you
 expect. Return no finding for what holds.
 
+## The task as the person gave it
+
+The task, where one is given, is the work asked for, within what the inputs below allow.
+
+{{instruction}}
+
 ## The architecture draft
 
 {{draft}}

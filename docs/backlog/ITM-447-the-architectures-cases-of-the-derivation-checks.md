@@ -21,6 +21,8 @@ tests:
   - release
 origin:
   - SPEC.md: the checks `tests/test_derivation_context.py` and `tests/test_derivation_classes.py` its requirements name
+built_by:
+  - 4b7269b16625cf9b52212e7f879a8b1f440541ab
 ---
 # ITM-447 The architecture's cases of the derivation checks
 

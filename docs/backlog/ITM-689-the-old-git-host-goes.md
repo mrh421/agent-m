@@ -16,6 +16,8 @@ tests:
   - unit
 origin:
   - the plan of moving the code outside the architecture into it (sprint team1/70), under `CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT` and `docs/measurements/2026-10-17_code-outside-every-module.md`
+built_by:
+  - 511d691c8bcc952918f29f5a9d29e210bb94976a
 ---
 # ITM-689 The old git host goes
 

@@ -7,11 +7,25 @@ const requireBridgePackage = createRequire(new URL("../bridge-build/package.json
 const { ImapFlow } = requireBridgePackage("imapflow");
 const nodemailer = requireBridgePackage("nodemailer");
 
+// UC-037 7d: a refused or failed SMTP step is the answer's `sending`, beside the reading; `no-encryption` still fails the
+// test, since no login was sent (THE MAIL SERVER IS REACHED ONLY OVER TLS).
+const SENDING_ANSWERS = new Set(["login-refused", "upstream-failed"]);
+
+async function sendingResult(parts, mailer) {
+  try {
+    await testSmtp(parts, mailer);
+    return "works";
+  } catch (error) {
+    if (SENDING_ANSWERS.has(error?.code)) return error.message;
+    throw error;
+  }
+}
+
 async function testMailbox(connection, libraries) {
   const parts = connectionParts(connection);
   const imap = await testImap(parts, libraries.ImapFlow);
-  await testSmtp(parts, libraries.nodemailer);
-  return { counts: imap.counts, drafts: imap.drafts, sent: imap.sent, sending: "works", route: "imap", encryption: imap.encryption };
+  const sending = await sendingResult(parts, libraries.nodemailer);
+  return { counts: imap.counts, drafts: imap.drafts, sent: imap.sent, sending, route: "imap", encryption: imap.encryption };
 }
 
 // The reply as one message: threaded on the reporter's Message-ID, addressed to the reporter only.

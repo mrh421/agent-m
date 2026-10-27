@@ -70,8 +70,9 @@ request it receives on `127.0.0.1` to the same path below the endpoint's `baseUr
 module carries it in, and sends each through this module's sender of a single request, so that the key goes only where
 the module sends every request: the configured endpoint. A caller's own key headers are dropped; a request whose target
 is not a path of that endpoint is answered 400 and sent nowhere; a redirect is answered, not followed. The program whose requests it forwards — the model's
-user's side of a hosted job's agent machine (MOD-workflow-entries) — is given the holder's address as the endpoint's
-`baseUrl` and no key (`NO MODEL READS A CREDENTIAL`).
+user's side of a job's agent machine (MOD-workflow-entries), and a coding agent's CLI started there — is given the
+holder's address as the endpoint's `baseUrl`, or as the CLI's base-URL setting with a placeholder for its key
+(MOD-agent-processes), and no key (`NO MODEL READS A CREDENTIAL`).
 
 ## Interfaces
 

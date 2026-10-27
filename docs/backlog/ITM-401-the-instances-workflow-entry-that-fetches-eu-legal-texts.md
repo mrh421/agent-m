@@ -16,6 +16,9 @@ tests:
   - unit
 origin:
   - UC-004 step 7, 7a
+built_by:
+  - 55060f3d7e94b7fdb4114f77af3e2834471c62fd
+  - 42d327bb3ed01e52d53b1c334061657b04ad5a12
 ---
 # ITM-401 The instance's workflow entry that fetches EU legal texts
 

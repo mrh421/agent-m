@@ -1,8 +1,8 @@
 # Agent M's job workflow for this product, written by Agent M (docs/architecture/MOD-runtimes.md). It runs an entry of Agent M's
 # workflow entries for each event below, from a checkout of the instance at the commit named in each job. The secrets are named
 # here and never valued; they are set on the repository's secrets page. The agent works on a machine of its own, which receives
-# the key of the one participant the run names and no other secret, and keeps no token in its checkouts; on the server's runners a
-# model endpoint's job runs there as the model's own user, beside the key holder; the person's token is read only by the job that writes.
+# the key of the one participant the run names and no other secret, and keeps no token in its checkouts; where that machine can, a
+# model's run works there as the model's own user, beside the key holder; the person's token is read only by the job that writes.
 name: agent-m-jobs
 
 on:
@@ -123,7 +123,7 @@ jobs:
 # --- the agent's job, written once for each key the file reads and once for none: the lines below are written once for each ---
   @@agent-id@@:
     # The agent's machine: the product and the instance read with the workflow's own read access, which neither checkout keeps; the one key of the participant the run
-    # names, no other secret; on the server's runners, the model's user, as whom a model endpoint's job runs (MOD-workflow-entries).
+    # names, no other secret; the model's user, as whom a model's run works where the machine can make that user (MOD-workflow-entries).
     name: Agent M's agent on @@route@@, key @@agent@@
     needs: @@id@@-plan
     if: needs.@@id@@-plan.outputs.agent == '@@agent@@'
@@ -135,7 +135,7 @@ jobs:
       AGENT_M_PART: "agent"
       AGENT_M_PRODUCT_DIR: ${{ github.workspace }}/product
       AGENT_M_RESULT_DIR: ${{ github.workspace }}/result
-      AGENT_M_MODEL_USER: "@@model-user@@"
+      AGENT_M_MODEL_USER: "agent-m-model"
       AGENT_M_KEY_NAMES: "@@key-names@@"
       AGENT_M_KEY: "@@agent@@"
 @@agent-key-env@@    steps:

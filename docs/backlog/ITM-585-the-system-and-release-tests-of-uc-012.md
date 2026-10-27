@@ -11,6 +11,8 @@ builds_on:
   - ITM-582
   - ITM-583
   - ITM-584
+  - ITM-1250
+  - ITM-1252
 tests:
   - system
   - release

@@ -9,6 +9,7 @@ resources: none
 preconditions:
   - rests-on-accepted
 recipes:
+  - instruction?
   - chosen-requirements
   - use-cases
   - chapters-for-requirements

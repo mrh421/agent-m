@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { loadSettings, saveSettings } from "../src/desktop-shell/settings.mjs";
+import { openEnclosures } from "./enclosure-fixture.mjs";
 
 function fakeSsh2Module(root) {
   const folder = join(root, "node_modules", "ssh2");
@@ -89,7 +90,7 @@ test("TST-407001: composition offers only selected installed agents with their f
     assert.deepEqual(loadSettings(dataFolder).agents, [{ name: "claude", folder: machine.folders.claude }],
       "failure node: selected agents are kept in the private settings file");
     assert.equal(typeof composeJobHandlers, "function", "failure node: composition exposes the job-handler wiring for unit evidence");
-    const answer = await composeJobHandlers(loadSettings(dataFolder))["GET /v1/agents"]({ params: {}, query: {}, body: {} });
+    const answer = await composeJobHandlers(loadSettings(dataFolder), openEnclosures())["GET /v1/agents"]({ params: {}, query: {}, body: {} });
     assert.deepEqual(answer, {
       agents: [{ name: "claude", version: "2.1.300", ready: true, loggedIn: true }],
       missing: [{ name: "opencode" }],

@@ -16,6 +16,8 @@ tests:
   - unit
 origin:
   - akmaier reported the backlog dashboard still showing many already merged items as open
+built_by:
+  - 9ab15a195f36ef612b25632f20540384ef1d5a5c
 ---
 # ITM-474 Pull request item names are matched without case sensitivity
 

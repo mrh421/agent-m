@@ -9,6 +9,7 @@ resources: none
 preconditions:
   - architecture-ready
 recipes:
+  - instruction?
   - whole-spec
   - accepted-use-cases
   - chapters-for-architecture

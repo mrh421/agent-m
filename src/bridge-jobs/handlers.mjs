@@ -1,6 +1,7 @@
 import { agentDriver, installedAgents, testAgent } from "../agent-processes/index.mjs";
 import { endpointDriver, endpointExchange, listModels as nodeListModels, testEndpoint as nodeTestEndpoint } from "../endpoint-calls/index.mjs";
 import { listPartitions } from "./probes.mjs";
+import { enclosureOf } from "./enclosures.mjs";
 import { cancelJob, handOver, jobLog, listJobs } from "./watch.mjs";
 
 function validEndpointConfig(value) {
@@ -30,27 +31,43 @@ function asked({ name, kind, baseUrl, model, key }, prompt) {
   return endpointDriver({ name, kind, baseUrl, model, key }, { name }).send({ prompt, parts: [], output: null, findings: [], previous: null, workdir: null });
 }
 
-// A drafting request to an agent, in its working folder, through its driver: the answer and the usage, or the failure.
-async function drafted({ name, folder }, prompt) {
-  const agent = (await installedAgents()).find((candidate) => candidate.name === name);
-  return agentDriver(agent, { workdir: folder, keyVariable: null }, { name }).send({ prompt, parts: [], output: null, findings: [], previous: null, workdir: null });
+// A drafting request to an agent, in its working folder and its enclosure, through its driver: the answer and the usage, or the failure. The agent may
+// write nothing of the working folder — its clones are the Bridge's —, only its own home and temporary files.
+async function drafted({ name, folder }, prompt, enclosures) {
+  const enclosure = await enclosureOf(enclosures, folder);
+  await enclosure.prepare({ writable: [], readable: [] });
+  const agent = (await installedAgents({ enclosure, workdir: folder })).find((candidate) => candidate.name === name);
+  return agentDriver(agent, { workdir: folder, keyVariable: null, enclosure, writable: [] }, { name })
+    .send({ prompt, parts: [], output: null, findings: [], previous: null, workdir: null });
 }
 
 /**
- * jobHandlers({ testEndpoint, listModels, partitions, agents }) — the handlers of the jobs routes. `agents` are the agents the Bridge offers, as its settings name
- * them with their working folders: `{ name, folder }`. The asks in flight are kept in memory only.
+ * jobHandlers({ testEndpoint, listModels, partitions, agents, enclosures }) — the handlers of the jobs routes. `agents` are the agents the Bridge offers, as its
+ * settings name them with their working folders: `{ name, folder }`; `enclosures(folder)` gives each its enclosure (ARC-054), without which none of them is
+ * started. The asks in flight are kept in memory only.
  */
-export function jobHandlers({ testEndpoint = nodeTestEndpoint, listModels = nodeListModels, partitions = listPartitions, agents = [] } = {}) {
+export function jobHandlers({ testEndpoint = nodeTestEndpoint, listModels = nodeListModels, partitions = listPartitions, agents = [], enclosures = null } = {}) {
   const offered = (name) => (typeof name === "string" ? agents.find((candidate) => candidate.name === name) : undefined);
   const asks = new Map();
+  // Whether an offered agent with a working folder is logged in in its enclosure: false where the enclosure does not work.
+  const loggedInEnclosed = async ({ name, folder }) => {
+    try {
+      const enclosure = await enclosureOf(enclosures, folder);
+      await enclosure.prepare({ writable: [], readable: [] });
+      return (await installedAgents({ enclosure, workdir: folder })).find((agent) => agent.name === name)?.loggedIn === true;
+    } catch { return false; }
+  };
   return {
     "GET /v1/agents": async () => {
       const found = await installedAgents();
-      return {
-        agents: found.filter((agent) => agent.installed && offered(agent.name)).map((agent) => ({
-          name: agent.name, version: agent.version, ready: agent.loggedIn === true && Boolean(offered(agent.name).folder), loggedIn: agent.loggedIn })),
-        missing: found.filter((agent) => !agent.installed).map((agent) => ({ name: agent.name })),
-      };
+      const listed = [];
+      for (const agent of found.filter((each) => each.installed && offered(each.name))) {
+        const { folder } = offered(agent.name);
+        // An agent with a working folder is asked in its enclosure, where it will run; one without is not offered for work, and is said of as it is.
+        const loggedIn = folder ? await loggedInEnclosed(offered(agent.name)) : agent.loggedIn;
+        listed.push({ name: agent.name, version: agent.version, ready: loggedIn === true && Boolean(folder), loggedIn });
+      }
+      return { agents: listed, missing: found.filter((agent) => !agent.installed).map((agent) => ({ name: agent.name })) };
     },
     // The jobs this Bridge took since it started, with their live states, in the form MOD-bridge-client's bridgeJobs reads.
     "GET /v1/jobs": async () => ({ jobs: listJobs() }),
@@ -71,7 +88,15 @@ export function jobHandlers({ testEndpoint = nodeTestEndpoint, listModels = node
     "POST /v1/probes/agent": async ({ body }) => {
       const wanted = offered(body?.args?.agent);
       if (!wanted) throw failure("invalid-request", "This Bridge does not offer that agent.");
-      return { answer: await testAgent((await installedAgents()).find((agent) => agent.name === wanted.name)) };
+      let enclosure;
+      try {
+        enclosure = await enclosureOf(enclosures, wanted.folder);
+        await enclosure.prepare({ writable: [], readable: [] });
+      } catch (error) {
+        return { answer: { answered: false, reason: error.message } };
+      }
+      const found = (await installedAgents({ enclosure, workdir: wanted.folder })).find((agent) => agent.name === wanted.name);
+      return { answer: await testAgent(found, { enclosure, workdir: wanted.folder }) };
     },
     "POST /v1/ask": async ({ body }) => {
       // Every answer names its calls: those an exchange of a tool loop made, [] for any other request (MOD-bridge-http's route table).
@@ -98,7 +123,7 @@ export function jobHandlers({ testEndpoint = nodeTestEndpoint, listModels = node
       const wanted = offered(body?.agent);
       if (!wanted?.folder || typeof body.input !== "string") throw failure("invalid-request", "This Bridge offers no such agent with a working folder, or the input is no text.");
       asks.set(ask, entry);
-      drafted(wanted, body.input).then(({ text, usage }) => Object.assign(entry, { state: "done", text, usage }),
+      drafted(wanted, body.input, enclosures).then(({ text, usage }) => Object.assign(entry, { state: "done", text, usage }),
         (error) => Object.assign(entry, { state: "failed", error: reasonOf(error) }));
       return { ask };
     },

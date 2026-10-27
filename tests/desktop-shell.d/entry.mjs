@@ -28,6 +28,10 @@ const DOUBLES = {
     export const openTunnels = async () => {}; export const closeTunnels = async () => {}; export const tunnelState = () => [];
     export const tunnelHandlers = { "GET /v1/tunnels": async () => ({ tunnels: [] }) };`,
   "/src/mail-protocols/index.mjs": "export const mailHandlers = () => ({});",
+  // MOD-agent-enclosure needs a Seatbelt, bubblewrap or a second account, which a CI runner has not; its double starts the fixture agents as they are.
+  // What the enclosure does is tests/agent-enclosure.test.mjs's.
+  "/src/agent-enclosure/index.mjs": `export const agentEnclosure = ({ folder }) => ({ home: folder + "/home", works: async () => ({ works: true }), prepare: async () => {},
+    setUp: async () => ({ done: true, reason: null }), openTerminal: async () => {}, wrap: (command, args) => ({ command, args, env: { ...process.env }, input: null }) });`,
 };
 const moduleUrl = (source) => `data:text/javascript,${encodeURIComponent(source)}`;
 registerHooks({

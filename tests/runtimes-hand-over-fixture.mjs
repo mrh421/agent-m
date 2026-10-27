@@ -32,9 +32,10 @@ export const RECORD_PATH = `docs/jobs/${START.id}.md`;
 export const CI_HOSTED = { kind: "ci", runner: "hosted" };
 export const BRIDGE_ROUTE = { kind: "bridge", bridge: "lab-pc" };
 
-// A prepared job (MOD-job-runner's Prepared) as prepareJob returns it for a kind: only what a hand-over reads is of interest.
+// A prepared job (MOD-job-runner's Prepared) as prepareJob returns it for a kind: only what a hand-over reads is of interest — of the kind, its name, its gate points,
+// and its recipes, of which write-tests names `instruction?` first, so that the task it is handed reaches its prompt.
 export const preparedOf = (extra = {}, gatePoints = ["before-merge", "question"]) => ({
-  kind: { name: "write-tests", gatePoints }, params: {}, drafter: { name: "drafter-a", context: 200000 }, reviewers: [], parts: [], destinations: [], fits: true,
+  kind: { name: "write-tests", gatePoints, recipes: [{ name: "instruction", optional: true }] }, params: {}, drafter: { name: "drafter-a", context: 200000 }, reviewers: [], parts: [], destinations: [], fits: true,
   notFitting: [], leftOut: [], blocking: [], limit: 5, ...extra,
 });
 

@@ -11,7 +11,7 @@
 
 import { appendToRecord, jobCost, jobState, newJobId, recordsNewestFirst, startRecord, takeJob } from "../job-ledger/index.mjs";
 import { kindOf, toolsOf } from "../job-catalogue/index.mjs";
-import { handOverParams, prepareJob, provenanceLines, runJob, withheld } from "../job-runner/index.mjs";
+import { failedBecause, handOverParams, prepareJob, provenanceLines, runJob, taskRefusal, withheld } from "../job-runner/index.mjs";
 import { endpointDriver } from "../endpoint-calls/index.mjs";
 import { agentDriver, installedAgents } from "../agent-processes/index.mjs";
 import { checkoutPrompt } from "../checkout-tools/index.mjs";
@@ -25,7 +25,7 @@ import { sprintsToClose } from "../work-plans/index.mjs";
 import { appendResult, parseOutcomes, resultSchema } from "../result-records/index.mjs";
 import { isTestFile, testDeclarations } from "../test-document/index.mjs";
 import { testsOfRow } from "../test-schedule/index.mjs";
-import { composeProduct, composeTestJob, composeTestRun } from "./compose.mjs";
+import { composeProduct, composeTestJob, composeTestRun, keyAvailable } from "./compose.mjs";
 import { packResult, readResult, checkResult, writeBranches, pendingPullRequest } from "./result.mjs";
 
 const fs = globalThis.process?.getBuiltinModule?.("node:fs");
@@ -52,12 +52,13 @@ function usageOf(usages) {
 
 // The driver of a participant for a job: a model endpoint from the endpoint the job's record names, its key the participant's secret; or a coding
 // agent the record names, its key variable that secret's name.
-async function driverOf(participant, params, secretName, key, workdir) {
+// On the model's user's side (model-user.mjs) the agent reaches its provider through the key holder, `keyHolder`, and holds no key.
+async function driverOf(participant, params, secretName, key, workdir, keyHolder = null) {
   if (params.endpoint) return endpointDriver({ ...params.endpoint, key }, participant);
   if (typeof params.agent === "string") {
     const agent = (await installedAgents()).find((each) => each.name === params.agent);
     if (!agent?.installed) throw Object.assign(new Error(`The agent ${params.agent} is not installed on this runner.`), { name: "AgentMissing" });
-    return agentDriver(agent, { workdir, keyVariable: secretName }, participant);
+    return agentDriver(agent, { workdir, keyVariable: secretName, keyHolder }, participant);
   }
   throw Object.assign(new Error("The job's record names no endpoint and no agent for its participant."), { name: "NoDriver" });
 }
@@ -136,6 +137,8 @@ async function handedOver(handOver, context, participant, driver, record) {
   }
   if (kind.name === context.kind.name) return notRun("it is this conversation itself, which a hand-over does not start again");
   if (kind.review !== "person") return notRun("its result does not wait for a person, so it is started from the dashboard, by its start rules, for a holder of its role");
+  const dropped = String(handOver.task ?? "").trim() ? taskRefusal(kind) : null;
+  if (dropped) return notRun(`${dropped.what} [${dropped.rule}]`);
   const planned = worksOn.filter((name) => PLANNED.test(name));
   if (planned.length > 0) return notRun(`it works on ${planned.join(", ")} of the plan, whose start rules are checked where a person starts it`);
   const params = { ...(typeof record.params?.source === "string" ? { source: record.params.source } : {}), ...handOverParams(worksOn, context.product.snapshot),
@@ -147,6 +150,8 @@ async function handedOver(handOver, context, participant, driver, record) {
       return notRun(prepared.blocking.map((found) => `${found.what} [${found.rule}]`).join("; ") || "the job does not fit its participant");
     }
     const result = await runJob(prepared, { drafter: driver, reviewers: [] }, { attended: false, context: nested });
+    const failed = failedBecause(result);
+    if (failed) return [`failed: ${handOver.kind} — ${failed}`];
     const lines = resultsOf(result.written);
     return lines.length > 0 ? lines : [`${handOver.kind}: no change`];
   } catch (error) {
@@ -212,6 +217,9 @@ async function runJobOf(env, composed, participants, row, handOver = null) {
   let ended = { state: "failed", results: [], draft: null, rounds: [], usage: null, reason: null }, outcome = null, endpoint = null, notes = [];
   try {
     context.kind = await kindOf(record.kind);
+    // A task its kind takes no instruction for would reach no prompt: the job ends failed before the participant is called (MOD-job-runner's taskRefusal).
+    const dropped = handOver ? taskRefusal(context.kind) : null;
+    if (dropped) throw Object.assign(new Error(dropped.what), { name: "NotStartable" });
     endpoint = handOver?.endpoint ? endpointOf(handOver.endpoint) : null;
     // A model endpoint driven by Agent M's own tool loop gets AGENTS.md as text, not as a path in the instance's checkout, which only a coding agent
     // reads (EVERY MODEL READS AGENT M'S AGENTS.MD FIRST).
@@ -233,7 +241,7 @@ async function runJobOf(env, composed, participants, row, handOver = null) {
     }
     // On the model's user's side of the agent's machine (model-user.mjs) the endpoint is reached through the key holder, which adds the key; this side holds none.
     const config = endpoint ? { name: "hand-over", ...endpoint, ...(job.keyHolder ? { baseUrl: job.keyHolder, key: null } : { key: job.keys[secretName] ?? null }) } : null;
-    const driver = !endpoint ? await driverOf(participant, record.params ?? {}, secretName, job.keys[secretName], instance.checkout)
+    const driver = !endpoint ? await driverOf(participant, record.params ?? {}, secretName, job.keys[secretName], instance.checkout, job.keyHolder)
       : inCheckout ? endpointDriver(config, participant, undefined, { system: await checkoutPrompt({ folder: context.product.checkout, now: env.now }) })
         : endpointDriver(config, participant);
     const result = await runJob(prepared, { drafter: driver, reviewers: [] }, { attended: false, context });
@@ -245,14 +253,17 @@ async function runJobOf(env, composed, participants, row, handOver = null) {
       const refused = await refusedBranch(product.host, outcome, handOver.task, context.product.snapshot.commit);
       if (refused) throw Object.assign(new Error(`the branch ${refused.branch} is refused: ${refused.where} holds the task of the hand-over.`), { name: "TaskInBranch" });
     }
-    if (handOver) leaveAnswer(env, record.id, answerOf(outcome?.shown ?? result.draft));
+    // An answer that could not be read is left as it was received, where the prompt bar reads the answer; the record keeps only why (A CONVERSATION IS WRITTEN TO A
+    // REPOSITORY ONLY WHEN RECORDING IS ON).
+    if (handOver) leaveAnswer(env, record.id, answerOf(outcome?.shown ?? result.draft ?? result.raw));
+    const failed = failedBecause(result);
     const handedBack = context.kind.writer === "return-draft";
     const made = outcome ? [...outcome.commits, ...(handOver || outcome.pullRequest ? [...outcome.files, ...(outcome.pullRequest ? [outcome.pullRequest] : [])] : [])] : [];
     // A result is one item of the end's list, in which a comma separates items: a comma of a note or a reason becomes a semicolon.
     const listed = [...made, ...[...[...notes, ...(outcome?.notes ?? [])].map((note) => `note: ${note}`), ...passed].map((line) => line.replaceAll(",", ";"))];
-    ended = { state: "done", results: listed.length > 0 ? listed : handedBack ? [] : ["no change"],
-      draft: handOver ? null : handedBack ? (outcome?.shown ?? result.draft) : null, rounds: result.rounds, usage: usageOf(result.usage), reason: null,
-      stoppedBecause: result.stoppedBecause, drafter: result.drafter };
+    ended = { state: failed ? "failed" : "done", results: failed ? [] : listed.length > 0 ? listed : handedBack ? [] : ["no change"],
+      draft: handOver || failed ? null : handedBack ? (outcome?.shown ?? result.draft) : null, rounds: result.rounds, usage: usageOf(result.usage),
+      reason: failed && handOver ? hidden(failed) : failed, stoppedBecause: result.stoppedBecause, drafter: result.drafter };
   } catch (error) {
     let reason = error?.message ?? String(error);
     if (endpoint && error?.name === "EndpointFailed" && error.diagnosis) {
@@ -336,7 +347,7 @@ function missingSecret(env, participants, rows) {
   for (const { record } of rows) {
     const participant = participants.find((each) => each.name === record.participant);
     const secret = CI_ROUTE.exec(participant?.route ?? "")?.[1];
-    if (secret && !env.job.keys[secret]) return `${secret} is missing: the key of ${participant.name} is a secret of this repository, passed to the job as ${secret}. Nothing was written.`;
+    if (secret && !keyAvailable(env.job, secret)) return `${secret} is missing: the key of ${participant.name} is a secret of this repository, passed to the job as ${secret}. Nothing was written.`;
   }
   return null;
 }
@@ -454,7 +465,7 @@ async function runHandOver(env, composed, listed, row, inputs) {
   // variable is read); for any other hand-over, the secret the participant's route names.
   const secret = inputs.endpoint ? (typeof inputs.secret === "string" && inputs.secret ? inputs.secret : null) : SECRET_OF.exec(participant.route ?? "")?.[1];
   // On the model's user's side the key holder holds that key, which it was started with only where the machine had it (model-user.mjs).
-  if (secret && !(inputs.endpoint && env.job.keyHolder) && !(Object.hasOwn(env.job.keys, secret) && env.job.keys[secret])) {
+  if (secret && !(inputs.endpoint && env.job.keyHolder) && !keyAvailable(env.job, secret)) {
     const unnamed = !Object.hasOwn(env.job.keys, secret);
     return notRun(unnamed
       ? `${secret} is missing: the job workflow names no such key, so no secret of that name reaches the run; the job workflow is installed again from Settings, which names the keys of the participants' routes and of this browser's endpoints. Nothing was written.`

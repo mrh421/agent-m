@@ -14,6 +14,9 @@ tests:
 origin:
   - Sprint team1/26's start decision: ITM-292 read as not held, through #280
   - MOD-work-plans, Interfaces: heldItems
+built_by:
+  - 9ab15a195f36ef612b25632f20540384ef1d5a5c
+  - 876eb45acc6bd0408f053ca23934c94a7a2ba6eb
 ---
 # ITM-469 An item merged into a branch that never reached the default branch stays held
 

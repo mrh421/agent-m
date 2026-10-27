@@ -12,6 +12,8 @@ tests:
   - release
 origin:
   - SPEC.md: the check `tests/test_test_battery.py` its requirements name
+built_by:
+  - 5730e8ba6ac14d4c130521eefba9d56a8c06565c
 ---
 # ITM-410 The check that a test states its expected result
 

@@ -11,6 +11,8 @@ tests:
   - unit
 origin:
   - ITM-948's pull request #920 (sprint team1/91), run 39151670142, node (5) attempt 1, job 117746414703, found by scrum-master-opus
+built_by:
+  - 2dd1ccb80926384c2e325d68ebb52bfc86081b20
 ---
 # ITM-949 The hand-over test removes its folder only after every process it started has ended
 

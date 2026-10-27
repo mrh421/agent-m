@@ -34,6 +34,7 @@ uses:
   - MOD-job-runner.JobResult
   - MOD-job-runner.Strategies
   - MOD-job-runner.handOverParams
+  - MOD-job-runner.taskRefusal
   - MOD-approvals.approvalStrategies
   - MOD-spec-changes.specStrategies
   - MOD-artifact-edits.editStrategies
@@ -242,7 +243,8 @@ and sends nothing while the job does not
   `entry` and `refuses`; nothing is written, and its result is kept as the `ConversationDraft` of that kind, which
   *Review the draft* leads to (UC-049 4a.1); the person saves it there (UC-019 steps 8, 9). A finding that keeps it from
   starting — a change of requirements without the person's own source among them (`THE PERSON WHO PROMPTS IS A
-  SOURCE`) — is named, and nothing runs. Any other hand-over is shown with the participant, its processing place and the
+  SOURCE`), or a kind that takes no instruction, which MOD-job-runner's `taskRefusal` refuses since the task would reach
+  no prompt — is named, and nothing runs. Any other hand-over is shown with the participant, its processing place and the
   route it would take, which `routesFor` gives, and queued at once where nothing keeps it from starting (UC-049 4a.2).
   Its job takes, beside what the hand-over works on, only the `source` that the subject's `paramsFor` gives — no other
   parameter, so that no message and no page text enters the job's record (`A CONVERSATION IS WRITTEN TO A REPOSITORY
@@ -336,7 +338,8 @@ records under `docs/conversations/`. It keeps the conversation in the tab's valu
   offered can do `converse`, and whether the participant can do a handed-over kind in this tab.
 - MOD-job-runner.prepareJob, MOD-job-runner.Prepared, MOD-job-runner.JobResult — a message prepared and checked to fit,
   and its result; MOD-job-runner.Strategies — the type of `handOverStrategies`; MOD-job-runner.handOverParams — the
-  parameters a hand-over's job takes for what it works on.
+  parameters a hand-over's job takes for what it works on; MOD-job-runner.taskRefusal — a hand-over run in this tab whose
+  kind takes no instruction, refused.
 - MOD-approvals.approvalStrategies, MOD-spec-changes.specStrategies, MOD-artifact-edits.editStrategies,
   MOD-source-register.sourceStrategies, MOD-reuse-facts.reuseStrategies, MOD-resource-list.resourceStrategies,
   MOD-work-plans.workStrategies, MOD-run-planner.runStrategies, MOD-product-process.processStrategies,

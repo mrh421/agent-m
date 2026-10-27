@@ -30,6 +30,11 @@ try {
   if (error.name !== "DuplicateStrategy") throw error;
 }
 try {
+  jobRunner.registerStrategies("MOD-issue-handling", issueHandling.issueStrategies);
+} catch (error) {
+  if (error.name !== "DuplicateStrategy") throw error;
+}
+try {
   jobRunner.registerStrategies("MOD-approvals", approvals.approvalStrategies);
 } catch (error) {
   if (error.name !== "DuplicateStrategy") throw error;

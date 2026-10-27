@@ -95,6 +95,7 @@ const SMALL = { ...CI, name: "small-drafter", model: "small-model", context: 10 
 jobRunner.registerStrategies("MOD-approvals", approvals.approvalStrategies);
 jobRunner.registerStrategies("MOD-artifact-edits", artifactEdits.editStrategies);
 jobRunner.registerStrategies("MOD-spec-changes", specChanges.specStrategies);
+jobRunner.registerStrategies("MOD-issue-handling", issueHandling.issueStrategies);
 jobRunner.registerStrategies("tests/test_prompted_change_context.py", { recipes: {
   "chapters-for-requirements": async () => [{ name: "chapter 8 stand-in", text: "requirements chapter", size: 0, sources: [], required: true }] } });
 

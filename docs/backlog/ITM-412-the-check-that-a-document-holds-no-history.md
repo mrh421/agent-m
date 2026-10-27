@@ -15,6 +15,8 @@ tests:
   - release
 origin:
   - SPEC.md: the check `tests/test_no_history.py` its requirements name
+built_by:
+  - 7514703c63e8a0eba195e369ed8d1f51214dbe6b
 ---
 # ITM-412 The check that a document holds no history
 

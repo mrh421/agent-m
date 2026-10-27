@@ -11,6 +11,8 @@ modules:
 builds_on:
   - ITM-582
   - ITM-567
+  - ITM-1245
+  - ITM-1248
 tests:
   - unit
   - component
@@ -24,7 +26,7 @@ origin:
 
 ## Outcome
 
-UC-012 step 5, 5b and its first postcondition. The kind `fix-bug` exists. Not built: `fix-inputs`, `closeWithLinks`, `onPullRequestClosed` and `onDoneCheck`. The writer `branch-and-pull-request` is ITM-567.
+UC-012 step 5, 5b and its first postcondition. The kind `fix-bug` exists. Not built: `fix-inputs`, which gives its modules to `implementation-inputs` as the parameter `modules` (ITM-1248), `closeWithLinks`, whose comment `closed-with` names no item for a bug's fix (ITM-1245), and `onPullRequestClosed`; `onDoneCheck` exists (`src/workflow-entries/product.mjs`). The writer `branch-and-pull-request` is ITM-567.
 
 ## Acceptance
 

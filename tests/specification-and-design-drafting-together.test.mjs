@@ -32,9 +32,10 @@ import * as approvals from "../src/approvals/index.mjs";
 import * as specChanges from "../src/spec-changes/index.mjs";
 import * as artifactEdits from "../src/artifact-edits/index.mjs";
 import * as sourceRegister from "../src/source-register/index.mjs";
+import * as issueHandling from "../src/issue-handling/index.mjs";
 
 for (const [owner, module, name] of [["MOD-approvals", approvals, "approvalStrategies"], ["MOD-spec-changes", specChanges, "specStrategies"],
-  ["MOD-artifact-edits", artifactEdits, "editStrategies"], ["MOD-source-register", sourceRegister, "sourceStrategies"]]) {
+  ["MOD-artifact-edits", artifactEdits, "editStrategies"], ["MOD-source-register", sourceRegister, "sourceStrategies"], ["MOD-issue-handling", issueHandling, "issueStrategies"]]) {
   try { registerStrategies(owner, module[name]); } catch (error) { if (error.name !== "DuplicateStrategy") throw error; }
 }
 

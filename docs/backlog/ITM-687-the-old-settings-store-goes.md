@@ -15,6 +15,8 @@ tests:
   - unit
 origin:
   - the plan of moving the code outside the architecture into it (sprint team1/70), under `CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT` and `docs/measurements/2026-10-17_code-outside-every-module.md`
+built_by:
+  - 7de9422363de7f873aad154967d52bd19323270e
 ---
 # ITM-687 The old settings store goes
 

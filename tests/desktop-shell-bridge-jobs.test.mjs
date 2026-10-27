@@ -14,7 +14,7 @@
 // of a job with a fake host in tests/bridge-jobs-watch.test.mjs.
 //
 // One Bridge is started for the three cases and stopped at the end. Nothing reaches the network and no real agent starts: the instance and the product are bare repositories in a temporary folder that git reaches through
-// its own `url.<path>.insteadOf`, as the computer's login would reach github.com; the agents are fixture executables — opencode, offered, and codex, installed and not offered — put first on the Bridge's PATH. The job
+// its own `url.<path>.insteadOf`, as the computer's login would reach github.com; the agents are fixture executables — opencode, offered, and codex, installed and not offered — put first on the Bridge's PATH. The offered agent runs in the Bridge's real enclosure (MOD-agent-enclosure; ARC-054), as on a person's computer: on Linux bubblewrap, which the CI setup installs and allows to make user namespaces (tests/test-schedule-setup.sh); opencode writes the folder of each start into its own home, the one place besides the job's folders it may write. The job
 // is of the kind close-sprint, whose recipe, check and writer are the real ones the Bridge registers (MOD-work-plans' workStrategies); the fixture opencode answers it with a close of the sprint and the folder it was started
 // in. The Bridge reads its product once an hour (`every`), so that a job runs only when it is handed over. Where the texts leave a reading open, the test states the one it takes:
 //   - "nothing reaches the agent" is read at the agent: a start of the fixture executable (other than its version and login probes) is written down, and the count of them is the same after the refused request as before.
@@ -89,11 +89,12 @@ function repository(root, name, files) {
 // The computer of the Bridge and the Bridge started on it, once: the fixture agents, the instance, the product with two sprints, the settings, the started app and its pairing token. -> the world of the cases.
 function theBridge() {
   started ??= (async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-m-367-")));
+    // Not below /tmp: the Linux enclosure gives the agent a private /tmp (MOD-agent-enclosure, Data), where the fixture agents and their answers would not be.
+    const root = realpathSync(mkdtempSync(join(process.platform === "linux" ? "/var/tmp" : tmpdir(), "agent-m-367-")));
     const bin = join(root, "bin"), work = join(root, "work-opencode"), data = join(root, "data"), answers = join(root, "answers");
-    const calls = join(root, "opencode-calls"), codexCalls = join(root, "codex-calls");
+    const calls = join(work, "home", "opencode-calls"), codexCalls = join(root, "codex-calls");
     for (const folder of [bin, work, data, answers]) mkdirSync(folder);
-    for (const file of [calls, codexCalls]) writeFileSync(file, "");
+    writeFileSync(codexCalls, "");
     // opencode answers a task with the event in `answers/next` (the folder it runs in in place of @PWD@), and writes down the folder of each start of a task; codex, installed and not offered, writes down every call it gets.
     script(bin, "opencode", `case "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; models) echo opencode/big-pickle;;
 run) printf '%s\\n' "$PWD" >> ${calls}; sed "s|@PWD@|$PWD|" ${answers}/next
@@ -117,7 +118,7 @@ printf '%s\\n' '{"type":"step_finish","part":{"tokens":{"input":11,"output":7}}}
     const base = `http://127.0.0.1:${port}`;
     const world = { root, work, app, queue, originText, answerWith, base, token: null,
       request: (method, path, { token = world.token, body } = {}) => fetch(`${base}${path}`, { method, headers: { origin: ORIGIN, ...(token ? { [TOKEN_HEADER]: token } : {}), "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) }),
-      starts: () => readFileSync(calls, "utf8").trim().split("\n").filter(Boolean),
+      starts: () => (existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n").filter(Boolean) : []),
       codexCalls: () => readFileSync(codexCalls, "utf8").trim().split("\n").filter(Boolean),
       originFiles: () => git(root, "--git-dir", product.origin, "ls-tree", "-r", "--name-only", "main").split("\n") };
     try {

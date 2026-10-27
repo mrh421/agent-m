@@ -49,4 +49,14 @@ fi
 sudo chmod -R a+rX "$archives" "$lists"
 openbox --version
 
+# The component tests start the Bridge, which runs its agents in its real enclosure (MOD-agent-enclosure, ARC-054), on Linux bubblewrap. The row
+# that runs them installs the package, and an administrator allows it to make user namespaces, which Ubuntu 23.10 and later refuse to a program
+# without an AppArmor profile — the one-time steps the enclosure names. Other rows start no agent of the Bridge and install nothing of it.
+if [ "${AGENT_M_ROW:-}" = "component" ] && [ -n "${GITHUB_ACTIONS:-}" ]; then
+  sudo apt-get $apt_options install --yes --no-install-recommends bubblewrap \
+    || { sudo apt-get $apt_options update && sudo apt-get $apt_options install --yes --no-install-recommends bubblewrap; }
+  sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+  bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --die-with-parent -- true || echo "bubblewrap cannot make its namespaces on this runner"
+fi
+
 npm install --prefix src/bridge-build --omit=dev --ignore-scripts

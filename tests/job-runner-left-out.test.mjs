@@ -64,7 +64,7 @@ const contextOf = (kind) => ({ kind, params: {}, product: { address: "https://gi
 // expect: first the excerpt among the parts, not required, and nothing left out; then no excerpt, `leftOut` naming source-excerpt with the failure's own words as its reason, and the other parts as before
 test("prepareJob — a part that may be left out is left out with its reason when its recipe fails", async () => {
   const kind = await kindOf("derive-requirements");
-  assert.deepEqual(kind.recipes[0], { name: "source-excerpt", optional: true }, "known positive: the disk's definition is read");
+  assert.deepEqual(kind.recipes.find((recipe) => recipe.name === "source-excerpt"), { name: "source-excerpt", optional: true }, "known positive: the disk's definition is read");
 
   excerptFails = null;
   const given = await prepareJob("derive-requirements", contextOf(kind), { drafter: DRAFTER, reviewers: [] });

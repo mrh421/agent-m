@@ -234,7 +234,9 @@ It keeps nothing but the screen and an unsaved form. Its formats are those of th
     notice before the password field, and an app password explained; the Bridge the connection goes through, chosen
     among this browser's Bridges, and, for one reached through the jump host, the notice that the jump host can read the
     password and the mails, before saving; the folders; the processing places the mail may go to, a place outside the EU
-    stated as not compliant before saving; *Store and test*; *Disconnect*.
+    stated as not compliant before saving; *Store and test*; *Disconnect*. Each test of the mailbox — *Store and test*
+    here, *Test* on its line of `settings` — is stored as its last test, `last-test:mailbox`, with the `sending` its
+    `test()` gives (UC-037 7d).
   - `bridge` — the release's file for this computer's system with its size and the SHA-256 the server reports for it,
     or, where the server reports none, a link to the release's checksum file, and beside the file the publisher to look
     for, the name of the line `Publisher (<system>): <name>` that the release's notes hold for this system

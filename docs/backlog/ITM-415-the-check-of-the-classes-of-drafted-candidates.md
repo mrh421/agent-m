@@ -21,6 +21,8 @@ tests:
   - release
 origin:
   - SPEC.md: the check `tests/test_derivation_classes.py` its requirements name
+built_by:
+  - c60dc42c528877b3fb050a18701b4d5407024037
 ---
 # ITM-415 The check of the classes of drafted candidates
 

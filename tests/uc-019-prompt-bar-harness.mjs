@@ -25,6 +25,7 @@ import { byClass, buttonsNamed, click, find, until } from "./review-pages-draft-
 import { repoServer, settle } from "./app-harness.mjs";
 import { openStore, readTabValue, writeSetting } from "../src/browser-store/index.mjs";
 import { registerStrategies } from "../src/job-runner/index.mjs";
+import { issueStrategies } from "../src/issue-handling/index.mjs";
 import { view as tracePages } from "../src/trace-pages/index.mjs";
 import { view as reviewPages } from "../src/review-pages/index.mjs";
 
@@ -183,6 +184,8 @@ export async function scenario({ owner = "akmaier", linked = true, answers = [dr
 
 // The composition root registers the strategies of the views once, as src/site-frame/start.mjs does for the page's views.
 for (const [slug, view] of [["trace-pages", tracePages], ["review-pages", reviewPages]]) for (const strategies of view.strategies ?? []) registerStrategies(slug, strategies);
+// The recipe issue-context, which the kind change-requirements names (MOD-issue-handling), as the hand-over sets of the bar give it to the page.
+registerStrategies("MOD-issue-handling", issueStrategies);
 
 // Until the servers have had nothing in flight for a while.
 export async function rest(s) { await settle(s.instance); }

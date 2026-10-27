@@ -142,11 +142,16 @@ every subsystem and both programs, that interprets every kind of job from data**
   agent has, ported from opencode: reading, writing and editing files, running commands, searching, and fetching a page
   (MOD-checkout-tools). Those tools run in Node only, so only the Workflows register them; the tab keeps its tools that
   only read.
-- **No credential is within a model's reach** (`NO MODEL READS A CREDENTIAL`). On the server's runners a model endpoint's
-  job in a checkout runs as the model's own OS user, who holds no key and no token and may not use sudo; the key stays
-  with the machine's user in a key holder, which adds it to each request it forwards to that endpoint and to no other
-  (MOD-endpoint-calls, MOD-workflow-entries). The agent's machine keeps no token in its checkouts (MOD-runtimes). The
-  separation is by user, not by what a tool may say: what the model's user can read holds no credential.
+- **No credential is within a model's reach** (`NO MODEL READS A CREDENTIAL`). A model endpoint's job in a checkout, and
+  a coding agent's run in CI, runs as the model's own OS user, who holds no key and no token and may not use sudo,
+  wherever the agent's machine can make that user — on Linux, as root, as in a GitLab job's container, or with sudo
+  without a password, as on the server's runners —; the key stays with the machine's user in a key holder, which adds it
+  to each request it forwards to that endpoint, or to the coding agent's provider, and to no other (MOD-endpoint-calls,
+  MOD-workflow-entries). A coding agent reaches the holder by its own base-URL setting, a placeholder in its key variable
+  (MOD-agent-processes). The agent's machine keeps no token in its checkouts (MOD-runtimes). On a Bridge every coding
+  agent runs in an enclosure of the operating system that hides the Bridge's credentials and the computer's git login
+  from it, and the Bridge, not the agent, pushes and opens the pull request (ARC-054). The separation is by user or by
+  the system's enclosure, not by what a tool may say: what the model's side can read holds no credential.
 - **A conversation is a job without a record.** A message of the prompt bar (UC-049) runs as a job in the tab — of the
   kind its page names, with every rule on jobs — and leaves no job record (`A JOB IS RECORDED IN ITS PRODUCT
   REPOSITORY`). Work it cannot do in the tab — running code or tests, changing code, reaching the web — is proposed
@@ -173,7 +178,7 @@ job has, across every product.
 |---|---|
 | MOD-participant-list | `Participant`, `participantSchema`, `eligible`, `differs`, `reachedThrough` |
 | MOD-endpoint-calls | `endpointDriver`, `testEndpoint`, `diagnoseEndpoint` |
-| MOD-agent-processes | `Agent`, `installedAgents`, `agentDriver`, `testAgent` |
+| MOD-agent-processes | `Agent`, `Enclosure`, `installedAgents`, `agentDriver`, `testAgent` |
 | MOD-checkout-tools | `checkoutStrategies`, `checkoutPrompt` |
 | MOD-job-runner | `Strategies`, `JobContext`, `Part`, `Prepared`, `JobResult`, `ToolUse`, `registerStrategies`, `prepareJob`, `runJob`, `writeResult`, `provenanceLines` |
 | MOD-job-catalogue | `kindOf`, `toolsOf` |
@@ -247,6 +252,12 @@ schemas are read by MOD-documents (ARC-048).
 - **Hiding the key's variables from the model's commands only.** Rejected: on the server's runners every process of a
   user may read another's environment and the user may use sudo, so a variable left out of a command's environment is
   still within its reach.
+- **Refusing every run on a machine that cannot make the model's user.** Rejected: a self-hosted runner without sudo
+  and a GitLab runner whose jobs do not run as root would stop every job they ran before; the run goes on as the
+  machine's user and its summary names that it was not separated.
+- **A coding agent's key filtered out of what its tools print.** Rejected: the agent's own tools run in its process
+  and its environment; only a key that is not in that environment cannot be read, so the agent is given a placeholder
+  and the key holder's address instead.
 - **The checkout tools in MOD-job-runner or MOD-endpoint-calls.** Rejected: both run unchanged in a browser, where no
   command can run and no checkout exists; tools that need Node are a module of their own, whose strategies only the
   programs in Node register, as every module offers its strategies.
@@ -280,8 +291,11 @@ schemas are read by MOD-documents (ARC-048).
 - A new kind of work is a folder of data, plus a strategy only where a step needs knowledge no module offers yet.
 - A job taken by CI runs with the person's token and the agent's key from CI secrets; one taken by a Bridge runs with the
   computer's own logins; nothing of the browser's store reaches them.
-- On the server's runners a model can use its endpoint through the key holder but cannot read the key; a self-hosted
-  runner, a GitLab runner and a coding agent's own tools run as the machine's user and are not separated so.
+- Where the agent's machine can make the model's user, a model can use its endpoint, and a coding agent its provider,
+  through the key holder but cannot read the key; a machine that cannot — not Linux, or neither root nor allowed sudo
+  without a password — runs the model as its own user and says so in the run's summary, and a coding agent that cannot be
+  sent to a key holder (opencode without an endpoint) is refused on the model's user's side. A coding agent on a Bridge
+  works in its enclosure (ARC-054).
 - A job running in a tab dies with the tab; its record then shows it as ended without record, and it can be retried.
 - Every commit a job makes names the Agent M version, the participant and the model; the artifacts it writes name none
   of them.

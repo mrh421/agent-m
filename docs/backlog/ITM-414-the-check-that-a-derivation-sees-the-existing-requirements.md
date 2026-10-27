@@ -15,6 +15,8 @@ tests:
   - release
 origin:
   - SPEC.md: the check `tests/test_derivation_context.py` its requirements name
+built_by:
+  - 1c30257b229de2980be2072e1f7fd05071a58feb
 ---
 # ITM-414 The check that a derivation sees the existing requirements
 

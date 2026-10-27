@@ -35,6 +35,8 @@ origin:
   - UC-003 alternative 2a
   - UC-044 alternative 6a step 5
   - MOD-bridge-client proxyConfiguration
+built_by:
+  - b508cede042458de8a8f27b61e141236e51a84ee
 ---
 # ITM-294 The authenticated HTTPS reverse-tunnel integration
 

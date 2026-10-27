@@ -7,7 +7,7 @@
 // Run: node --test tests/spec-changes-queues.test.mjs
 //
 // Module: MOD-spec-changes
-// Guards: UC-047; STATUS IS DERIVED FROM THE RECORDS
+// Guards: UC-047; UC-012; STATUS IS DERIVED FROM THE RECORDS; EVERY ARTIFACT NAMES ITS ORIGIN
 // Level: unit
 //
 // Each test states its input and its expected result before it runs (given / input / expect). queues is given a
@@ -152,4 +152,28 @@ test("queues — more than one queue, newest first", async () => {
     "docs/spec-freigaben/2026-01-02_second",
     "docs/spec-freigaben/2026-01-01_first",
   ]);
+});
+
+// The sample queue's index with the line of an issue it was drafted from, between its impact table and the target's line (MOD-spec-changes, Data).
+function issueQueueSnapshot() {
+  const snapshot = sampleQueueSnapshot();
+  const path = "docs/spec-freigaben/2026-02-01_sample/index.md";
+  const read = snapshot.read;
+  return { ...snapshot, read: async (asked) => {
+    const body = await read(asked);
+    return asked === path ? body.replace("**Zieldatei aller Einträge:**", "**Issue:** #7 of https://github.com/alice/product\n\n**Zieldatei aller Einträge:**") : body;
+  } };
+}
+
+// TST-1247104 · level: unit · module: MOD-spec-changes
+// guards: EVERY ARTIFACT NAMES ITS ORIGIN; UC-012
+// given: the sample queue, whose index holds no line Issue; and the same queue whose index holds "**Issue:** #7 of https://github.com/alice/product" past its impact table, above the target's line
+// input: queues over each snapshot
+// expect: without the line, issue null; with it, issue { number: 7, product: "https://github.com/alice/product" }, and the title, the target and the three entries' states as without it
+test("queues — the issue a queue's index names, null without the line", async () => {
+  const [plain] = await queues(sampleQueueSnapshot());
+  assert.equal(plain.issue, null);
+  const [named] = await queues(issueQueueSnapshot());
+  assert.deepEqual(named.issue, { number: 7, product: "https://github.com/alice/product" });
+  assert.deepEqual([named.title, named.target, named.entries.map((entry) => entry.state)], ["sample queue", "SPEC.md", ["open", "approved", "in SPEC"]]);
 });

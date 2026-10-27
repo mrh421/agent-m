@@ -16,6 +16,9 @@ tests:
 origin:
   - ITM-310, #365
   - MOD-repository-hosts, Interfaces: WebLinks, webLinks
+built_by:
+  - 9ab15a195f36ef612b25632f20540384ef1d5a5c
+  - 48e1617845c06552fef15281ec1157a322bd6ab8
 ---
 # ITM-452 GitHub's file pages on the default branch the server reports
 

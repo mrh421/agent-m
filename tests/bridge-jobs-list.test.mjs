@@ -23,6 +23,7 @@ import test from "node:test";
 import { registerStrategies } from "../src/job-runner/index.mjs";
 import { startRecord } from "../src/job-ledger/index.mjs";
 import * as bridgeJobs from "../src/bridge-jobs/index.mjs";
+import { openEnclosures } from "./enclosure-fixture.mjs";
 import { bridgeApi } from "../src/bridge-http/index.mjs";
 
 const { jobHandlers, startWatching, stopWatching } = bridgeJobs;
@@ -150,7 +151,7 @@ printf '%s\\n' '${event}' '{"type":"step_finish","part":{"tokens":{"input":11,"o
     rmSync(root, { recursive: true, force: true });
   }
 }
-const watch = (w, agents, extra = {}) => startWatching({ bridgeName: "lab-pc", agents, products: [{ address: PRODUCT_A }], every: 100, instance: INSTANCE, ...extra });
+const watch = (w, agents, extra = {}) => startWatching({ bridgeName: "lab-pc", agents, products: [{ address: PRODUCT_A }], every: 100, instance: INSTANCE, enclosures: openEnclosures(), ...extra });
 const runs = (w) => w.calls().filter((line) => / run /.test(line));
 
 const list = () => jobHandlers()["GET /v1/jobs"]({});

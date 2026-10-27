@@ -193,3 +193,58 @@ test("the kind implement prepares with the recipe registered — MOD-run-planner
   const prepared = await offline(() => prepareJob("implement", contextOf({ items: ["ITM-001"] }), { drafter: null, reviewers: [] }));
   assert.deepEqual(namesOf(prepared.parts.filter((part) => part.recipe === "implementation-inputs")), ITM_001);
 });
+
+// TST-1248101 · level: unit · module: MOD-run-planner
+// guards: UC-012
+// given: the fixture product and a job whose parameters name only the modules MOD-reader and MOD-writer (as a bug's fix does), no step and no item
+// input: the recipe with params.modules = ["MOD-reader", "MOD-writer"]
+// expect: the same parts as for the item ITM-001 naming those modules — per module its file, its decisions, the SPEC, the interfaces of the modules it uses, its code and its tests
+test("a job naming only modules gets, per module, the inputs of a module step — MOD-run-planner", async () => {
+  const parts = await recipe({ modules: ["MOD-reader", "MOD-writer"] });
+  assert.deepEqual(namesOf(parts), ITM_001);
+  assert.deepEqual(parts, await recipe({ items: ["ITM-001"] }), "known positive: the item naming the same modules gives the same parts");
+});
+
+// TST-1248102 · level: unit · module: MOD-run-planner
+// guards: UC-012
+// given: the fixture product and a job naming the one module MOD-writer, which uses no module
+// input: the recipe with params.modules = ["MOD-writer"]
+// expect: the parts of the item ITM-003 naming MOD-writer alone
+test("a job naming one module gets that module's inputs alone — MOD-run-planner", async () => {
+  const parts = await recipe({ modules: ["MOD-writer"] });
+  assert.deepEqual(namesOf(parts), ["docs/architecture/MOD-writer.md", "docs/architecture/ARC-002-sub.md", "docs/architecture/ARC-001-whole.md", "SPEC.md", "src/writer/helper.mjs",
+    "src/writer/index.mjs", "tests/writer.test.mjs"]);
+});
+
+// TST-1248103 · level: unit · module: MOD-run-planner
+// guards: UC-012
+// given: the fixture product
+// input: the recipe with params.modules naming MOD-nothing, which no file holds, and with params.modules naming ARC-001, which is a decision and no module
+// expect: UnknownWork { id } with the name given, for each; a known module in the same call is first shown to give parts
+test("a module that no file holds is UnknownWork — MOD-run-planner", async () => {
+  assert.ok((await recipe({ modules: ["MOD-writer"] })).length > 0, "known positive");
+  await assert.rejects(recipe({ modules: ["MOD-writer", "MOD-nothing"] }), (error) => error.name === "UnknownWork" && error.id === "MOD-nothing");
+  await assert.rejects(recipe({ modules: ["ARC-001"] }), (error) => error.name === "UnknownWork" && error.id === "ARC-001");
+});
+
+// TST-1248104 · level: unit · module: MOD-run-planner
+// guards: UC-012
+// given: the fixture product
+// input: the recipe with params naming no step, no item and no module — {} and { modules: [] }
+// expect: NoWorkNamed for each; { modules: ["MOD-writer"] } is first shown to name work
+test("params naming no step, no item and no module are NoWorkNamed — MOD-run-planner", async () => {
+  assert.ok((await recipe({ modules: ["MOD-writer"] })).length > 0, "known positive");
+  await assert.rejects(recipe({}), (error) => error.name === "NoWorkNamed");
+  await assert.rejects(recipe({ modules: [] }), (error) => error.name === "NoWorkNamed");
+});
+
+// TST-1248105 · level: unit · module: MOD-run-planner
+// guards: UC-012
+// given: the fixture product and a job naming the item ITM-003 (MOD-writer) and the module MOD-reader
+// input: the recipe with params.items = ["ITM-003"], params.modules = ["MOD-reader"]
+// expect: the parts of the item first, then those of MOD-reader not yet given; each part once
+test("modules are given after the items and each part once — MOD-run-planner", async () => {
+  const parts = await recipe({ items: ["ITM-003"], modules: ["MOD-reader"] });
+  assert.deepEqual(namesOf(parts), ["docs/architecture/MOD-writer.md", "docs/architecture/ARC-002-sub.md", "docs/architecture/ARC-001-whole.md", "SPEC.md", "src/writer/helper.mjs",
+    "src/writer/index.mjs", "tests/writer.test.mjs", "docs/architecture/MOD-reader.md", READER_INTERFACES, "src/reader/index.mjs", "tests/reader.test.mjs"]);
+});

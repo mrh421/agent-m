@@ -32,7 +32,7 @@ const registerFixture = (folder, mutate = (text) => text) => {
 const FAULTS = {
   "TST-320001": ["installed: false", "installed: true"],
   "TST-320002": ["const loggedIn = loginMatches(row.login, login);", "const loggedIn = true;"],
-  "TST-320003": ["const result = await invoke(row.command, row.task.args, ownLoginEnvironment(), \"Reply with one word: ok.\");", "const result = await invoke(row.command, row.task.args, process.env, \"Reply with one word: ok.\");"],
+  "TST-320003": ["const result = await invoke(row.command, row.task.args, ownLoginEnvironment(), \"Reply with one word: ok.\", enclosed);", "const result = await invoke(row.command, row.task.args, process.env, \"Reply with one word: ok.\", enclosed);"],
   "TST-320004": ["if (!result.ok) return { answered: false, reason: (result.stderr || result.error?.message || `exit ${result.status}`).trim() };", "if (!result.ok) return { answered: true, version: agent.version };"],
   "TST-320005": ["if (findings.length || !register.rows.length) {", "if (false) {"],
 };

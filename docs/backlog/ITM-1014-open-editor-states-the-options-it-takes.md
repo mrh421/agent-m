@@ -11,6 +11,10 @@ tests:
   - unit
 origin:
   - ITM-672's draft (sprint team1/92), from developer-sonnet-b's finding
+built_by:
+  - 7749380ae3e59944210e6f39d38a86901b841980
+  - debcf213fb3860c2f5a624076a1603e8e67e2d38
+  - c0118156bd9754f7d64ddfb736649a682d794b85
 ---
 # ITM-1014 openEditor's options are the ones its module file states
 

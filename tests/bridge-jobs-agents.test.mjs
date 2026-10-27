@@ -28,6 +28,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { mock } from "node:test";
 import * as bridgeJobs from "../src/bridge-jobs/index.mjs";
+import { openEnclosures } from "./enclosure-fixture.mjs";
 
 const { jobHandlers } = bridgeJobs;
 const fs = process.getBuiltinModule("node:fs");
@@ -110,11 +111,36 @@ async function until(condition, what) {
 test("GET /v1/agents — the offered agents, and the supported agents missing; an installed agent that is not offered is left out", async () => {
   const machine = computer({ claude: { loggedIn: true }, codex: {} });
   await onComputer(machine, async () => {
-    const handlers = jobHandlers({ agents: offered(machine, "claude", "opencode") });
+    const handlers = jobHandlers({ enclosures: openEnclosures(), agents: offered(machine, "claude", "opencode") });
     const answer = await call(handlers, "GET /v1/agents");
 
     assert.deepEqual(answer, { agents: [{ name: "claude", version: "2.1.300", ready: true, loggedIn: true }], missing: [{ name: "opencode" }] });
     assert.ok(machine.calls().length >= 2 && machine.calls().every((line) => /--version|auth status|login status/.test(line)), machine.calls().join("; "));
+  });
+});
+
+// TST-1381003 · level: unit · module: MOD-bridge-jobs
+// guards: NO MODEL READS A CREDENTIAL; THE BRIDGE FINDS THE INSTALLED AGENTS
+// given: a computer with claude, logged in, offered with its working folder; once a Bridge whose composition gives no enclosures, once one whose enclosure answers that it does not work, with the reason "bwrap: not found" and the step "an administrator installs the package bubblewrap"
+// input: GET /v1/agents, POST /v1/probes/agent for claude, and POST /v1/ask to claude, on each
+// expect: claude is listed, not ready and not logged in; the probe answers that it did not answer, naming the reason — that no agent is started outside an enclosure, or the enclosure's reason and step —; the ask fails with the same reason; no task reached claude; counter-proof: TST-472077, with a working enclosure, lists it ready
+test("TST-1381003: without a working enclosure an agent is not ready, and neither probe nor ask starts it", async () => {
+  const machine = computer({ claude: { loggedIn: true } });
+  await onComputer(machine, async () => {
+    const cases = [[undefined, /no agent is started outside an enclosure/],
+      [openEnclosures({ works: { works: false, reason: "bwrap: not found", setup: "an administrator installs the package bubblewrap" } }), /bwrap: not found.*an administrator installs the package bubblewrap/]];
+    for (const [enclosures, why] of cases) {
+      const handlers = jobHandlers({ ...(enclosures ? { enclosures } : {}), agents: offered(machine, "claude") });
+      assert.deepEqual((await call(handlers, "GET /v1/agents")).agents, [{ name: "claude", version: "2.1.300", ready: false, loggedIn: false }]);
+      const probe = await call(handlers, "POST /v1/probes/agent", { body: { args: { agent: "claude" } } });
+      assert.equal(probe.answer.answered, false);
+      assert.match(probe.answer.reason, why);
+      const { ask } = await call(handlers, "POST /v1/ask", { body: { agent: "claude", input: "Draft the thing." } });
+      const answer = await until(async () => { const state = await call(handlers, "GET /v1/ask/{ask}", { params: { ask } }); return state.state !== "running" && state; }, "the ask to end");
+      assert.equal(answer.state, "failed");
+      assert.match(answer.error, why);
+    }
+    assert.equal(machine.calls().some((line) => line.includes("Draft the thing.") || /claude -p/.test(line)), false, "no task reached claude");
   });
 });
 
@@ -126,7 +152,7 @@ test("GET /v1/agents — the offered agents, and the supported agents missing; a
 test("GET /v1/agents — an agent not logged in, or without a working folder, is not ready", async () => {
   const machine = computer({ claude: { loggedIn: false }, codex: {} });
   await onComputer(machine, async () => {
-    const handlers = jobHandlers({ agents: [{ name: "claude", folder: machine.folders.claude }, { name: "codex", folder: "" }] });
+    const handlers = jobHandlers({ enclosures: openEnclosures(), agents: [{ name: "claude", folder: machine.folders.claude }, { name: "codex", folder: "" }] });
     const { agents, missing } = await call(handlers, "GET /v1/agents");
 
     assert.deepEqual(agents, [{ name: "claude", version: "2.1.300", ready: false, loggedIn: false }, { name: "codex", version: "1.2.3", ready: false, loggedIn: true }]);
@@ -144,7 +170,7 @@ test("GET /v1/agents — an agent not logged in, or without a working folder, is
 test("POST /v1/probes/agent — testAgent's answer for the offered agent, invalid-request for one not offered", async () => {
   const machine = computer({ claude: { loggedIn: true }, codex: {} });
   await onComputer(machine, async () => {
-    const handlers = jobHandlers({ agents: offered(machine, "claude") });
+    const handlers = jobHandlers({ enclosures: openEnclosures(), agents: offered(machine, "claude") });
     const probe = (agent) => call(handlers, "POST /v1/probes/agent", { params: { kind: "agent" }, body: { args: agent === undefined ? {} : { agent } } });
 
     assert.deepEqual(await probe("claude"), { answer: { answered: true, version: "2.1.300" } });
@@ -160,7 +186,7 @@ test("POST /v1/probes/agent — testAgent's answer for the offered agent, invali
 
   const failing = computer({ claude: { loggedIn: true, answers: false } });
   await onComputer(failing, async () => {
-    const handlers = jobHandlers({ agents: offered(failing, "claude") });
+    const handlers = jobHandlers({ enclosures: openEnclosures(), agents: offered(failing, "claude") });
     const { answer } = await call(handlers, "POST /v1/probes/agent", { params: { kind: "agent" }, body: { args: { agent: "claude" } } });
     assert.equal(answer.answered, false);
     assert.equal(typeof answer.reason, "string");
@@ -177,7 +203,7 @@ test("POST /v1/probes/agent — testAgent's answer for the offered agent, invali
 test("POST /v1/ask and GET /v1/ask/{ask} — an ask running, then done with its text and usage, in the agent's working folder", async () => {
   const machine = computer({ opencode: { gated: true } });
   await onComputer(machine, async () => {
-    const handlers = jobHandlers({ agents: offered(machine, "opencode") });
+    const handlers = jobHandlers({ enclosures: openEnclosures(), agents: offered(machine, "opencode") });
     const posted = await call(handlers, "POST /v1/ask", { body: { agent: "opencode", input: "Draft the thing." } });
     assert.equal(typeof posted.ask, "string");
     assert.deepEqual(Object.keys(posted), ["ask"]);
@@ -207,7 +233,7 @@ test("POST /v1/ask and GET /v1/ask/{ask} — an ask running, then done with its 
 test("GET /v1/ask/{ask} — a failed ask with its error", async () => {
   const machine = computer({ opencode: { fails: true } });
   await onComputer(machine, async () => {
-    const handlers = jobHandlers({ agents: offered(machine, "opencode") });
+    const handlers = jobHandlers({ enclosures: openEnclosures(), agents: offered(machine, "opencode") });
     const { ask } = await call(handlers, "POST /v1/ask", { body: { agent: "opencode", input: "Draft." } });
     const failed = await until(async () => { const now = await call(handlers, "GET /v1/ask/{ask}", { params: { ask } }); return now.state === "running" ? null : now; }, "the ask to end");
 
@@ -227,7 +253,7 @@ test("GET /v1/ask/{ask} — a failed ask with its error", async () => {
 test("GET /v1/ask/{ask} — an agent's answer holds calls: [] while running, when done and when failed", async () => {
   const machine = computer({ opencode: { gated: true } });
   await onComputer(machine, async () => {
-    const handlers = jobHandlers({ agents: offered(machine, "opencode") });
+    const handlers = jobHandlers({ enclosures: openEnclosures(), agents: offered(machine, "opencode") });
     const { ask } = await call(handlers, "POST /v1/ask", { body: { agent: "opencode", input: "Say Blue." } });
     const read = () => call(handlers, "GET /v1/ask/{ask}", { params: { ask } });
     await until(() => machine.calls().some((line) => /opencode run/.test(line)), "the agent to be started");
@@ -241,7 +267,7 @@ test("GET /v1/ask/{ask} — an agent's answer holds calls: [] while running, whe
   });
   const failing = computer({ opencode: { fails: true } });
   await onComputer(failing, async () => {
-    const handlers = jobHandlers({ agents: offered(failing, "opencode") });
+    const handlers = jobHandlers({ enclosures: openEnclosures(), agents: offered(failing, "opencode") });
     const { ask } = await call(handlers, "POST /v1/ask", { body: { agent: "opencode", input: "Say Blue." } });
     const failed = await until(async () => { const now = await call(handlers, "GET /v1/ask/{ask}", { params: { ask } }); return now.state === "running" ? null : now; }, "the ask to end");
     assert.equal(failed.state, "failed");
@@ -257,7 +283,7 @@ test("GET /v1/ask/{ask} — an agent's answer holds calls: [] while running, whe
 test("POST /v1/ask — an agent not offered, one without a working folder and an input that is no text are invalid-request", async () => {
   const machine = computer({ claude: { loggedIn: true }, codex: {}, opencode: {} });
   await onComputer(machine, async () => {
-    const handlers = jobHandlers({ agents: [{ name: "opencode", folder: machine.folders.opencode }, { name: "claude", folder: "" }] });
+    const handlers = jobHandlers({ enclosures: openEnclosures(), agents: [{ name: "opencode", folder: machine.folders.opencode }, { name: "claude", folder: "" }] });
     const ask = (body) => call(handlers, "POST /v1/ask", { body });
 
     const first = await ask({ agent: "opencode", input: "Draft." });
@@ -288,7 +314,7 @@ test("POST /v1/ask — nothing of an ask is kept on disk", async (t) => {
   }
   t.after(() => mock.restoreAll());
   await onComputer(machine, async () => {
-    const handlers = jobHandlers({ agents: offered(machine, "opencode") });
+    const handlers = jobHandlers({ enclosures: openEnclosures(), agents: offered(machine, "opencode") });
     const { ask } = await call(handlers, "POST /v1/ask", { body: { agent: "opencode", input: "Draft with marker-326-prompt." } });
     await until(async () => (await call(handlers, "GET /v1/ask/{ask}", { params: { ask } })).state === "done", "the ask to be done");
     const mine = written.filter((line) => !line.includes(machine.root));

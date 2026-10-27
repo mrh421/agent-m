@@ -23,6 +23,7 @@
 //     the panel appears once the point, a participant and a name are given, and the question the participant returns is stored as a draft and shown with *Send and wait*; the start record names the issue and the product, not the point.
 //   - The folded explanations are built here, not by the frame's `explain`: explanations.md holds no topic of this page and it is the frame's file (as mail.mjs does).
 
+import { readSetting } from "../browser-store/index.mjs";
 import { newJobId } from "../job-ledger/index.mjs";
 import { kindOf } from "../job-catalogue/index.mjs";
 import { prepareJob } from "../job-runner/index.mjs";
@@ -78,6 +79,13 @@ let last = null;
 const MAILBOX_FAILURES = new Set(["DraftChanged", "ConfirmationRefused", "SendRefused", "SignInExpired", "PermissionDeclined", "Throttled", "BridgeUnavailable", "NoEncryption", "LoginRefused", "FolderNotFound", "NoReplyAddress"]);
 const NOTE_FAILURES = new Set(["TokenRefused", "PermissionMissing", "RateLimited", "Moved", "NotFound", "NotSupported"]);
 const today = () => new Date().toISOString().slice(0, 10);
+
+// Beside Send and Send and wait, and on the page of the groups where a reply would be sent from: that the mailbox's last test found sending not working, with its reason (UC-037 7d). A record without `sending`, or with "works", says nothing; both buttons stay offered.
+function sendingNotice(store) {
+  const sending = readSetting(store, "last-test:mailbox")?.sending;
+  if (typeof sending !== "string" || sending === "works") return [];
+  return [el("p", "sending-notice", `The last test of the mailbox found that sending does not work: ${sending}`)];
+}
 
 // A draft as the mailbox shows it, complete and editable; *Save draft* saves the edit to the draft; *Send* sends it only on the confirmation of the mail shown.
 function draftBlock(box, mail, initial, ctx) {
@@ -143,7 +151,7 @@ function draftBlock(box, mail, initial, ctx) {
     });
     block.replaceChildren(el("p", null, "To: ", el("span", "draft-to", shown.to.map(who).join(", ")), shown.cc?.length ? ` · Cc: ${shown.cc.map(who).join(", ")}` : ""),
       el("p", null, "Subject: ", el("span", "draft-subject", shown.subject)), el("p", null, body),
-      el("ul", "draft-attachments", ...(shown.attachments ?? []).map((each) => el("li", null, `${each.name} (${each.size} bytes)`))), el("p", null, save, " ", send), edited, outcome);
+      el("ul", "draft-attachments", ...(shown.attachments ?? []).map((each) => el("li", null, `${each.name} (${each.size} bytes)`))), el("p", null, save, " ", send), ...sendingNotice(ctx.store), edited, outcome);
   }
   show(initial).catch((failure) => block.replaceChildren(el("p", "draft-problem", `The draft could not be read: ${failed(failure)}`)));
   return block;
@@ -152,7 +160,7 @@ function draftBlock(box, mail, initial, ctx) {
 function mailItem(entry, due, box, host, extra) {
   const { id, mail, draft, noted } = entry;
   const { group, arrived, fresh, redraw } = extra;
-  const ctx = { due, host, mode: group === "to-answer" ? "reply" : "ask" };
+  const ctx = { due, host, store: extra.ctx.context.store, mode: group === "to-answer" ? "reply" : "ask" };
   const item = el("li", "reply-mail");
   item.setAttribute("data-mail", id);
   const noteOnly = () => item.replaceChildren(el("p", "reply-noted", "A reply, or the decision not to answer, is noted in the issue."));
@@ -358,7 +366,7 @@ async function render(target, context, params = {}) {
     }
     await draw();
   });
-  target.replaceChildren(el("h2", null, "Replies"), el("section", "replies-step-read", el("p", null, read), fold(STEP_TEXT.read)), out);
+  target.replaceChildren(el("h2", null, "Replies"), el("section", "replies-step-read", el("p", null, read), fold(STEP_TEXT.read)), ...(params.issue ? [] : sendingNotice(context.store)), out);
   await draw();
 }
 

@@ -15,6 +15,12 @@ Where a candidate points to a rule of another source than this one, give that so
 Write one statement per requirement; a rule that needs "and" is two requirements. Invent nothing the excerpt does not
 say.
 
+## The task as the person gave it
+
+The task, where one is given, is the work asked for, within what the inputs below allow.
+
+{{instruction}}
+
 ## The excerpt of the source
 
 {{source-excerpt}}

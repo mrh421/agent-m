@@ -235,10 +235,10 @@ export function jobWorkflowFiles(server, instance, secrets, runners, gitlabCi = 
   const [head, routeJobs] = TEMPLATES[server].split(JOB_MARKER);
   const github = server === "github";
   const common = { repository: instance.repository, commit: instance.commit, token: secrets.token, "key-names": secrets.keys.join(" ") };
-  // The model's user, as whom a model endpoint's job runs on the agent's machine (MOD-workflow-entries), is made on the server's runners, where the machine's user
-  // may use sudo; a self-hosted runner names none.
-  const routes = [{ runner: "hosted", id: "hosted", "runs-on": "ubuntu-latest", tags: "", "model-user": "agent-m-model" },
-    ...runners.map((label) => ({ runner: label, id: `runner-${label}`, "runs-on": `[self-hosted, ${JSON.stringify(label)}]`, "model-user": "",
+  // Every agent's job of every route names the model's user, as whom a model's run works on the agent's machine where that machine can make it (MOD-workflow-entries):
+  // the templates hold its name.
+  const routes = [{ runner: "hosted", id: "hosted", "runs-on": "ubuntu-latest", tags: "" },
+    ...runners.map((label) => ({ runner: label, id: `runner-${label}`, "runs-on": `[self-hosted, ${JSON.stringify(label)}]`,
       tags: `  tags: [${JSON.stringify(label)}]\n` }))];
   const keyEnv = (names) => names.map((name) => `      ${name}: \${{ secrets.${name} }}\n`).join("");
   // A route is three kinds of job (MOD-runtimes, Data): the plan, one agent's job for each key and one, 0, for none, and the job that writes. On GitHub the n-th

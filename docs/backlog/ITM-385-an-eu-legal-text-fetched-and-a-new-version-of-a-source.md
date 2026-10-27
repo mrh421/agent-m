@@ -18,6 +18,9 @@ tests:
   - unit
 origin:
   - UC-004 step 7, 7a
+built_by:
+  - 97a26d7aba3041b909e2d3f1424595c28ad95a2a
+  - cc0ebe252d4b1b86ff4dbbc938a864d99ca799d8
 ---
 # ITM-385 An EU legal text fetched, and a new version of a source
 

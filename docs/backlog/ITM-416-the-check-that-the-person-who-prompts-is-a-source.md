@@ -15,6 +15,8 @@ tests:
   - release
 origin:
   - SPEC.md: the check `tests/test_prompted_source.py` its requirements name
+built_by:
+  - 1bdbf0a726b89eaeceb1b129cc60bca4ab3d7953
 ---
 # ITM-416 The check that the person who prompts is a source
 

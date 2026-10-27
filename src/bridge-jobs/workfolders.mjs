@@ -12,6 +12,7 @@ import { execFile } from "node:child_process";
 import { mkdir, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { connect, parseAddress } from "../repository-hosts/index.mjs";
+import { pullRequestsThroughCli } from "./pull-requests.mjs";
 
 const TIMEOUT_MS = 120_000;
 
@@ -70,7 +71,10 @@ export async function defaultHead(folder) {
 export async function hostOf(address, folder) {
   const host = connect(parseAddress(address), { clone: folder });
   const { branch } = await defaultHead(folder);
-  return Object.freeze({ ...host, commitFiles: (change) => exclusively(folder, () => host.commitFiles(change)), repositoryInfo: async () => ({ defaultBranch: branch, visibility: null, canWrite: null, archived: false, description: null }) });
+  // The pull requests through the person's gh, outside every enclosure (pull-requests.mjs); NotSupported where gh cannot open them.
+  const pulls = pullRequestsThroughCli(address, { cwd: folder });
+  return Object.freeze({ ...host, commitFiles: (change) => exclusively(folder, () => host.commitFiles(change)), repositoryInfo: async () => ({ defaultBranch: branch, visibility: null, canWrite: null, archived: false, description: null }),
+    listPullRequests: pulls.listPullRequests, openPullRequest: pulls.openPullRequest });
 }
 
 /** The clone at one commit, detached, its files as that commit holds them. */
@@ -88,3 +92,51 @@ export async function workingClone(address, folder) {
 
 /** The working clone removed. */
 export const removeClone = (folder) => rm(folder, { recursive: true, force: true });
+
+// The branches of a repository: { "<name>": commit }.
+async function branchesOf(folder, prefix = "refs/heads/") {
+  const listed = await git(folder, ["for-each-ref", "--format=%(refname) %(objectname)", prefix]);
+  return Object.fromEntries(listed.split("\n").filter(Boolean).map((line) => line.split(" ")).map(([ref, commit]) => [ref.slice(prefix.length), commit]));
+}
+
+/**
+ * makeOutbox(working) -> Promise<{ path, base }> — the job's outbox (MOD-bridge-jobs, Data): a bare repository `<working>.out.git` cloned from the working
+ * clone, set as the working clone's push address, so that the agent's pushes land there; `base` its branches now. Made before the agent starts: the Bridge
+ * runs git in the working clone only then.
+ */
+export async function makeOutbox(working) {
+  const path = `${working}.out.git`;
+  await rm(path, { recursive: true, force: true });
+  await git(dirname(working), ["clone", "--bare", "--quiet", "--", working, path]);
+  await git(working, ["remote", "set-url", "--push", "origin", path]);
+  return { path, base: await branchesOf(path) };
+}
+
+/**
+ * publish({ outbox, clone, job }) -> Promise<{ branch, commit }[]> — after the agent has answered: the outbox's branches fetched into the Bridge's clone of
+ * the product, under `refs/agent-m/<job>/`; every branch new or moved against the outbox's base pushed to the origin under its name, never forced, with the
+ * clone's own credentials; and the clone's branch of that name pointed at it, unless it is the branch checked out there. Fetching from the outbox runs no
+ * command its configuration names. Throws, naming the branch and what git said, where the origin refuses a push.
+ */
+export function publish({ outbox, clone, job }) {
+  return exclusively(clone, async () => {
+    const space = `refs/agent-m/${job}/`;
+    await git(clone, ["fetch", "--quiet", "--no-tags", "--", outbox.path, `+refs/heads/*:${space}*`]);
+    const fetched = await branchesOf(clone, space);
+    const current = await git(clone, ["symbolic-ref", "--quiet", "--short", "HEAD"]).catch(() => null);
+    const pushed = [];
+    try {
+      for (const [branch, commit] of Object.entries(fetched)) {
+        if (outbox.base[branch] === commit) continue;
+        await git(clone, ["push", "--quiet", "origin", `${commit}:refs/heads/${branch}`]).catch((error) => {
+          throw new Error(`the Bridge could not push the agent's branch ${branch}: ${error.message}`);
+        });
+        if (branch !== current) await git(clone, ["update-ref", `refs/heads/${branch}`, commit]);
+        pushed.push({ branch, commit });
+      }
+    } finally {
+      for (const branch of Object.keys(fetched)) await git(clone, ["update-ref", "-d", `${space}${branch}`]).catch(() => {});
+    }
+    return pushed;
+  });
+}

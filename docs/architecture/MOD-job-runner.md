@@ -61,11 +61,13 @@ provides:
   - registerStrategies
   - prepareJob
   - runJob
+  - failedBecause
   - writeResult
   - provenanceLines
   - roundsText
   - sourcesOf
   - handOverParams
+  - taskRefusal
   - refusedEdit
   - withheld
 ---
@@ -107,7 +109,7 @@ It keeps the registry of strategies of the program it runs in, in memory, filled
 
 | Name | Kind of strategy | What it does |
 |---|---|---|
-| `instruction` | recipe | the person's words, from the job's parameters, as one part |
+| `instruction` | recipe | the person's words, from the job's parameters, as one part; the only strategy through which a handed-over task reaches a prompt, so that a kind whose recipes do not name it takes no task (`taskRefusal`) |
 | `conversation` | recipe | the conversation so far, from the job's parameters, each message with who wrote it, as one part; none for the first message |
 | `page` | recipe | the page the person sees, as its route's subject gives it in the job's parameters (MOD-prompt-bar), as one part |
 | `list-files`, `read-file`, `search-files` | tool | the product's files at the commit the job read: the paths under a folder, one file's text, the lines that match a text in the files below the call's `path` — a search that would read more than 200 files is refused, naming their number, and reads none —; a path the context's `places.contents` names for a restricted source is refused unless that source allows the drafter's processing place (`RESTRICTED CONTENT GOES ONLY WHERE ITS SOURCE PERMITS`), and the refusal says why (UC-049 4e) |
@@ -345,6 +347,12 @@ ONLY WHEN RECORDING IS ON`).
     (`A CANCELLED JOB WRITES NOTHING MORE`).
 
   A driver's failure ends the job and is thrown by name; `Cancelled` when the signal is aborted.
+- `failedBecause(result: JobResult) -> string | null` — why a run that ran to its end ends its job `failed`: for a result
+  stopped `unusable`, `the participant's answer could not be read: <why>`, the why its last round's finding on the answer
+  gives — `the answer has no draft`, `it is not JSON` —; `null` for any other result, which ends its job `done`. The one
+  rule every route that ends a job applies — the tab and the Bridge (MOD-runtimes, MOD-bridge-jobs), CI and a hand-over
+  followed in the same run (MOD-workflow-entries) —, so that no run whose answer could not be read ends done. Its reason
+  names no word of the answer, which only `raw` holds. Pure.
 - `writeResult(prepared: Prepared, draft: unknown, options: { result: JobResult, context: JobContext }) ->
   Promise<WriteOutcome>` — writes a result that waited for a person, on their click — *Write proposals*, *Save*, *Save
   plan*, *Add to backlog*: runs the kind's steps again on the draft as the person left it, since they may have changed
@@ -364,6 +372,12 @@ ONLY WHEN RECORDING IS ON`).
   `ITM-<n>` the snapshot holds as a file under `docs/plan/` — and `items` for the other `ITM-<n>`; a key it would leave
   empty is left out, and any other identifier is in the job's `works_on` only. Pure, but for reading the snapshot's
   paths.
+- `taskRefusal(kind: KindDefinition) -> Finding | null` — the finding that refuses a task handed over to `kind` whose
+  recipes do not name the built-in recipe `instruction`, since the task would reach none of its prompt: an error on the
+  kind's name, line 1, under `THE HAND-OVER NAMES THE TASK IN ITS WORDS` — UC-049 4a's wording, which no requirement of
+  the SPEC states —, its `what` naming the kind and UC-049 4a; `null` for a kind that takes the task. The one rule the
+  dashboard's hand-over (MOD-runtimes' `handOverJob`, and MOD-prompt-bar for one run in the tab) and a CI run of a hand-over (MOD-workflow-entries' `onDispatch`, and
+  a hand-over followed in the same run) apply, so that no task is dropped silently. Pure.
 - `refusedEdit(path: string) -> string | null` — why `propose-edit` refuses a document, naming where it is changed, as
   the table under Data states; `null` for a document it holds; the writer `proposed-edits` reads it too, so that the rule stands once.
 - `withheld(context: JobContext, path: string) -> string | null` — for a tool's call on a path, with `context` the one a

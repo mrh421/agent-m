@@ -11,6 +11,8 @@ tests:
   - unit
 origin:
   - ITM-714's stop (sprint team1/73), from developer-sonnet-c's probe
+built_by:
+  - 955289160085ef90eba2a98e572ea6869d52e4e2
 ---
 # ITM-717 The architecture fixture's modules name their folders
 

@@ -35,16 +35,17 @@ function interfacesOf(text) {
 
 /**
  * The recipe implementation-inputs(context, params) -> Part[] — for each step (`params.steps`) or backlog item (`params.items`), in that order, as UC-024 step 4 gives it:
- * - a module step or an item, for each of its modules (the item's `modules`): the module's file; the decisions it follows and then the decision that refines no other; SPEC.md; the
+ * - a module step or an item, and each module `params.modules` names (after the steps and items), for each of its modules (the item's `modules`): the module's file; the decisions it follows and then the decision that refines no other; SPEC.md; the
  *   `## Interfaces` section alone of the file of each module it uses; the files under its folder; the test files with an `exercises` edge to it;
  * - a subsystem's integration: the subsystem's decision (the one that designs the step's modules), then for each module it designs the module's file, its files and its tests;
  * - the system: the decision that refines no other, the decisions that refine it and design modules, and the use cases.
  * A part is one file, named by its path (the interfaces of a file: `<path> ## Interfaces`), given once; it carries the sources of every `context.places.contents` entry that names its
- * path or a folder above it. Throws NoWorkNamed for params naming no step and no item, and UnknownWork { id } for a name that is no step, item or module of the product's files.
+ * path or a folder above it. Throws NoWorkNamed for params naming no step, no item and no module, and UnknownWork { id } for a name that is no step, item or module of the product's files.
  */
 async function implementationInputs(context, params) {
   const names = [params?.steps ?? [], params?.items ?? []].flat().map(String);
-  if (names.length === 0) throw failure("NoWorkNamed", "an implementation job names the steps or the items it implements");
+  const named = (params?.modules ?? []).map(String);
+  if (names.length === 0 && named.length === 0) throw failure("NoWorkNamed", "an implementation job names the steps, the items or the modules it implements");
   const snapshot = context.product.snapshot;
   const graph = await traceGraph(snapshot);
   const known = (id, kind) => {
@@ -72,6 +73,19 @@ async function implementationInputs(context, params) {
     for (const path of paths) await give(path, path);
   };
 
+  const moduleInputs = async (module) => {
+    await file(module, "MOD");
+    for (const { to: decision } of from(module, "follows")) await file(decision, "ARC");
+    for (const decision of system) await file(decision, "ARC");
+    await give(SPEC, SPEC);
+    for (const used of unique(from(module, "uses").map((edge) => edge.to.split(".")[0]))) {
+      const path = known(used, "MOD").path;
+      await give(`${path} ${INTERFACES}`, path, interfacesOf(await snapshot.read(path) ?? ""));
+    }
+    await filesOf(module);
+    await testsOf(module);
+  };
+
   for (const name of names) {
     const work = known(name, "ITM");
     const modules = from(name, "changes").map((edge) => edge.to);
@@ -89,20 +103,10 @@ async function implementationInputs(context, params) {
         await testsOf(module);
       }
     } else {
-      for (const module of modules) {
-        await file(module, "MOD");
-        for (const { to: decision } of from(module, "follows")) await file(decision, "ARC");
-        for (const decision of system) await file(decision, "ARC");
-        await give(SPEC, SPEC);
-        for (const used of unique(from(module, "uses").map((edge) => edge.to.split(".")[0]))) {
-          const path = known(used, "MOD").path;
-          await give(`${path} ${INTERFACES}`, path, interfacesOf(await snapshot.read(path) ?? ""));
-        }
-        await filesOf(module);
-        await testsOf(module);
-      }
+      for (const module of modules) await moduleInputs(module);
     }
   }
+  for (const module of named) await moduleInputs(module);
   return [...parts.values()];
 }
 

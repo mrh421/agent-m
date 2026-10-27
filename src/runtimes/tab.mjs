@@ -12,7 +12,7 @@ import { endpointDriver } from "../endpoint-calls/index.mjs";
 import { instanceOfPagesAddress } from "../identifiers/index.mjs";
 import { openStore, readSetting, writeSetting } from "../browser-store/index.mjs";
 import { appendToRecord, jobCost, startRecord } from "../job-ledger/index.mjs";
-import { runJob } from "../job-runner/index.mjs";
+import { failedBecause, runJob } from "../job-runner/index.mjs";
 import { bridgeDriver } from "./bridge.mjs";
 import { RuntimeError } from "./ci.mjs";
 
@@ -188,9 +188,9 @@ const ended = (fields) => ({ part: "end", at: new Date(), draft: null, rounds: [
 // The end of a job of this tab from its result. For a job that stopped at a gate `stoppedBecause` is "gate": the loop's own reason is not kept, so the record derives it from the last round.
 function endFields(result, drafter) {
   const usage = usageOf(result.usage);
-  const failed = result.stoppedBecause === "unusable";
+  const failed = failedBecause(result);
   return {
-    state: failed ? "failed" : "done", reason: failed ? "the participant's answer could not be read" : null, results: failed ? [] : resultsOf(result.written),
+    state: failed ? "failed" : "done", reason: failed, results: failed ? [] : resultsOf(result.written),
     draft: result.written?.shown ?? null, rounds: result.rounds, forPerson: result.forPerson, stoppedBecause: result.stoppedBecause === "gate" ? undefined : result.stoppedBecause, usage,
     cost: jobCost(usage, drafter),
   };

@@ -22,13 +22,16 @@ uses:
   - MOD-endpoint-calls.diagnoseEndpoint
   - MOD-endpoint-calls.holdKey
   - MOD-agent-processes.agentDriver
+  - MOD-agent-processes.keyProvider
   - MOD-checkout-tools.checkoutStrategies
   - MOD-checkout-tools.checkoutPrompt
   - MOD-job-runner.JobContext
   - MOD-job-runner.registerStrategies
   - MOD-job-runner.prepareJob
   - MOD-job-runner.runJob
+  - MOD-job-runner.failedBecause
   - MOD-job-runner.handOverParams
+  - MOD-job-runner.taskRefusal
   - MOD-job-runner.withheld
   - MOD-job-catalogue.kindOf
   - MOD-job-catalogue.toolsOf
@@ -127,8 +130,8 @@ It runs in Node, in GitHub Actions or GitLab CI, on hosted or self-hosted runner
 - `result.mjs` — the run's result between the agent's machine and the writing machine of a product's job workflow: the
   repository the agent's checkout pushes into, what is kept for later, the result packed, read, checked and
   written.
-- `model-user.mjs` — the hosted agent's machine split by OS user: a hand-over to a model endpoint run as the model's own
-  user, beside the key holder.
+- `model-user.mjs` — the agent's machine split by OS user: a run in which a model works — a hand-over to a model
+  endpoint, or a coding agent whose key the machine holds — run as the model's own user, beside the key holder.
 - `instance.mjs` — the entries of the instance's workflows.
 - **Taken over, outside this folder** (`CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT`; the count in `docs/measurements/2026-10-17_code-outside-every-module.md`). Each file goes as stated, in this module's own implementation jobs:
   - `.github/workflows/apply-approvals.yml`, `.github/workflows/fetch-sources.yml`, `.github/workflows/main-changed.yml`, `.github/workflows/release.yml`: named here, since GitHub fixes their place; `apply-approvals.yml` runs `onApprovalsCommitted`, `main-changed.yml` runs `onMainChanged` and `release.yml` runs `onReleaseTagged`, each and nothing else, as this module states.
@@ -169,22 +172,30 @@ pull request and the commits as they stand once written. The records' bookkeepin
 the writing machine.
 
 **The model's user** (`NO MODEL READS A CREDENTIAL`). On the server's own runners the machine's user may use sudo, and a
-process may read the environment of every other process of its user; so a command that a model's tool runs as that user
-reaches the key of the run, and so does every command the version control runs for the entry in a checkout the model
-writes — a hook, a command in `.git/config`. Where the job workflow names the model's user — on the server's runners,
-`agent-m-model` —, `onDispatch` of a hand-over to a model endpoint therefore runs as that user (`model-user.mjs`), whom
-the machine's user makes for the run with a home of its own and no group, so that it may not use sudo. Into that home it
-copies the product's and the instance's checkouts and the event's payload, and gives them to that user; then it runs the
-entry, and `leaveResult`, as that user, with none of the machine's variables but those of the CI service, the route and
-the machine, the names of the keys, and the home's folders in their places. The key stays with the machine's user, in
-the key holder (MOD-endpoint-calls' `holdKey`), started for the run's endpoint and the key of the secret the input
-`secret` names; the model's user's side is given its address as `AGENT_M_KEY_HOLDER`, through which it reaches the
-endpoint with no key of its own. Afterwards the machine's user ends every process of the model's user and reads the
-result's files and the step's summary back as that user — what that user can read, and nothing else — into the
-machine's result folder and summary, where the job workflow's own `leaveResult` finds the result already left. The tools
-of MOD-checkout-tools thus run, in the driver's process and in `bash`, as a user that holds no key and no token. A
-self-hosted runner names no model's user: the entry runs as the runner's own user, as on GitLab, and a model's command
-there reaches what that user can.
+process may read the environment of every other process of its user; in a GitLab job the machine's user is root in the
+job's container, whose variables hold the job's token. So a command that a model's tool — or a coding agent's own tool —
+runs as that user reaches the key of the run, and so does every command the version control runs for the entry in a
+checkout the model writes — a hook, a command in `.git/config`. Every agent's job names the model's user,
+`agent-m-model`. A run in which a model works therefore runs as that user (`model-user.mjs`): `onDispatch` of a
+hand-over to a model endpoint, and `onDispatch` or `onRecordsChanged` where the machine's key is the key variable of a
+coding agent whose provider a key holder can stand in for (MOD-agent-processes' `keyProvider`). The machine's user makes
+that user for the run with a home of its own and no group, so that it may not use sudo — directly where it is root, with
+`sudo -n` where it may use sudo without a password, on Linux only; a user a run before left is removed first. Into that
+home it copies the product's and the instance's checkouts and, on GitHub, the event's payload, and gives them to that
+user; on GitLab it closes the folder that holds the project's clone and the files GitLab writes beside it to every other
+user until the run ends. Then it runs the entry, and `leaveResult`, as that user — through `sudo -u` or, as root,
+`runuser -u` —, with none of the machine's variables but those of the CI service, the route and the machine, a GitLab
+pipeline's inputs, the names of the keys, and the home's folders in their places; never a token of the CI service. The
+key stays with the machine's user, in the key holder (MOD-endpoint-calls' `holdKey`), started for the run's endpoint and
+the key of the secret the input `secret` names, or for the provider of the coding agent whose key variable the machine's
+key is, with that key; the model's user's side is given its address as `AGENT_M_KEY_HOLDER`, through which it reaches the
+endpoint, or the agent its provider, with no key of its own. Afterwards the machine's user ends every process of the
+model's user and reads the result's files and the step's summary back as that user — what that user can read, and
+nothing else — into the machine's result folder and summary, where the job workflow's own `leaveResult` finds the result
+already left; then it sets the closed folder back and removes the user. The tools of MOD-checkout-tools, and a coding
+agent with its own tools, thus run as a user that holds no key and no token. A machine that cannot make the user — not
+Linux, or neither root nor allowed sudo without a password — runs the entry as its own user, and the entry's summary says
+so; a model's command there reaches what that user can.
 
 ## Interfaces
 
@@ -208,7 +219,8 @@ there reaches what that user can.
   product: takes each queued job whose route is this CI service, except one whose task travels with its hand-over, which
   `onDispatch` takes, and runs it from its record alone — its kind, the
   parameters of its `## Parameters` and its pinned inputs —, with the driver of its participant, a coding-agent process or
-  a model endpoint, the participant's key from its secret, appending its records. No person attends a job in CI: its
+  a model endpoint, the participant's key from its secret — a coding agent whose key a key holder can hold, as the model's
+  user, through the holder (*The model's user*) —, appending its records. No person attends a job in CI: its
   kind's writer writes at once (`A CI AGENT'S DRAFT ENTERS AS OPEN`), and a kind that hands its draft back leaves it in
   the record's end as `draft:`, from which the page shows it and a run starts the job that follows. A job whose draft
   holds a hand-over (MOD-job-runner's `hand-over`, UC-049 4f) is followed in the same run, with the same participant and
@@ -216,13 +228,17 @@ there reaches what that user can.
   the hand-over works on no item of the backlog or step of the plan: its parameters the job's `source`, those
   MOD-job-runner's `handOverParams` gives for what it works on, and its task as `instruction`; prepared, and run
   unattended, so that its writer writes at once — a change of requirements as an open entry of a new queue, a use case
-  or an architecture file as open; no job writes an approval record. A hand-over of any other kind, or one whose job
-  does not start, is not run, and the job's end names it with why. The end lists every result of both: their commits,
+  or an architecture file as open; no job writes an approval record. A hand-over of any other kind, of a kind that takes
+  no instruction (MOD-job-runner's `taskRefusal`, its rule named), or one whose job does not start, is not run, and the
+  job's end names it with why, as `not run: <kind> — <why>`; one whose run fails by MOD-job-runner's `failedBecause` is
+  listed as `failed: <kind> — <why>`. The end lists every result of both: their commits,
   their files and pull requests, and their writers' notes. The entry resumes each
   job of this route whose gate is now recorded (`A JOB STOPS AT EVERY GATE`); and computes the next actions of every run
   the change concerns, from the product's facts read once, taking those of this route and queueing those of other routes
   by their start records (`A RUN CONTINUES WITHOUT A CLICK BETWEEN ITS JOBS`). Two entries that compute the same action
-  are safe: only one taking lands. A job whose writer committed nothing, since its result equals the current files,
+  are safe: only one taking lands. A job whose run ends by MOD-job-runner's `failedBecause` — an answer that could not be
+  read after the last round — ends `failed`, with no result, that reason and its rounds, and the entry ends `failed`. A
+  job whose writer committed nothing, since its result equals the current files,
   ends done, and its end record and the entry's summary say `no change` (UC-010 4a).
 - `onDoneCheck(env: CiEnvironment) -> Promise<EntryStatus>` — on a pull request of a product opened or updated, run only by
   the Definition-of-Done job of MOD-test-schedule's test configuration, after the run's test jobs and its records job:
@@ -253,7 +269,9 @@ there reaches what that user can.
 - `onDispatch(env: CiEnvironment) -> Promise<EntryStatus>` — on a run started from the CI service's own page with the
   inputs the dashboard named (UC-024): writes the job's start record, those inputs its parameters, and runs it as
   `onRecordsChanged` runs a job. On a run a hand-over started (UC-049 4a), whose input `job` names a queued record whose
-  task travels with the hand-over: takes that job and runs it with the input `task` as its instruction — for a model
+  task travels with the hand-over: takes that job and runs it with the input `task` as its instruction — a job whose kind
+  takes no instruction ends `failed` before its participant is called, its reason the `what` of MOD-job-runner's
+  `taskRefusal`, since the task would reach no prompt —; for a model
   endpoint, the endpoint the input `endpoint` names, with the key from the CI secret the input `secret` names, through
   Agent M's own job runner, MOD-endpoint-calls' `endpointDriver` calling the endpoint, with its tool loop where the
   participant declares *use tools*, as in the tab, its input beginning with Agent M's `AGENTS.md` as text; a job handed
@@ -276,7 +294,9 @@ there reaches what that user can.
   messages or pull request text hold the task's words is refused by name, the job then ending failed with nothing
   merged — on the agent's machine, where the branch is not on the server yet, `writeResult` refuses it; it appends the job's end with its commits, files and pull request, and leaves the answer in the run's summary
   and log — in the log between the lines `--- answer of <id> ---` and `--- end of the answer of <id> ---` —, where the
-  prompt bar reads it. An endpoint the run cannot reach ends it `failed`, its summary naming the
+  prompt bar reads it; an answer that could not be read is left there as it was received, and its job's end holds only
+  the reason, since the answer is a message of the conversation (`A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN
+  RECORDING IS ON`). An endpoint the run cannot reach ends it `failed`, its summary naming the
   reason that MOD-endpoint-calls' `diagnoseEndpoint` gives — the diagnosis its `EndpointFailed` carries — and the routes
   that would work — a self-hosted runner, or a Bridge (UC-049 4d).
 - `chooseAgentKey(env: CiEnvironment) -> Promise<EntryStatus>` — before the agent's machine starts, on a machine that
@@ -392,14 +412,18 @@ sections with their decisions and the fetched texts of sources. Reads secrets on
 - `MOD-text-tools.Finding` — the findings an entry reports.
 - `MOD-test-document.TestDeclaration`, `testDeclarations` — the declarations of the product's tests, to which a report's
   outcomes are matched.
-- `MOD-endpoint-calls.endpointDriver`, `MOD-agent-processes.agentDriver` — the drivers of CI participants;
+- `MOD-endpoint-calls.endpointDriver`, `MOD-agent-processes.agentDriver` — the drivers of CI participants, a coding agent
+  on the model's user's side given the key holder's address; `MOD-agent-processes.keyProvider` — the provider a key holder
+  stands in for, where the machine's key is a coding agent's;
   `MOD-endpoint-calls.diagnoseEndpoint` — why a handed-over run could not reach its endpoint; `MOD-endpoint-calls.holdKey`
   — the key holder beside the model's user.
 - `MOD-checkout-tools.checkoutStrategies`, `MOD-checkout-tools.checkoutPrompt` — the tools and the system prompt of a
   model endpoint that works in the job's checkout, on the agent's machine.
 - `MOD-job-runner.JobContext`, `registerStrategies`, `prepareJob`, `runJob`, `MOD-job-catalogue.kindOf` — running a job of
-  any kind from its record, unattended; `MOD-job-runner.handOverParams` — the parameters of a hand-over run in the same
-  job; `MOD-job-runner.withheld` — whether a restricted source's content in the checkout refuses `bash`;
+  any kind from its record, unattended; `MOD-job-runner.failedBecause` — whether a run's job ends failed, and why;
+  `MOD-job-runner.handOverParams` — the parameters of a hand-over run in the same
+  job; `MOD-job-runner.taskRefusal` — a hand-over whose kind takes no instruction, refused;
+  `MOD-job-runner.withheld` — whether a restricted source's content in the checkout refuses `bash`;
   `MOD-job-catalogue.toolsOf` — the capabilities a kind's tools need, for a participant built from `declares`.
 - `MOD-source-register.sourceSchemas`, `registerPaths`, `restrictedPlaces` — the places of the restricted sources a job's
   context carries.

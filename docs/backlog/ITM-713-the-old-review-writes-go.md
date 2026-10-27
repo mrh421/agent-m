@@ -14,6 +14,8 @@ tests:
   - unit
 origin:
   - ITM-680's draft stop (sprint team1/73), from developer-sonnet-d's draft
+built_by:
+  - 5736e4d9bfbbe94140dac3db0a448d927d60e540
 ---
 # ITM-713 The old review writes go
 

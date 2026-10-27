@@ -70,6 +70,18 @@ const COMMIT_REF = /^[0-9a-f]{7,40}$/;
 // schema's language cannot say, read from the underTitle section's own text.
 const TARGET_LINE = /\*\*Zieldatei aller Einträge:\*\*\s*(.+)/;
 
+// The line of a queue drafted from an issue, `**Issue:** #<number> of <product address>` (MOD-spec-changes, Data): what the
+// schema's language cannot say either, read from the same section's text. issueLine writes it, for the writer of classified
+// candidates (propose.mjs), so that the line has one form.
+const ISSUE_LINE = /^\*\*Issue:\*\*\s*#(\d+) of (\S+)\s*$/m;
+export const issueLine = (issue) => `**Issue:** #${issue.number} of ${issue.product}`;
+
+// The issue the line names, or null when the section holds no such line.
+function issueOf(sectionText) {
+  const m = ISSUE_LINE.exec(sectionText ?? "");
+  return m ? { number: Number(m[1]), product: unbacktick(m[2]) } : null;
+}
+
 // A value written in backticks for readability, with the backticks taken off; any other value as it stands — what
 // the schema's "text" columns do not strip themselves.
 function unbacktick(text) {
@@ -251,7 +263,7 @@ async function bareQueue(snapshot, folder, records) {
   const { document, rows } = readRegister(queueIndexSchema, indexPath, indexText ?? "");
   const decisions = await decisionsOf(snapshot, base);
   const entries = rows.map((row) => entryOf(row, folder, base, files, snapshot, records, decisions));
-  return { folder: base, title: titleOf(document.title), target: targetOf(document.sections[0]?.text), entries };
+  return { folder: base, title: titleOf(document.title), target: targetOf(document.sections[0]?.text), issue: issueOf(document.sections[0]?.text), entries };
 }
 
 // The files withEvidence reads for a queue: the target of every entry no decision row decides, and the record of every approved one.
@@ -276,7 +288,7 @@ async function readQueues(snapshot, folders, records) {
  * @typedef {{ number: number, file: string, anchor: string, until: string | null, proposal: Proposal,
  *   rationale: string, record: string | null, decision: string | null,
  *   state: "open" | "approved" | "in SPEC" | "stale" | "waiting for its anchor", createdBy: number | null }} Entry
- * @typedef {{ folder: string, title: string, target: string, entries: Entry[] }} Queue
+ * @typedef {{ folder: string, title: string, target: string, issue: { number: number, product: string } | null, entries: Entry[] }} Queue
  */
 
 /**

@@ -9,6 +9,7 @@ needs:
 resources: none
 preconditions:
 recipes:
+  - instruction?
   - whole-spec
   - accepted-use-cases
   - draft

@@ -12,6 +12,9 @@
 // MOD-documents' item schema. A refusal is a WorkPlansError named as the module file names it, and nothing is written then.
 
 import { appendSection, artifactSchemas, readDocument, writeDocument } from "../documents/index.mjs";
+import { nextIdentifier } from "../identifiers/index.mjs";
+import { finding } from "../text-tools/index.mjs";
+import { backlogFindings } from "./checks.mjs";
 import { sprintSchema } from "./schemas.mjs";
 import { conflicts, selectionOf } from "./sprints.mjs";
 
@@ -28,12 +31,15 @@ export class WorkPlansError extends Error {
 const TIME_BOX = "Sprint";
 const SPRINT_FILE = /^docs\/backlog\/sprints\/([^/]+)\/(\d+)\.md$/;
 const ITEM_FILE = /^docs\/backlog\/(ITM-\d{3,})-[^/]+\.md$/;
+const ANY_ITEM_FILE = /(?:^|\/)(ITM-\d{3,})-[^/]*\.md$/;
+const BACKLOG_RULE = "THE BACKLOG LIVES IN THE PRODUCT REPOSITORY";
 const DAY = 86400000;
 
 const text = (value) => (typeof value === "string" ? value : value === null || value === undefined ? "" : String(value));
 const list = (value) => (Array.isArray(value) ? value.map(text) : text(value).split(",").map((part) => part.trim()).filter(Boolean));
 const listed = (names) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 const plusDays = (date, days) => new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY).toISOString().slice(0, 10);
+const slugOf = (title) => text(title).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item";
 const message = (subject, trailers) => (trailers?.length ? `${subject}\n\n${trailers.join("\n")}` : subject);
 
 // The days a time box lasts, from its length as a model writes it — "<n> day(s)" or "<n> week(s)" —; null without one.
@@ -279,4 +285,55 @@ export async function giveUpIncrement(host, sprint, reason, context) {
   const { commit } = await host.commitFiles({ branch: defaultBranch, expectedHead: head, files: [{ path, text: changed }],
     message: message(`Give up the increment of sprint ${name}`, trailers) });
   return { commit };
+}
+
+/**
+ * saveItems(host: Host, change: { items: Document[], removed: string[] }, context: { architecture: Document[], head: string, trailers: string[] }) -> Promise<{ commit: string, written: string[], warnings: Finding[] }>
+ * — Add to backlog and + Item (UC-032), an item pointed at a replacing requirement or removed (UC-032 1a), and Move to backlog (UC-033). An item has `fields` and `sections` (## Outcome, ## Acceptance) as readDocument
+ * gives them; one without an identifier is new and gets the next after every ITM- identifier that the head's paths and the history of the default branch hold, a withdrawn one among them; one whose identifier the
+ * backlog holds is rewritten in its file. An entry of `builds_on` that is no identifier but the title of an existing item or of another item of the change becomes that item's identifier. backlogFindings runs
+ * first on the existing items that stay and the items of the change; with an error finding of an item of the change nothing is written and ItemsRefused { findings } is thrown. The warnings of those items — one that
+ * restates an existing item — are returned with the commit. The items are written and the `removed` items deleted in one commit on the default branch at `head`; a `removed` identifier the backlog lacks is an error finding of
+ * ItemsRefused, with nothing written. Crosses the network, through the host; fails also with the host's failures.
+ */
+export async function saveItems(host, change, context) {
+  const { architecture = [], head, trailers = [] } = context;
+  const items = change?.items ?? [], removed = change?.removed ?? [];
+  const schema = artifactSchemas().item;
+  const snapshot = await host.readSnapshot(head);
+  const held = new Map(snapshot.paths.map((path) => [ITEM_FILE.exec(path)?.[1], path]).filter(([id]) => id));
+  const lacking = removed.filter((id) => !held.has(id)).map((id) => finding({ artifact: id, line: 1, kind: "error", rule: BACKLOG_RULE,
+    what: `${id} is no item of the backlog at ${head}, so it cannot be removed`, fix: "remove only an item the backlog holds" }));
+  if (lacking.length) throw new WorkPlansError("ItemsRefused", { findings: lacking }, `The items are not saved: ${lacking.map((one) => one.what).join("; ")}.`);
+
+  const { defaultBranch } = await host.repositoryInfo();
+  const used = new Set(snapshot.paths.map((path) => ANY_ITEM_FILE.exec(path)?.[1]).filter(Boolean));
+  if (items.some((each) => !text(each.fields?.id))) {
+    for (const entry of await host.readHistory(null, { ref: defaultBranch })) {
+      for (const { path, from } of entry.changes) for (const each of [path, from]) if (each && ANY_ITEM_FILE.test(each)) used.add(ANY_ITEM_FILE.exec(each)[1]);
+    }
+  }
+  const identified = items.map((each) => {
+    let id = text(each.fields?.id);
+    if (!id) { id = nextIdentifier("ITM", used); used.add(id); }
+    return { each, id, path: held.get(id) ?? `docs/backlog/${id}-${slugOf(each.fields?.title)}.md` };
+  });
+  const saved = new Set(identified.map(({ id }) => id));
+  const staying = await Promise.all([...held].filter(([id]) => !removed.includes(id) && !saved.has(id))
+    .map(async ([, path]) => readDocument(schema, path, (await snapshot.read(path)) ?? "")));
+  const titles = new Map([...staying.map((one) => [text(one.fields.title), one.id]), ...identified.map(({ each, id }) => [text(each.fields?.title), id])]);
+  const documents = identified.map(({ each, id, path }) => {
+    const buildsOn = list(each.fields?.builds_on).map((name) => (titles.get(name) ?? name));
+    const { builds_on: _, ...fields } = each.fields ?? {};
+    return { kind: "item", path, id, title: text(fields.title), fields: { ...fields, id, ...(buildsOn.length ? { builds_on: buildsOn } : {}) },
+      body: `# ${id} ${text(fields.title)}\n\n`, sections: each.sections ?? [], appended: [] };
+  });
+  const found = backlogFindings([...staying, ...documents], architecture).filter((one) => saved.has(one.artifact));
+  const errors = found.filter((one) => one.kind === "error");
+  if (errors.length) throw new WorkPlansError("ItemsRefused", { findings: errors }, `The items are not saved: ${errors.map((one) => one.what).join("; ")}.`);
+
+  const files = [...documents.map((one) => ({ path: one.path, text: writeDocument(schema, one) })), ...removed.map((id) => ({ path: held.get(id), delete: true }))];
+  const subject = documents.length ? `Add to the backlog: ${documents.map((one) => one.title).join(", ")}` : `Remove from the backlog: ${removed.join(", ")}`;
+  const { commit } = await host.commitFiles({ branch: defaultBranch, expectedHead: head, files, message: message(subject, trailers) });
+  return { commit, written: documents.map((one) => one.path), warnings: found.filter((one) => one.kind === "warning") };
 }

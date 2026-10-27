@@ -9,6 +9,7 @@ needs:
 resources: product
 preconditions:
 recipes:
+  - instruction?
   - commit-and-levels
   - resource-pins
 checks:

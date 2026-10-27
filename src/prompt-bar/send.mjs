@@ -12,7 +12,7 @@
 
 import { readSetting } from "../browser-store/index.mjs";
 import { bridgeAt, settingsOf } from "../bridge-client/index.mjs";
-import { handOverParams, prepareJob } from "../job-runner/index.mjs";
+import { handOverParams, prepareJob, taskRefusal } from "../job-runner/index.mjs";
 import { runOnTab, tabContext } from "../runtimes/index.mjs";
 import { readParticipants } from "./offer.mjs";
 import { readDocument } from "../documents/index.mjs";
@@ -125,8 +125,9 @@ export const shown = (finding) => `${finding.kind}: ${finding.what} — ${findin
 
 /**
  * whyNot(prepared: Prepared, offered: Participant[]) -> string[] — what keeps a prepared job from being sent: each finding that keeps it
- * from starting, and each participant it does not fit with the offered participants whose context would hold it (UC-049 3a, UC-019 4a, 4b).
- * Empty when the job may be sent.
+ * from starting, each participant it does not fit with the offered participants whose context would hold it (UC-049 3a, UC-019 4a, 4b), and,
+ * for a job given an instruction — a hand-over's task — of a kind that takes none, MOD-job-runner's taskRefusal, since the task would reach no
+ * prompt (UC-049 4a). Empty when the job may be sent.
  */
 export function whyNot(prepared, offered) {
   const larger = (size) => offered.filter((each) => each.context !== null && each.context >= size).map((each) => each.name);
@@ -137,6 +138,7 @@ export function whyNot(prepared, offered) {
       return `${participant.name} does not hold this message: ${context === null ? "it declares no context size" : `its context holds ${context} tokens`}, `
         + `the job needs about ${size}. ${choice.length ? `Choose ${choice.join(" or ")}, whose context is larger.` : "No offered participant has a larger context."}`;
     }),
+    ...(typeof prepared.params?.instruction === "string" && prepared.params.instruction.trim() ? [taskRefusal(prepared.kind)].filter(Boolean).map(shown) : []),
   ];
 }
 

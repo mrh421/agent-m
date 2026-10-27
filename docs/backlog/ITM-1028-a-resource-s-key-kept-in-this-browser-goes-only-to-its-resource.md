@@ -16,6 +16,10 @@ tests:
 origin:
   - the gap analysis of UC-036 to UC-049 on main, proposal NEW-040-7, read against the accepted texts on main at 40e04d8d
   - akmaier's direction of 2026-10-18 ("fill the backlog to implement the remaining missing UC 36 to the end")
+built_by:
+  - f265d919e96aaa653cb265882bce6e1a0dd58509
+  - 05caafb47d9f282ae740e875169c766cc9ccdec1
+  - ba117b4140b9925f89d87e0e451f2bb3812f6f00
 ---
 # ITM-1028 A resource's key kept in this browser goes only to its resource
 

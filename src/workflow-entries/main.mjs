@@ -26,7 +26,7 @@ export async function runEntry(name, env, options = {}) {
   if (!entry) return { outcome: "failed", summary: `There is no entry ${name}.`, findings: [] };
   try {
     const ci = ciEnvironment(name, env, options.now ?? new Date());
-    return await (separates(name, ci) ? runAsModelUser(name, env, ci) : entry(ci));
+    return await (separates(name, ci) ? runAsModelUser(name, env, ci, entry) : entry(ci));
   } catch (error) {
     return { outcome: "failed", summary: `${name} failed: ${error?.message ?? error}`, findings: [] };
   }

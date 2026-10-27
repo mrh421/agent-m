@@ -13,6 +13,8 @@ tests:
   - release
 origin:
   - SPEC.md: the check `tests/test_job_preconditions.py` its requirements name
+built_by:
+  - 99931d8eaff93d4d793b0463c96ea0fc2dcee3da
 ---
 # ITM-445 The check that an architecture is drafted only against accepted use cases
 

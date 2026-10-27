@@ -12,6 +12,7 @@ resources: none
 preconditions:
   - rests-on-accepted
 recipes:
+  - instruction?
   - test-selection
   - chapters-for-tests
 checks:

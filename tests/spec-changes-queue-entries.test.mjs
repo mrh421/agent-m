@@ -7,10 +7,10 @@
 // Run: node --test tests/spec-changes-queue-entries.test.mjs
 //
 // Module: MOD-spec-changes
-// Guards: UC-005; UC-019
+// Guards: UC-005; UC-012; UC-019
 // Guards: A CHANGE IS PROPOSED UNDER THE EXISTING NAME; A DUPLICATE ADDS A SOURCE, NOT A REQUIREMENT; A CONFLICT IS DECIDED BY A PERSON; A REQUIREMENT IS NOT CHANGED WITHOUT AN IMPACT LIST
 // Guards: A REQUIREMENT NAMES WHAT IT CONSTRAINS; A REVIEWED ARTIFACT ENTERS THE DEFAULT BRANCH AS OPEN; AN ARTIFACT RECORDS THE VERSION THAT PRODUCED IT
-// Guards: A GENERATED ARTIFACT IS A PROPOSAL
+// Guards: A GENERATED ARTIFACT IS A PROPOSAL; EVERY ARTIFACT NAMES ITS ORIGIN
 // Level: unit
 //
 // The product and the instance are fixtures this file builds, never Agent M's own: each a snapshot (paths, blob SHAs, a read of the texts) and a host that records every commit
@@ -509,4 +509,82 @@ test("queue-entries — the writer reads each file as often as before", async ()
   const counted = (list) => Object.fromEntries([...new Set(list)].sort().map((path) => [path, list.filter((each) => each === path).length]));
   assert.deepEqual(counted(reads.product), { "SPEC.md": 2, "docs/use-cases/UC-001-read-a-file.md": 1 });
   assert.deepEqual(counted(reads.instance), { "SPEC.md": 3, [`${OPEN_QUEUE}/01-open-process.md`]: 1, [`${OPEN_QUEUE}/entscheidungen.md`]: 1, [`${OPEN_QUEUE}/index.md`]: 1 });
+});
+
+// ---------------------------------------------------------------- a queue drafted from an issue names the issue (ITM-1247)
+//
+// The job's parameter `issue` is the number of the product's issue the change comes from; the product's address is the context's `product.address`. The reading this file takes, where the
+// module file leaves one open: the rationale's **Origin.** names the issue as `issue #<number> of <product address>` after the source; the index's line is `**Issue:** #<number> of <product
+// address>`, in every queue the job writes, the instance's too, since the change comes from the product's issue.
+
+const ADDRESS = "https://github.com/alice/product";
+const originOf = (rationale) => /\*\*Origin\.\*\* ([^\n]*)/.exec(rationale)?.[1] ?? "";
+
+// TST-1247101 · level: unit · module: MOD-spec-changes
+// guards: EVERY ARTIFACT NAMES ITS ORIGIN; UC-012
+// given: a job whose parameters carry the source SRC-fixture-book and the issue 12, with a new requirement of the product and one that constrains the process
+// input: the writer
+// expect: in both queues each rationale's origin names the source with its passage and "issue #12 of https://github.com/alice/product", and still reads without a finding in the schema queue-rationale;
+//   each index holds the line "**Issue:** #12 of https://github.com/alice/product" above the line "**Zieldatei aller Einträge:**"
+test("queue-entries — with the parameter issue, each rationale names the issue as its origin and each index holds the line Issue", async () => {
+  const f = fixture();
+  f.context.params = { source: "SRC-fixture-book", issue: 12 };
+  await writer(resultOf([NEW, GATE]), f.context);
+  const schema = loadSchema(readFileSync(new URL("../src/spec-changes/queue-rationale.schema.md", import.meta.url), "utf8"), "MOD-spec-changes");
+  const commits = [...f.product.host.commits, ...f.instance.host.commits];
+  assert.equal(commits.length, 2, "a queue in the product and one in the instance");
+  for (const commit of commits) {
+    const written = filesOf(commit);
+    const [folder] = folderOf(commit);
+    const rationales = Object.keys(written).filter((path) => path.endsWith(".begruendung.md"));
+    assert.ok(rationales.length > 0);
+    for (const path of rationales) {
+      const said = originOf(written[path]);
+      assert.ok(said.includes("SRC-fixture-book") && said.includes("ch. 8"), `${path}: the source stays named: ${said}`);
+      assert.ok(said.includes(`issue #12 of ${ADDRESS}`), `${path}: the issue is named as the origin: ${said}`);
+      assert.deepEqual(documentFindings(schema, readDocument(schema, path, written[path])), [], `${path}: no finding`);
+    }
+    const index = written[`${folder}/index.md`];
+    assert.ok(index.split("\n").includes(`**Issue:** #12 of ${ADDRESS}`), index);
+    assert.ok(index.indexOf("**Issue:**") < index.indexOf("**Zieldatei aller Einträge:**"), "the line stands above the target's line");
+  }
+});
+
+// TST-1247102 · level: unit · module: MOD-spec-changes
+// guards: EVERY ARTIFACT NAMES ITS ORIGIN; UC-005
+// given: the same job without the parameter issue; and, to show the same check finding the line, the job with the issue 12
+// input: the writer
+// expect: with the issue, a file of the commit holds "**Issue:**" (known positive); without it, no file holds it and every rationale's origin is "Source SRC-fixture-book, passages: ch. 8.", as before
+test("queue-entries — without the parameter issue, no queue names an issue", async () => {
+  const known = fixture();
+  known.context.params = { source: "SRC-fixture-book", issue: 12 };
+  await writer(resultOf([NEW]), known.context);
+  assert.ok(Object.values(filesOf(known.product.host.commits[0])).some((body) => body.includes("**Issue:**")), "known positive: the check finds the line");
+  const f = fixture();
+  await writer(resultOf([NEW, GATE]), f.context);
+  const commits = [...f.product.host.commits, ...f.instance.host.commits];
+  assert.equal(commits.length, 2);
+  for (const commit of commits) {
+    const written = filesOf(commit);
+    assert.ok(!Object.values(written).some((body) => body.includes("**Issue:**")), "no line Issue");
+    for (const path of Object.keys(written).filter((each) => each.endsWith(".begruendung.md"))) assert.equal(originOf(written[path]), "Source SRC-fixture-book, passages: ch. 8.");
+  }
+});
+
+// TST-1247103 · level: unit · module: MOD-spec-changes
+// guards: EVERY ARTIFACT NAMES ITS ORIGIN; UC-012
+// given: the product's repository after the writer committed a queue for a job with the issue 12, and after one for a job without an issue: a snapshot holding the files of the commit beside the product's own
+// input: queues over each snapshot
+// expect: the queue written with the issue reads back with issue { number: 12, product: "https://github.com/alice/product" }; the one written without, with issue null
+test("queue-entries — queues reads back the issue a written queue names", async () => {
+  for (const [params, expected] of [[{ source: "SRC-fixture-book", issue: 12 }, { number: 12, product: ADDRESS }], [{ source: "SRC-fixture-book" }, null]]) {
+    const f = fixture();
+    f.context.params = params;
+    await writer(resultOf([NEW]), f.context);
+    const written = filesOf(f.product.host.commits[0]);
+    const [folder] = folderOf(f.product.host.commits[0]);
+    const queue = (await specChanges.queues(snapshotOf({ ...f.productFiles, ...written }))).find((each) => each.folder === folder);
+    assert.ok(queue, `the written queue ${folder} is read`);
+    assert.deepEqual(queue.issue, expected);
+  }
 });

@@ -25,6 +25,9 @@ tests:
   - unit
 origin:
   - UC-022 steps 6 to 9, 6a, 6b, 6c, 7a, 7b, 7c, 7d
+built_by:
+  - 11ece0637b6c2e7f1fad6f987c92f3d2b3afda5b
+  - dc643bae1d713285ae9bc59b960b61fbe521c2f0
 ---
 # ITM-443 The derived architecture waiting for the author, and Write proposals
 

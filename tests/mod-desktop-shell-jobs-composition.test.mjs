@@ -69,8 +69,9 @@ test("TST-367001: desktop settings become MOD-bridge-jobs watch configuration", 
 // guards: ONE DEFINITION, THREE DRIVERS
 // given: the desktop composition module
 // input: bridgeStrategyRegistrations()
-// expect: the Bridge registers exactly the job strategies already accepted for Bridge-runnable approval, SPEC-change, artifact-edit, source-register, work-plans (workStrategies), run-planner and runtimes (routeStrategies) jobs
-// Planted fault: leaving sourceStrategies, workStrategies, runStrategies or routeStrategies out makes the registration list assertion fail.
+// expect: the Bridge registers exactly the sets MOD-desktop-shell's Uses name that modules build: approvals, SPEC changes, artifact edits, source register, reuse facts, resource list,
+//   work plans (workStrategies), run planner, test schedule, result records, issue handling and runtimes (routeStrategies) — MOD-product-process' processStrategies is built by no module yet
+// Planted fault: leaving sourceStrategies, workStrategies, runStrategies, resultStrategies or routeStrategies out makes the registration list assertion fail.
 test("TST-367002: desktop composition names the Bridge-runnable job strategy modules", async () => {
   const root = mkdtempSync(join(tmpdir(), "agent-m-367-strategies-"));
   try {
@@ -81,8 +82,13 @@ test("TST-367002: desktop composition names the Bridge-runnable job strategy mod
       "MOD-spec-changes.specStrategies",
       "MOD-artifact-edits.editStrategies",
       "MOD-source-register.sourceStrategies",
+      "MOD-reuse-facts.reuseStrategies",
+      "MOD-resource-list.resourceStrategies",
       "MOD-work-plans.workStrategies",
       "MOD-run-planner.runStrategies",
+      "MOD-test-schedule.scheduleStrategies",
+      "MOD-result-records.resultStrategies",
+      "MOD-issue-handling.issueStrategies",
       "MOD-runtimes.routeStrategies",
     ]);
   } finally {

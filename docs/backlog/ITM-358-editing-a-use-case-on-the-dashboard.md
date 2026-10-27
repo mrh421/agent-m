@@ -28,6 +28,8 @@ tests:
 origin:
   - UC-018 steps 1 to 7 for a use case, 3b, 3c, 3e, 4a, 4b, 5a, 6b, 7a
   - UC-008 3a
+built_by:
+  - 7749380ae3e59944210e6f39d38a86901b841980
 ---
 # ITM-358 Editing a use case on the dashboard
 

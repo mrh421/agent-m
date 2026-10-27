@@ -28,6 +28,9 @@ tests:
   - unit
 origin:
   - UC-005 steps 1 to 8, 1a, 2a, 3a, 5a, 6a, 7a, 7b
+built_by:
+  - ba9e15bb90e2fb2ffce5609e429876af3166b364
+  - 52e5b63190aa343aa9c0d5f7e24ba34dac398ccb
 ---
 # ITM-361 Deriving requirements from a source on the review pages
 

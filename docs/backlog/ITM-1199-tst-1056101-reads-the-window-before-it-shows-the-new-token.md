@@ -11,6 +11,8 @@ tests:
   - release
 origin:
   - job 120420039999, python (5) of #1322 at b3d30c24, attempt 2; attempt 1 of the same commit passed (agreement 94)
+built_by:
+  - b47e81a4a328e179d8fab6d5f458173f075c9d25
 ---
 # ITM-1199 TST-1056101 reads the Bridge's window for the new pairing token only once the window shows it
 

@@ -163,12 +163,16 @@ test("issue-context — an issue from a mail gives no mail as a part, and an iss
 // TST-582108 · level: unit · module: MOD-issue-handling
 // guards: UC-012
 // given: known positive first — issue 2; then a number the host lists no issue under, and a job without the parameter
-// input: the recipe for issue 2, for 99 and with no issue
-// expect: issue 2 gives its parts; 99 is IssueNotFound { issue: 99 }; no number is a TypeError
-test("issue-context — an issue the host does not list is IssueNotFound, and a job without an issue is a TypeError", async () => {
+// input: the recipe for issue 2, for 99, and with no issue — the parameters empty, the issue undefined, and the issue null
+// expect: issue 2 gives its parts; 99 is IssueNotFound { issue: 99 }; a job without the parameter `issue` gets no part (MOD-issue-handling, issueStrategies: "A job without the parameter `issue` gets no part, as `draft?` gives none without a draft")
+test("issue-context — an issue the host does not list is IssueNotFound, and a job without an issue gets no part", async () => {
   assert.equal((await partsOf(2)).length, 2);
   await assert.rejects(partsOf(99), (error) => error.name === "IssueNotFound" && error.issue === 99);
-  await assert.rejects(recipe()(contextOf({}), {}), TypeError);
+  for (const params of [{}, { issue: undefined }, { issue: null }]) {
+    assert.deepEqual(await recipe()(contextOf(params), params), [], JSON.stringify(params));
+  }
+  // A parameter that is present but no whole number is still a TypeError.
+  await assert.rejects(recipe()(contextOf({ issue: "7" }), { issue: "7" }), TypeError);
 });
 
 // TST-582109 · level: unit · module: MOD-issue-handling

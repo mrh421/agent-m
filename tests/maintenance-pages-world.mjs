@@ -59,10 +59,10 @@ const issueRecord = (number, state, mails, { comments = [], labels = [] } = {}) 
 /**
  * The world: the mails of the mailbox (`mails`, found by `find`), the drafts in Drafts (`drafts`: { ref, inReplyTo, mail }), GitHub's issues of alice/product, the participants' register and the places the mailbox allows.
  * Returns what the fakes kept: the operations the Bridge received, the requests GitHub received, the texts the endpoint returned.
- * For the route `mail` (ITM-964): `reading` is what the Bridge's operation `read` returns; `answer(request)` is the answer of a model endpoint or of an agent on the Bridge to a request ({ origin, body }), a draft object that is wrapped as the endpoint answers; `product` adds files to the product's repository.
+ * For the route `mail` (ITM-964): `reading` is what the Bridge's operation `read` returns; `answer(request)` is the answer of a model endpoint or of an agent on the Bridge to a request ({ origin, body }), a draft object that is wrapped as the endpoint answers; `product` adds files to the product's repository, `instance` to the instance's.
  */
-function world({ mails, drafts = [], issues, rows = [LOCAL, CLOUD, NO_DRAFTER], places = [{ place: "this machine", outsideEu: false }], texts = [], send = "ok", commentStatus = null, createStatus = null, reading = null, stateDelay = 0, answer = null, product = {} }) {
-  const files = { ...instanceFiles(), "docs/participants.md": REGISTER(rows) };
+function world({ mails, drafts = [], issues, rows = [LOCAL, CLOUD, NO_DRAFTER], places = [{ place: "this machine", outsideEu: false }], texts = [], send = "ok", commentStatus = null, createStatus = null, reading = null, stateDelay = 0, answer = null, product = {}, instance = {} }) {
+  const files = { ...instanceFiles(), "docs/participants.md": REGISTER(rows), ...instance };
   const productFiles = { ...smallProduct(), ...product };
   let pending = {};
   net = network({ [INSTANCE]: files, [PRODUCT]: productFiles }, { bridgeLists: null });

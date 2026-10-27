@@ -106,3 +106,74 @@ test("TST-420005: mailHandlers test names a missing folder as not-found", async 
     });
   });
 });
+
+// TST-1246101 · level: unit · module: MOD-mail-protocols
+// guards: UC-037; THE MAIL SERVER IS REACHED ONLY OVER TLS
+// given: the local IMAP fixture over STARTTLS accepting the marker password; the local SMTP fixture over STARTTLS refusing every login with "535 5.7.8 Authentication credentials invalid"
+// input: the handler `POST /v1/mail/test` receives the mailbox connection and empty args
+// expect: UC-037 7d — the answer has the counts of INBOX (2) and Reports (1), Drafts and Sent true, route "imap", and `sending` is the SMTP server's answer, containing "535 5.7.8 Authentication credentials invalid"; the SMTP login was sent after TLS
+test("TST-1246101: mailHandlers test answers the reading and the SMTP server's refusal as sending", async () => {
+  assertModule();
+  await withServers(async (imap, smtp) => {
+    const answer = await runTest(connection(imap, smtp));
+    assert.ok(smtp.logs.auths.length > 0, "known positive: the SMTP server received a login and refused it");
+    assert.ok(smtp.logs.auths.every((login) => login.secure), "SMTP auth after TLS");
+    assert.deepEqual(answer.counts, { INBOX: 2, Reports: 1 });
+    assert.equal(answer.drafts, true);
+    assert.equal(answer.sent, true);
+    assert.equal(answer.route, "imap");
+    assert.equal(typeof answer.sending, "string");
+    assert.notEqual(answer.sending, "works");
+    assert.match(answer.sending, /535 5\.7\.8 Authentication credentials invalid/);
+  }, { smtp: { allowAuth: false } });
+});
+
+// TST-1246102 · level: unit · module: MOD-mail-protocols
+// guards: UC-037
+// given: the local IMAP and SMTP fixtures over STARTTLS, both accepting the marker password
+// input: the mailbox test handler
+// expect: the answer has the counts of INBOX (2) and Reports (1) and `sending` exactly "works"
+test("TST-1246102: mailHandlers test answers sending works when the SMTP login is accepted", async () => {
+  assertModule();
+  await withServers(async (imap, smtp) => {
+    const answer = await runTest(connection(imap, smtp));
+    assert.deepEqual(answer.counts, { INBOX: 2, Reports: 1 });
+    assert.equal(answer.sending, "works");
+  });
+});
+
+// TST-1246103 · level: unit · module: MOD-mail-protocols
+// guards: UC-037
+// given: the local IMAP fixture over STARTTLS refusing the login with "AUTHENTICATIONFAILED Invalid credentials"; the local SMTP fixture accepting it
+// input: the mailbox test handler
+// expect: UC-037 7c — the test fails with code/name `login-refused`, preserving the IMAP server's answer; no answer with counts is given
+test("TST-1246103: mailHandlers test still fails when the IMAP login is refused", async () => {
+  assertModule();
+  await withServers(async (imap, smtp) => {
+    await assert.rejects(runTest(connection(imap, smtp)), (error) => {
+      assert.equal(error.code ?? error.name, "login-refused");
+      assert.match(error.message, /AUTHENTICATIONFAILED Invalid credentials/);
+      return true;
+    });
+  }, { imap: { allowLogin: false } });
+});
+
+// TST-1246104 · level: unit · module: MOD-mail-protocols
+// guards: THE MAIL SERVER IS REACHED ONLY OVER TLS; UC-037
+// given: the local IMAP fixture over STARTTLS accepting the marker password; the local SMTP fixture that does not offer STARTTLS
+// input: the mailbox test handler
+// expect: UC-037 7b — the test fails with code/name `no-encryption` naming the SMTP server; the SMTP server receives no AUTH command and no command carrying the marker password
+test("TST-1246104: mailHandlers test still fails with no-encryption when the SMTP server offers no TLS", async () => {
+  assertModule();
+  await withServers(async (imap, smtp) => {
+    await assert.rejects(runTest(connection(imap, smtp)), (error) => {
+      assert.equal(error.code ?? error.name, "no-encryption");
+      assert.match(error.message, /SMTP/);
+      return true;
+    });
+    assert.ok(imap.logs.logins.length > 0, "known positive: the IMAP step ran and logged in");
+    assert.ok(smtp.logs.commands.length > 0, "known positive: the SMTP server was reached");
+    assert.equal(smtp.logs.auths.length, 0);
+    assert.equal(smtp.logs.commands.some((entry) => /^AUTH\b/i.test(entry.line) || entry.line.includes(PASSWORD)), false);
+  }, { smtp: { advertiseStartTls: false } });
+});

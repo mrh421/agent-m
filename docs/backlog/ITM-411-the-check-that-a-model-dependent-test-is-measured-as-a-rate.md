@@ -14,6 +14,8 @@ tests:
   - release
 origin:
   - SPEC.md: the check `tests/test_rate_reporting.py` its requirements name
+built_by:
+  - e75a361d2b4767ebb4d5b27381aaeba41a16a534
 ---
 # ITM-411 The check that a model-dependent test is measured as a rate
 

@@ -8,6 +8,7 @@ needs:
 resources: none
 preconditions:
 recipes:
+  - instruction?
   - resource-check
 checks:
 person_decides:

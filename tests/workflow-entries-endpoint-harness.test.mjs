@@ -14,8 +14,8 @@
 // Deterministic, no network, no real agent and no real model: the product and the instance are temporary git repositories laid out as the job workflow lays them out on the agent's
 // machine (AGENT_M_PART agent, its result's folder, the one key FIXTURE_KEY, no token), as tests/workflow-entries-hand-over.test.mjs lays them out. The model endpoint is a fake
 // `fetch` that answers as an OpenAI-compatible endpoint does, from a script of tool calls, and records every request. An executable named opencode on the PATH notes every start, so
-// that a start would be seen. The kind is check-resource, a kind that runs code and tests; its recipe `resource-check` is a fixture this file registers, since the Workflows do not
-// register MOD-resource-list's. Readings the texts leave open, which this file takes and the report names:
+// that a start would be seen. The kind is check-resource, a kind that runs code and tests; its recipe `resource-check` is MOD-resource-list's, which the Workflows register, for the
+// product's compute resource `cluster` the job's parameter `resource` names. Readings the texts leave open, which this file takes and the report names:
 //   - The job is one a hand-over queued for an endpoint the instance does not list: its record declares the endpoint's capabilities (run code and tests) and its context; the
 //     participant built from it gets `use tools` and the capabilities its kind's tools need.
 //   - A restricted source's content in the product is the folder docs/sources/<id>/ (MOD-source-register's restrictedPlaces), read from the instance's register.
@@ -28,7 +28,6 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startRecord } from "../src/job-ledger/index.mjs";
-import { registerStrategies } from "../src/job-runner/index.mjs";
 
 process.env.GIT_CONFIG_GLOBAL = "/dev/null";
 process.env.GIT_CONFIG_SYSTEM = "/dev/null";
@@ -62,15 +61,15 @@ const SECRET_LINE = "confidential clause kingfisher-77";
 
 const PRODUCT = {
   "README.md": "# Thesis tool\n",
+  // One compute resource, checked by a check job on the runner `gpu` (MOD-resource-list's checkPlan): what check-resource's recipe resource-check takes.
+  "docs/resources.md": text("# Resources of this product", "", "**REGISTER**", "", "The resources.", "",
+    "| Name | Kind | Address | Pin | Licence | Maintainer | Route | Processing place | Paid | Secret |", "|---|---|---|---|---|---|---|---|---|---|",
+    "| cluster | compute | cluster.example.org | — | — | — | runner:gpu | NHR@FAU, Erlangen | — | — |"),
   "src/sum.mjs": "export const sum = (a, b) => a - b;\n",
   "test/sum.test.mjs": text('import test from "node:test";', 'import assert from "node:assert/strict";', 'import { sum } from "../src/sum.mjs";', "",
     'test("sum adds", () => assert.equal(sum(1, 2), 3));'),
 };
 
-// The recipe of check-resource, which the Workflows do not register: the job's instruction, as one part.
-registerStrategies("tests/workflow-entries-endpoint-harness.test.mjs", {
-  recipes: { "resource-check": async (context) => [{ name: "resource-check", text: `fixture resource. ${context.params.instruction ?? ""}`, size: 0, sources: [], required: true }] },
-});
 
 function git(cwd, ...args) {
   const r = spawnSync(REAL_GIT, args, { cwd, encoding: "utf8" });
@@ -126,7 +125,7 @@ async function world({ register = false, answers, holder = null, key = !holder }
   const agentM = { version: "2026.10.0", commit: git(instanceDir, "rev-parse", "HEAD") };
   const { path, text: record } = startRecord({ id: JOB, declares: { context: 100000, capabilities: ["run code and tests"] }, kind: "check-resource",
     worksOn: ["https://github.com/alice/thesis-tool"], participant: "nvidia", model: "fixture-llm", route: "ci hosted", run: null, retries: null, startedBy: "alice",
-    start: new Date("2026-10-26T08:00:00Z"), agentM, inputs: [], limit: 1, task: "with the hand-over", destinations: [{ participant: "nvidia", place: PLACE, parts: ["resource-check"] }], params: {} });
+    start: new Date("2026-10-26T08:00:00Z"), agentM, inputs: [], limit: 1, task: "with the hand-over", destinations: [{ participant: "nvidia", place: PLACE, parts: ["cluster"] }], params: { resource: "cluster" } });
   const productDir = join(workspace, "product");
   repository(root, "product", { ...PRODUCT, [path]: record, ...(register ? { "docs/sources/SRC-secret/notes.txt": `${SECRET_LINE}\n` } : {}) }, productDir);
   const requests = [];

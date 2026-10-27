@@ -220,15 +220,12 @@ test("a part with nothing to give is not given, and a product without a SPEC giv
 
 // TST-615008 · level: unit · module: MOD-work-plans
 // guards: UC-032; A CANDIDATE IS NEW, A CHANGE, A DUPLICATE OR A CONFLICT
-// given: the module's workStrategies registered with the job runner under the owner MOD-work-plans, the fixture product, and a stand-in for the precondition `rests-on-accepted`; the writer `backlog-items` is not built (ITM-617)
-// input: prepareJob("propose-items", context, no drafter), first without the writer, then with a stand-in writer registered
-// expect: without the writer it rejects with UnknownStrategy { strategy: "backlog-items" } — not for the recipe `backlog-inputs` or the check `backlog-checks`, which MOD-work-plans registers; with the stand-in it does not throw, and its parts of the recipe `backlog-inputs` are the nine parts of TST-615001, in that order, each naming that recipe, the part "existing items" still carrying its two artifacts
-test("the kind propose-items prepares with the recipe registered, and meets UnknownStrategy at its writer — MOD-work-plans", async () => {
+// given: the module's workStrategies registered with the job runner under the owner MOD-work-plans, the fixture product, and a stand-in for the precondition `rests-on-accepted`; the writer `backlog-items` is MOD-work-plans' own (ITM-617)
+// input: prepareJob("propose-items", context, no drafter)
+// expect: it does not throw UnknownStrategy — the recipe `backlog-inputs`, the check `backlog-checks` and the writer `backlog-items` are all MOD-work-plans' —, and its parts of the recipe `backlog-inputs` are the nine parts of TST-615001, in that order, each naming that recipe, the part "existing items" still carrying its two artifacts
+test("the kind propose-items prepares with the strategies MOD-work-plans registers, the writer among them — MOD-work-plans", async () => {
   registerStrategies("MOD-work-plans", workStrategies);
   registerStrategies("tests/work-plans-backlog-inputs.test.mjs", { preconditions: { "rests-on-accepted": async () => null } });
-  await offline(() => assert.rejects(prepareJob("propose-items", contextOf(FILES), { drafter: null, reviewers: [] }),
-    (error) => error.name === "UnknownStrategy" && error.strategy === "backlog-items"));
-  registerStrategies("tests/work-plans-backlog-inputs.test.mjs (writer)", { writers: { "backlog-items": async () => ({ commits: [], files: [], pullRequest: null, shown: null, notes: [] }) } });
   const prepared = await offline(() => prepareJob("propose-items", contextOf(FILES), { drafter: null, reviewers: [] }));
   const given = prepared.parts.filter((part) => part.recipe === "backlog-inputs");
   assert.deepEqual(namesOf(given), ALL);

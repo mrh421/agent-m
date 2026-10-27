@@ -13,6 +13,9 @@ tests:
   - unit
 origin:
   - team 2's findings for team 1 in team2/93.md (cade4b79), by po-opus-b
+built_by:
+  - e50cb8094df9cf11d9aa1e173198fe0a90f933d3
+  - ced6570539fcbded694d3add79bfc1649fd282ba
 ---
 # ITM-936 The diagram drawing test resolves its module reliably
 

@@ -31,7 +31,7 @@ import { parseSpec, sectionText } from "../spec-document/index.mjs";
 import { blobSha } from "../text-tools/index.mjs";
 import { requirementImpact } from "../trace-graph/index.mjs";
 import { graphOf, impactOf } from "./accept.mjs";
-import { queueRationaleSchema, queues, spanText } from "./queues.mjs";
+import { issueLine, queueRationaleSchema, queues, spanText } from "./queues.mjs";
 
 const failure = (name, message, fields) => Object.assign(new Error(message), { name, ...fields });
 const folded = (text) => String(text ?? "").replace(/\s+/g, " ").trim();
@@ -143,6 +143,9 @@ export function entrySections(spec, draft, classes, source) {
 //     and the job as the slug, the folders this call has named counted among those the repository has, so that a product that is its own instance keeps its two queues of the day in the day and the day with b. Its entries are named by their section, and `SPEC.md` is every entry's target. `entscheidungen.md` is written with no decision.
 //   - The impact list of an entry names, for each requirement it changes, the artifacts MOD-trace-graph's requirementImpact finds that name it, or that none does; a new requirement has none.
 //   - Nothing is written to a repository when every section already stands as written; the SPEC is never written.
+//   - The job's parameter `issue` counts when it is a positive whole number, given as a number or its digits; the issue is the product's, at the context's `product.address`. Each rationale's
+//     origin names it after the source, `issue #<number> of <address>`, and the index of every queue the job writes, the instance's too, holds its line above the target's line. Without it,
+//     nothing names an issue.
 
 const REGISTER_FILE = /^docs\/sources\/SRC-[^/]+\.md$/;
 const QUEUE_DAY = /^docs\/spec-freigaben\/(\d{4}-\d{2}-\d{2})([a-z]?)_[^/]+\//;
@@ -189,7 +192,7 @@ function rationaleOf(section, changes, graph, job) {
     `**The change.** ${changes.map(describeChange).join("; ")}. The rest of the section is carried over byte for byte.`, "",
     `**Why.** Drafted from ${job.source}${job.prompted ? " on the person's instruction" : ""}: ${candidates.join(" · ")}`, "",
     "**Impact list.**", ...impact, "",
-    `**Origin.** Source ${job.source}${passages.length ? `, passages: ${passages.join("; ")}` : ""}.${job.prompted ? ` Asked in ${conversationOf(job.page)}.` : ""}`, "",
+    `**Origin.** Source ${job.source}${passages.length ? `, passages: ${passages.join("; ")}` : ""}${job.issue ? `; issue #${job.issue.number} of ${job.issue.product}` : ""}.${job.prompted ? ` Asked in ${conversationOf(job.page)}.` : ""}`, "",
     `**Provenance.** Agent M ${job.agentM.version}, commit ${job.agentM.commit}; participant ${job.participant.name}; model ${job.participant.model ?? "none"}; ${job.date}; correction rounds: ${job.rounds}.`, ""].join("\n");
 }
 
@@ -212,6 +215,7 @@ export async function queueEntries(result, context) {
   const source = String(context.params?.source ?? "");
   const prompted = typeof context.params?.instruction === "string";
   const page = typeof context.params?.page === "string" && context.params.page.trim() ? context.params.page.trim() : null;
+  const issue = /^[1-9]\d*$/.test(String(context.params?.issue ?? "").trim()) ? { number: Number(context.params.issue), product: context.product.address } : null;
   const notes = [];
 
   // The sources the product links.
@@ -238,7 +242,7 @@ export async function queueEntries(result, context) {
 
   const outcome = { commits: [], files: [], pullRequest: null, shown: null, notes };
   const date = context.now.toISOString().slice(0, 10);
-  const job = { source, prompted, page, agentM: context.agentM, participant: result.drafter ?? { name: "none", model: null }, rounds: result.rounds?.length ?? 0, date };
+  const job = { source, prompted, page, issue, agentM: context.agentM, participant: result.drafter ?? { name: "none", model: null }, rounds: result.rounds?.length ?? 0, date };
   const slug = slugOf([context.kind?.name, context.jobId].filter(Boolean).join("-")) || "candidates";
   // A product that is its own instance may be held in two checkouts, as a hosted job holds it: its process queue is written through the product's
   // host too, the one whose commits the job's result carries.
@@ -312,7 +316,7 @@ export async function queueEntries(result, context) {
       `**Decision:** drafted by ${job.participant.name} (${job.participant.model ?? "none"}) from ${source}${prompted ? ` on the person's instruction in ${conversationOf(page)}` : ""}; it enters open and waits for a person's acceptance.`, "",
       `**Size:** ${sections.length} ${sections.length === 1 ? "entry" : "entries"}, one for each section the candidates touch; every other byte of a section is carried over.`, "",
       "**Impact analysis** (names this queue adds, changes or adds a source to, and who references them):", "", "| Name | Change | Referenced by |", "|---|---|---|", ...analysis, "",
-      "**Zieldatei aller Einträge:** `SPEC.md`", "", "| Nr | Datei | Anker (Überschrift, wortgetreu) | bis (exklusiv) | Commits |", "|---|---|---|---|---|",
+      ...(issue ? [issueLine(issue), ""] : []), "**Zieldatei aller Einträge:** `SPEC.md`", "", "| Nr | Datei | Anker (Überschrift, wortgetreu) | bis (exklusiv) | Commits |", "|---|---|---|---|---|",
       ...sections.map((section, at) => `| ${pad2(at + 1)} | \`SPEC.md\` | ${section.anchor} | — | — |`), ""].join("\n");
     const decisions = `# Decisions — queue ${day} ${title}\n\nAppend-only.\n`;
     const trailers = provenanceLines({ agentM: context.agentM, jobId: context.jobId ?? "none", kind: context.kind?.name ?? "none", participant: job.participant, rounds: job.rounds });

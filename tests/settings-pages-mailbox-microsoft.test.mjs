@@ -389,3 +389,27 @@ test("mailbox — an address of a Microsoft 365 domain shows the Microsoft part"
   assert.equal(one(page, "mailbox-graph").hidden, false);
   assert.equal(one(page, "mailbox-imap").hidden, true);
 });
+
+// TST-1249103 · level: unit · module: MOD-settings-pages
+// guards: UC-037
+// given: a signed-in account whose sign-in did not grant Mail.Send (the test's sending is "the sign-in did not grant Mail.Send"); then one that granted all three; then one whose sign-in has expired
+// input: Store and test for each (docs/architecture/MOD-settings-pages.md, route `mailbox`: each test is stored as `last-test:mailbox` "with the `sending` its `test()` gives")
+// expect: the record holds `sending` "the sign-in did not grant Mail.Send", then "works"; for the expired sign-in (a test that threw) outcome refused and no `sending`
+test("mailbox — Store and test on the Microsoft route stores the sending its test gave, and a test that threw stores none", async (t) => {
+  const run = async (silent) => {
+    const b = browser(t);
+    standIn({ silent });
+    const page = await b.page();
+    await chooseMicrosoft(page);
+    await click(one(page, "mailbox-sign-in"));
+    await click(one(page, "mailbox-store-test"));
+    return readSetting(b.store, "last-test:mailbox");
+  };
+  const missing = await run({ accessToken: TOKEN, scopes: ["Mail.ReadWrite", "offline_access"] });
+  assert.equal(missing.outcome, "working", "known positive: the test was recorded");
+  assert.equal(missing.sending, "the sign-in did not grant Mail.Send");
+  assert.equal((await run({ accessToken: TOKEN, scopes: SCOPES })).sending, "works");
+  const threw = await run(libraryError("InteractionRequiredAuthError", "interaction_required", "the refresh token has expired"));
+  assert.equal(threw.outcome, "refused", "known positive: the test threw");
+  assert.ok(!("sending" in threw), "a test that threw stores no sending");
+});

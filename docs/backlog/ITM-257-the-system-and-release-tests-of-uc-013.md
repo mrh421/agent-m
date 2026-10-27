@@ -14,6 +14,8 @@ tests:
   - release
 origin:
   - UC-013
+built_by:
+  - 93e1d871db26354fc4bf700aedd7fc3620c6ba24
 ---
 # ITM-257 The system and release tests of UC-013
 

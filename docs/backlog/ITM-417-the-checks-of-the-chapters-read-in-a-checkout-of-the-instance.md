@@ -16,6 +16,8 @@ tests:
   - release
 origin:
   - SPEC.md: the check `tests/test_job_reading.py` its requirements name
+built_by:
+  - 3e3adec9834ab849b9e1108db92b9abfff064983
 ---
 # ITM-417 The checks of the chapters read in a checkout of the instance
 

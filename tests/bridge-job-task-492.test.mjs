@@ -20,6 +20,7 @@ import test from "node:test";
 import { registerStrategies } from "../src/job-runner/index.mjs";
 import { startRecord } from "../src/job-ledger/index.mjs";
 import { jobHandlers, startWatching, stopWatching } from "../src/bridge-jobs/index.mjs";
+import { openEnclosures } from "./enclosure-fixture.mjs";
 
 process.env.GIT_CONFIG_GLOBAL = "/dev/null";
 process.env.GIT_CONFIG_SYSTEM = "/dev/null";
@@ -123,7 +124,7 @@ printf '%s\\n' '${event}' '{"type":"step_finish","part":{"tokens":{"input":11,"o
   try {
     const agents = [{ name: "opencode", folder: join(root, "agent-work") }];
     mkdirSync(agents[0].folder);
-    const watch = (every) => startWatching({ bridgeName: "lab-pc", agents, products: [{ address: PRODUCT }], every, instance: INSTANCE, onSkipped: ({ reason }) => lines.push(reason) });
+    const watch = (every) => startWatching({ bridgeName: "lab-pc", agents, products: [{ address: PRODUCT }], every, instance: INSTANCE, enclosures: openEnclosures(), onSkipped: ({ reason }) => lines.push(reason) });
     const handOver = (job, task) => jobHandlers({ agents })["POST /v1/jobs"]({ params: {}, query: {},
       body: { product: job.product, record: job.path, commit: job.commit, ...(task === undefined ? {} : { task }) } });
     return await run({ queue, originText, everything, ended, until, watch, handOver, lines: () => lines.join("\n"),

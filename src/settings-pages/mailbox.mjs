@@ -124,7 +124,7 @@ export function mailboxLine(context, { changed = () => {} } = {}) {
 
   async function test(stored) {
     result.textContent = "Testing the mailbox…";
-    let outcome = "refused";
+    let outcome = "refused", sending;
     try {
       let tested;
       if (stored.route === "graph") tested = await mailbox(stored, null).test();
@@ -134,13 +134,14 @@ export function mailboxLine(context, { changed = () => {} } = {}) {
         tested = await mailbox(stored, bridgeAt(bridge.settings)).test();
       }
       outcome = "working";
+      sending = tested.sending;
       const counts = Object.entries(tested.counts ?? {}).map(([folder, count]) => `${folder}: ${count} mails`).join(" · ");
       result.textContent = `✓ Tested. ${counts}${counts ? " · " : ""}${tested.drafts ? "Drafts found" : "Drafts not found"} · ${tested.sent ? "Sent found" : "Sent not found"} · ${tested.sending === "works" ? "sending works" : `sending does not work: ${tested.sending}`} · route ${tested.route} · ${tested.encryption}`;
     } catch (error) {
       result.textContent = stored.route === "graph" ? graphFailureText(error) : failureText(error, stored);
       renewal = stored.route === "graph" && error?.name === "SignInExpired" ? renewalButton(stored) : null;
     }
-    writeSetting(store, "last-test:mailbox", { at: new Date().toISOString(), outcome });
+    writeSetting(store, "last-test:mailbox", { at: new Date().toISOString(), outcome, ...(sending === undefined ? {} : { sending }) });
     show();
   }
 
@@ -399,14 +400,16 @@ export const route = {
       if (!connection.folders.length) connection.folders = ["INBOX"];
       writeSetting(store, "mailbox", connection);
       say("Stored in this browser. Testing through Microsoft Graph…");
-      let outcome = "refused";
+      let outcome = "refused", sending;
       try {
-        showTested(await mailbox(connection, null).test(), " through Microsoft Graph");
+        const tested = await mailbox(connection, null).test();
+        showTested(tested, " through Microsoft Graph");
         outcome = "working";
+        sending = tested.sending;
       } catch (error) {
         say(graphFailureText(error));
       }
-      writeSetting(store, "last-test:mailbox", { at: new Date().toISOString(), outcome });
+      writeSetting(store, "last-test:mailbox", { at: new Date().toISOString(), outcome, ...(sending === undefined ? {} : { sending }) });
       showConnected();
     }
 
@@ -435,11 +438,12 @@ export const route = {
       if (!connection.folders.length) connection.folders = ["INBOX"];
       writeSetting(store, "mailbox", connection);
       say("Stored in this browser. Testing through the Bridge…");
-      let outcome = "refused";
+      let outcome = "refused", sending;
       try {
         if (!bridge.settings) throw Object.assign(new Error(`${bridge.name} is reached through the jump host, and none is stored.`), { name: "BridgeUnavailable", reason: "no jump host is stored" });
         const tested = await mailbox(connection, bridgeAt(bridge.settings)).test();
         outcome = "working";
+        sending = tested.sending;
         say(`✓ Stored and tested through ${bridge.name}.`);
         for (const [folder, count] of Object.entries(tested.counts ?? {})) parts.append(el("li", null, `✓ ${folder}: ${count} mails`));
         parts.append(el("li", null, tested.drafts ? "✓ Drafts folder found" : "✗ Drafts folder not found"), el("li", null, tested.sent ? "✓ Sent folder found" : "✗ Sent folder not found"));
@@ -454,7 +458,7 @@ export const route = {
         if (error?.name === "LoginRefused") resultExplanation.append(explain("gmail-app-password"));
         if (error?.name === "BridgeUnavailable") setup.hidden = false;
       }
-      writeSetting(store, "last-test:mailbox", { at: new Date().toISOString(), outcome });
+      writeSetting(store, "last-test:mailbox", { at: new Date().toISOString(), outcome, ...(sending === undefined ? {} : { sending }) });
       showConnected();
     });
     setup.addEventListener("click", () => context.go("bridge", {}));

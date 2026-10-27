@@ -22,6 +22,8 @@ tests:
   - release
 origin:
   - UC-019
+built_by:
+  - 10af1ddd75e9cb52fb3baf10546e546c0ddf38cd
 ---
 # ITM-377 The system and release tests of UC-019 for a use case
 

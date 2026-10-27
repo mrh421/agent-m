@@ -21,6 +21,12 @@ The draft, where one is given, is what the conversation has produced so far: cha
 
 {{draft}}
 
+## The issue, where the change is asked for by an issue, and what it touches
+
+Where an issue is given, change the requirements as it asks and nothing else.
+
+{{issue-context}}
+
 ## The requirements to change, each with its whole section
 
 {{named-requirements}}

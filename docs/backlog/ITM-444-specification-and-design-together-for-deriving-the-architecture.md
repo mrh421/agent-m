@@ -25,6 +25,8 @@ tests:
   - component
 origin:
   - UC-022 steps 3 to 9
+built_by:
+  - 124d0167aa7badd21597f07929ba3022b810ca19
 ---
 # ITM-444 Specification and design together, for deriving the architecture
 

@@ -13,6 +13,9 @@ tests:
 origin:
   - the architecture of the prompt bar, accepted by akmaier at 7e893c63 (110d2499)
   - MOD-test-schedule, Data: the generated CI configuration
+built_by:
+  - 9cc8ae23bd3f4d8595c64b7fb47ee83e82dc18f7
+  - 505bb81403f9d1e3da34cf8743f9ff8b31be46b1
 ---
 # ITM-499 A push of conversation records starts no CI run
 

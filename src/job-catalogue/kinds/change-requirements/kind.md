@@ -14,6 +14,7 @@ recipes:
   - instruction
   - conversation
   - draft?
+  - issue-context?
   - named-requirements
   - spec-with-queues
   - chapters-for-requirements
@@ -38,4 +39,4 @@ tool_limit: 30
 
 Changes the requirements a person names by their instruction, against every requirement of the product, each resulting
 requirement classed as new, a change, a duplicate or a conflict, under the same rules as a derivation. A job takes the parameter `source`: the own source of the person who starts it,
-which every requirement it returns names among its sources.
+which every requirement it returns names among its sources. A job started from an issue takes the parameter `issue`, that issue's number: its recipe `issue-context?` gives the issue with what it touches, and the queue it writes names the issue as its origin.

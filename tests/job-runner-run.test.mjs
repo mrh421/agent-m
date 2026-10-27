@@ -20,7 +20,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { formatFinding } from "../src/text-tools/index.mjs";
 import { kindOf } from "../src/job-catalogue/index.mjs";
-import { prepareJob, registerStrategies, runJob, writeResult } from "../src/job-runner/index.mjs";
+import * as jobRunner from "../src/job-runner/index.mjs";
+
+const { failedBecause, prepareJob, registerStrategies, runJob, writeResult } = jobRunner;
 
 // ---------------------------------------------------------------- participants and drivers
 
@@ -240,6 +242,24 @@ test("runJob — an answer that cannot be read is a finding of the loop; still u
   const never = driver(DRAFTER, ["no", "still no"]);
   const unusable = await runJob(job, { drafter: never, reviewers: [] }, { attended: false, context });
   assert.deepEqual([unusable.stoppedBecause, unusable.draft, unusable.raw], ["unusable", null, "still no"]);
+});
+
+// TST-2026271041 · level: component · module: MOD-job-runner
+// guards: A JOB IS RECORDED IN ITS PRODUCT REPOSITORY; THE CORRECTION LOOP HAS A FIXED LIMIT
+// given: derive-use-cases with the limit 2 and nobody attending; a drafter that answers, both times, JSON whose envelope has no `draft` — `{ "answers": [] }` —; and, as the counter-proof, a drafter that answers a readable draft
+// input: runJob of each, then failedBecause of each result
+// expect: the first stopped because unusable, and failedBecause is "the participant's answer could not be read: the answer has no draft", the why of its last round's finding; the second passed, and failedBecause is null
+test("TST-2026271041: failedBecause — a run whose answer could not be read fails, naming why; a run that passed does not", async () => {
+  checkFindings = () => [];
+  const { job, context } = await prepared("derive-use-cases", { limit: 2 });
+  assert.equal(typeof failedBecause, "function", "MOD-job-runner provides failedBecause");
+  const undrafted = await runJob(job, { drafter: driver(DRAFTER, [{ answers: [] }, { answers: [] }]), reviewers: [] }, { attended: false, context });
+  assert.equal(undrafted.stoppedBecause, "unusable");
+  assert.equal(failedBecause(undrafted), "the participant's answer could not be read: the answer has no draft");
+
+  const read = await runJob(job, { drafter: driver(DRAFTER, [answer(USE_CASE("x"))]), reviewers: [] }, { attended: false, context });
+  assert.equal(read.stoppedBecause, "passed");
+  assert.equal(failedBecause(read), null);
 });
 
 // ---------------------------------------------------------------- steps, writing, gates, cancelling, refusing

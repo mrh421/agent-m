@@ -99,10 +99,10 @@ const contextOf = (gates = []) => ({ kind: null, params: {}, product: { address:
   person: "alice", now: new Date("2026-10-12T09:30:00Z"), agentM: START.agentM, jobId: START.id });
 
 // The global fetch while a test runs: the drafter's endpoint (ep1) answers the drafts given in turn (the last again), or the status given, or a text that is no
-// answer; the reviewer's endpoint (ep2) finds nothing; every request is kept.
+// answer, or (`undrafted`) JSON whose envelope has no draft; the reviewer's endpoint (ep2) finds nothing; every request is kept.
 let requests = [], requestBodies = [];
 const realFetch = globalThis.fetch;
-function endpointAnswers(status = 200, { drafts = [DRAFT], unreadable = false } = {}) {
+function endpointAnswers(status = 200, { drafts = [DRAFT], unreadable = false, undrafted = false } = {}) {
   requests = [];
   requestBodies = [];
   const queue = [...drafts];
@@ -114,6 +114,7 @@ function endpointAnswers(status = 200, { drafts = [DRAFT], unreadable = false } 
     if (status !== 200) return new Response(JSON.stringify({ error: { message: "refused" } }), { status });
     if (String(url).includes("ep2")) return reply(JSON.stringify({ draft: { findings: [] }, answers: [] }));
     if (unreadable) return reply("this is not JSON");
+    if (undrafted) return reply(JSON.stringify({ answers: [] }));
     return reply(JSON.stringify({ draft: queue.length > 1 ? queue.shift() : queue[0], answers: [] }));
   };
 }
@@ -344,6 +345,29 @@ test("runOnTab — an answer that cannot be read ends the job as failed, with it
   assert.deepEqual([end.state, end.results], ["failed", []]);
   assert.match(end.reason, /could not be read/);
   assert.ok(end.rounds.length >= 1);
+});
+
+// TST-2026271042 · level: unit · module: MOD-runtimes
+// guards: A JOB IS RECORDED IN ITS PRODUCT REPOSITORY; THE ROUNDS ARE COUNTED AND SHOWN
+// given: a queued job of review none whose endpoint answers, in every round, JSON whose envelope has no `draft` — `{ "answers": [] }` —; and, as the counter-proof, the same job whose endpoint answers a readable draft
+// input: runOnTab of each
+// expect: the first returns its result, stopped because unusable; its end has state failed, no results, the reason "the participant's answer could not be read: the answer has no draft" — MOD-job-runner's failedBecause —, and its rounds; the writer is not called. The second ends done
+test("TST-2026271042: runOnTab — an answer without a draft ends the job failed, its reason naming why", async () => {
+  endpointAnswers(200, { undrafted: true });
+  writerCalls = [];
+  const fake = await queued();
+  const result = await run(jobOf("none"), fake);
+  assert.equal(result.stoppedBecause, "unusable");
+  const end = (await fake.record()).end;
+  assert.deepEqual([end.state, end.results, end.reason], ["failed", [], "the participant's answer could not be read: the answer has no draft"]);
+  assert.ok(end.rounds.length >= 1);
+  assert.deepEqual(writerCalls, []);
+
+  endpointAnswers(200);
+  outcome = { commits: ["c-1"], files: ["docs/a.md"], pullRequest: null, shown: null, notes: [] };
+  const passed = await queued();
+  await run(jobOf("none"), passed);
+  assert.equal((await passed.record()).end.state, "done");
 });
 
 // TST-398007 · level: unit · module: MOD-runtimes

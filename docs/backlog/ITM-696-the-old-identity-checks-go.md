@@ -13,6 +13,8 @@ tests:
   - unit
 origin:
   - the plan of moving the code outside the architecture into it (sprint team1/70), under `CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT` and `docs/measurements/2026-10-17_code-outside-every-module.md`
+built_by:
+  - 98721efc88d3e6cdb95a47809976dd6e609dce99
 ---
 # ITM-696 The old identity checks go
 

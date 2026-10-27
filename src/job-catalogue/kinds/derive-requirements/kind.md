@@ -8,6 +8,7 @@ needs:
 resources: none
 preconditions:
 recipes:
+  - instruction?
   - source-excerpt
   - spec-with-queues
   - chapters-for-requirements

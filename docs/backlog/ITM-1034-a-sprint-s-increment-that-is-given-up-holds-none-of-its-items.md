@@ -15,6 +15,9 @@ tests:
 origin:
   - the gap analysis of UC-036 to UC-049 on main, proposal NEW-041-7, read against the accepted texts on main at 40e04d8d
   - akmaier's direction of 2026-10-18 ("fill the backlog to implement the remaining missing UC 36 to the end")
+built_by:
+  - 51d29e1a38afca8a0a6202ff6d49f672befa2b42
+  - 9c0c927a175b1725f255257a7f28d8661871d056
 ---
 # ITM-1034 A sprint's increment that is given up holds none of its items
 

@@ -16,6 +16,9 @@ tests:
   - unit
 origin:
   - the plan of moving the code outside the architecture into it (sprint team1/70), under `CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT` and `docs/measurements/2026-10-17_code-outside-every-module.md`
+built_by:
+  - 3e995d128e066871a60c76ed349bd4f3a98f1b91
+  - 1ee8b166972dc4ca9b0aa42cc0ae24a9a39481e1
 ---
 # ITM-694 The old artifacts go
 

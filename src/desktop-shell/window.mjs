@@ -57,6 +57,21 @@ async function agents(target, context) {
       status.textContent = ` ${agent.version ?? "installed"}${agent.loggedIn === false ? " not logged in" : " ready"}`;
       const choose = button("Choose folder", async () => { const chosen = await window.bridge.chooseFolder(); if (chosen) { folder.input.value = chosen; tick.checked = true; } });
       row.append(tick, name, status, folder.caption, choose);
+      // The agent's enclosure (ARC-054): whether it works here, else why and its one-time step; whether the agent is logged in there, else its login step.
+      const enclosed = state.enclosures?.[agent.name];
+      if (enclosed) {
+        const line = document.createElement("span");
+        if (!enclosed.works) {
+          line.textContent = ` Not enclosed: ${enclosed.reason}. One-time step: ${enclosed.setup}. `;
+          row.append(line, button("Set up", async () => { const done = await window.bridge.state("enclosure-setup", { name: agent.name }); result.textContent = done.done ? "Set up." : `Not set up: ${done.reason}`; }));
+        } else if (!enclosed.loggedIn) {
+          line.textContent = " Not logged in in its enclosure. ";
+          row.append(line, button("Log in", async () => { await window.bridge.state("agent-login", { name: agent.name }); result.textContent = `A terminal runs ${agent.name}'s own login step; press Check again when it is done.`; }));
+        } else {
+          line.textContent = " Enclosed and logged in.";
+          row.append(line);
+        }
+      }
       rows.push({ agent, tick, folder: folder.input });
     } else {
       const link = document.createElement("a");

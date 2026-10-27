@@ -1,7 +1,7 @@
 // The built-in strategies the runner registers itself (MOD-job-runner, Data: Built-in strategies): the recipes
 // `instruction`, `conversation`, `page` and `draft`, the writer `return-draft` and the checks `document-schema`, `requirement-form`,
 // `test-declarations`, `candidate-classes`, `group-rules` and `graph-checks`, what a built-in check needs of a job's context,
-// and the classes `candidate-classes` finds.
+// the classes `candidate-classes` finds, and whether a kind takes a handed-over task through the recipe `instruction` (taskRefusal).
 //
 // Module: MOD-job-runner
 
@@ -122,6 +122,19 @@ function notHeld(found, held) {
     return left === 0;
   });
 }
+
+// The rule a refused task cites: no requirement of the SPEC states it, so it is UC-049 4a's wording — the hand-over names the task in its words, and the job
+// starts with the task as its input.
+const TASK_RULE = "THE HAND-OVER NAMES THE TASK IN ITS WORDS";
+
+/**
+ * taskRefusal(kind: KindDefinition) -> Finding | null — the finding that refuses a task handed over to `kind`, where its recipes do not name the built-in
+ * recipe `instruction`, so that the task would reach no prompt; null for a kind that takes it. The one rule both the dashboard's hand-over and the CI run
+ * of a hand-over apply (MOD-runtimes' handOverJob, MOD-workflow-entries' onDispatch).
+ */
+export const taskRefusal = (kind) => (kind.recipes.some((recipe) => recipe.name === "instruction") ? null : finding({ artifact: kind.name, line: 1, kind: "error",
+  rule: TASK_RULE, what: `the kind ${kind.name} takes no instruction, so the task of the hand-over would reach none of its prompt (UC-049 4a)`,
+  fix: "hand the work on to a kind that takes the task, or keep it in the conversation" }));
 
 // The classes of the last round's draft, for a kind that names candidate-classes; null for any other.
 export const classesOf = (kind, draft, parts) => (kind.checks.includes("candidate-classes")

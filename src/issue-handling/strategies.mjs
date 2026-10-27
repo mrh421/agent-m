@@ -9,6 +9,7 @@
 //   - A requirement is named by the issue where its title, its text or a comment holds the requirement's name as the SPEC writes it and the name is not a part of a longer name of the SPEC that the text holds
 //     (`requirementNamesIn` reads head lines only, which an issue seldom writes). A use case, a test or a module is named where the text holds its identifier. A name or an identifier the product does not
 //     hold is no part and no failure: the issue's own part holds the text.
+//   - A job without the parameter `issue` — undefined or null — gets no part (`draft?` gives none without a draft either): a change by prompt has no issue. A parameter that is no whole number is a TypeError.
 //   - Parts, in this order: the issue, named `issue #<number>`; the requirements named, in the order of the SPEC; then, for each use case, test or module named, in the order the text names them, its file, named by its
 //     path, and the requirements the graph links to it — what it realises or guards, and for a module what the tests that exercise it guard —, not given before. A part is given once.
 //   - The issue's part holds its title, its text and the text of each comment, and no author and no date. The text of an issue from a mail is neutral by construction; the recipe makes no request but the host's
@@ -56,6 +57,7 @@ function linkedTo(graph, id, spec) {
 
 async function issueContext(context, params) {
   const number = params?.issue;
+  if (number === undefined || number === null) return [];
   if (!Number.isInteger(number)) throw new TypeError("issue-context: a job needs the number of the issue to analyse as its parameter issue");
   const { snapshot, host } = context.product;
   const issue = (await host.listIssues({ state: "all" })).find((each) => each.number === number);

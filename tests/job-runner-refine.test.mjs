@@ -29,8 +29,12 @@ const part = (name, text) => ({ name, text, size: 0, sources: [], required: true
 const CHECK = "refine stand-in check";
 let checkFindings = () => [];
 const STAND_INS = {
-  recipes: Object.fromEntries(["named-requirements", "spec-with-queues", "chapters-for-requirements"].map((name) => [name,
-    async () => [part(`${name} part`, `the text of ${name}`)]])),
+  recipes: {
+    ...Object.fromEntries(["named-requirements", "spec-with-queues", "chapters-for-requirements"].map((name) => [name,
+      async () => [part(`${name} part`, `the text of ${name}`)]])),
+    // The recipe issue-context (MOD-issue-handling) gives no part to a job without the parameter issue, as these jobs are.
+    "issue-context": async () => [],
+  },
   checks: { [CHECK]: (draft) => checkFindings(draft) },
   // The kind's precondition person-source (MOD-spec-changes), which these tests do not concern: it finds nothing.
   preconditions: { "person-source": async () => null },

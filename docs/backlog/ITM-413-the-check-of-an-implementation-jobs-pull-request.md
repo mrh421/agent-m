@@ -15,6 +15,8 @@ tests:
   - release
 origin:
   - SPEC.md: the check `tests/test_implementation_job.py` its requirements name
+built_by:
+  - e4d85ab2806a9a8ef467d26cd604b6d1b3eb2e7b
 ---
 # ITM-413 The check of an implementation job's pull request
 

@@ -25,6 +25,7 @@ import { createHash } from "node:crypto";
 import { openStore, readTabValue, writeSetting } from "../src/browser-store/index.mjs";
 import { registerStrategies } from "../src/job-runner/index.mjs";
 import { latestDraft, startPromptBar } from "../src/prompt-bar/index.mjs";
+import { issueStrategies } from "../src/issue-handling/index.mjs";
 import { specStrategies } from "../src/spec-changes/index.mjs";
 import { parseSpec } from "../src/spec-document/index.mjs";
 import { subjectOf as traceSubject } from "../src/trace-pages/subject.mjs";
@@ -105,6 +106,7 @@ const PERSON = "SRC-alice";
 
 // The strategies the kinds name: MOD-spec-changes' own, and a fixture for the book's chapters that gives no part.
 registerStrategies("tests/prompt-bar-one-kind.test.mjs:spec-changes", specStrategies);
+registerStrategies("tests/prompt-bar-one-kind.test.mjs:issue-handling", issueStrategies);
 registerStrategies("tests/prompt-bar-one-kind.test.mjs", { recipes: { "chapters-for-page": async () => [], "chapters-for-requirements": async () => [] } });
 
 // The prompts by which a request is known: the first sentence of each kind's prompt.md.

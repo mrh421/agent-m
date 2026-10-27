@@ -28,6 +28,8 @@ uses:
   - MOD-browser-store.readExport
   - MOD-agent-processes.Agent
   - MOD-agent-processes.installedAgents
+  - MOD-agent-enclosure.AgentEnclosure
+  - MOD-agent-enclosure.agentEnclosure
   - MOD-job-runner.registerStrategies
   - MOD-approvals.approvalStrategies
   - MOD-spec-changes.specStrategies
@@ -168,7 +170,10 @@ The rest of its surface faces the person, not another module:
     login step (`Agent.login`), or missing with its vendor's installation page for this platform, and *Check again* (`THE BRIDGE FINDS THE INSTALLED AGENTS`, `THE BRIDGE GUIDES THE
     INSTALLATION OF A MISSING AGENT`); a tick for each installed agent the Bridge is to offer, and the working folder of
     each ticked one, chosen with the system's folder dialog; *Test access*, through MOD-bridge-jobs' `testAccess`,
-    which names each repository this computer's own git login does not reach, with the reason.
+    which names each repository this computer's own git login does not reach, with the reason. For each offered agent,
+    its enclosure (ARC-054): whether it works on this computer, else its reason and its one-time step, with *Set up*
+    where the Bridge can take that step itself — on Windows, through Windows' elevation prompt —; and whether the agent is
+    logged in there, else *Log in*, which opens a terminal in the enclosure running the agent's own login step.
   - *Pairing* — the Bridge's address and its pairing token with *Copy* (`THE BRIDGE SHOWS ITS PAIRING TOKEN IN ITS
     WINDOW`); *paired with* the origin MOD-bridge-http's `pairedWith()` gives, or *not yet paired since this start*; and
     *Pair anew*, a decision that names that every paired browser must pair again (`THE BRIDGE IS PAIRED
@@ -214,7 +219,11 @@ signature does not hold. Writes no repository file; the jobs it composes write t
   export's jump host and its Bridges reached through the jump host by the same function that writes the dashboard's
   commands.
 - `MOD-browser-store.readExport` — reading the dashboard's export with the code that writes it.
-- `MOD-agent-processes.Agent`, `installedAgents` — the agents of this computer, with their vendors' installation pages.
+- `MOD-agent-processes.Agent`, `installedAgents` — the agents of this computer, with their vendors' installation pages,
+  and, in each offered agent's enclosure, whether it is logged in there.
+- `MOD-agent-enclosure.agentEnclosure`, `AgentEnclosure` — the enclosure of each offered agent, made for its working
+  folder and the Bridge's data folder and handed to MOD-bridge-jobs; its state, its *Set up* and its *Log in* in the
+  window.
 - `MOD-job-runner.registerStrategies` — the registry of the Bridge's job runner, filled with the strategies of every kind
   a Bridge may run: `MOD-approvals.approvalStrategies`, `MOD-spec-changes.specStrategies`,
   `MOD-artifact-edits.editStrategies`, `MOD-source-register.sourceStrategies`, `MOD-reuse-facts.reuseStrategies`,

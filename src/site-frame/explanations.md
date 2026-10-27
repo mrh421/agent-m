@@ -506,6 +506,12 @@ A job handed to a Bridge runs on your computer with the agent's own login and wi
 stored for it on GitHub; the job uses your subscription. The computer's git login must reach the
 instance and the product, and the Bridge refuses the job and names the repository when it does not.
 
+The agent works in an enclosure: it cannot read the Bridge's folder, your SSH keys or your git login, and it can write only its
+own folder and the job's checkout. The Bridge, not the agent, pushes the agent's branch and opens its pull request. Inside the
+enclosure the agent has a home of its own, so it needs its own login there once: press *Log in* beside it. On Windows the
+enclosure is an account of the Bridge's own, which an administrator allows once with *Set up*; on Linux it needs the
+package bubblewrap.
+
 ## bridge-https-route
 
 Some browsers block the call to the Bridge's local address, `http://127.0.0.1`, as Safari does. The site then says why and points

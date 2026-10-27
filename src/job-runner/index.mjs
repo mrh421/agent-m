@@ -1,7 +1,7 @@
 // MOD-job-runner — the one runner of every job kind (docs/architecture/MOD-job-runner.md): its interface — the registry of
 // strategies (registry.mjs) with the built-in recipes `instruction` and `draft`, the writer `return-draft` and the checks
 // `document-schema`, `requirement-form`, `test-declarations`, `candidate-classes`, `group-rules` and `graph-checks`
-// (builtins.mjs); prepareJob (prepare.mjs), what a run panel shows before the person's click; runJob with the correction
+// (builtins.mjs), and taskRefusal, whether a kind takes a handed-over task; prepareJob (prepare.mjs), what a run panel shows before the person's click; runJob with the correction
 // loop, and writeResult (loop.mjs); provenanceLines and roundsText (provenance.mjs), with the round record's schema
 // rounds.schema.md; driverPrompt (driver-prompt.mjs), the sending boundary's canonical input text.
 //
@@ -20,11 +20,12 @@ import { tools } from "./tools.mjs";
 
 export { registerStrategies } from "./registry.mjs";
 export { estimate, prepareJob } from "./prepare.mjs";
-export { runJob, writeResult } from "./loop.mjs";
+export { failedBecause, runJob, writeResult } from "./loop.mjs";
 export { driverPrompt } from "./driver-prompt.mjs";
 export { sourcesOf, withheld } from "./tools.mjs";
 export { provenanceLines, roundsText } from "./provenance.mjs";
 export { handOverParams, refusedEdit } from "./tools.mjs";
+export { taskRefusal } from "./builtins.mjs";
 
 /**
  * The plug-in contract: the recipes, checks, preconditions, steps and writers a module offers, each under its name. A

@@ -59,9 +59,10 @@ the end of its answer. `read`, `edit` and `grep` refuse a path whose content is 
 place is not allowed, in MOD-job-runner's words (`RESTRICTED CONTENT GOES ONLY WHERE ITS SOURCE PERMITS`). A command of
 `bash` runs with the rights of the program that runs the job, as a coding agent's command does; only its working folder
 is held inside the checkout. The environment variables the registering program names — the endpoint's key and every
-variable a CI secret fills — are not in its environment (`A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET`). On
-the server's own runners that program — and with it every tool, in its process and in `bash` — runs as the model's own
-user, who holds no key and no token and may not use sudo, while the key stays with the machine's user in the key holder
+variable a CI secret fills — are not in its environment (`A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET`). Where
+the agent's machine can make the model's own user — on the server's runners, in a GitLab job's container, on a
+self-hosted Linux runner that allows sudo without a password — that program, and with it every tool, in its process and
+in `bash`, runs as that user, who holds no key and no token and may not use sudo, while the key stays with the machine's user in the key holder
 (MOD-workflow-entries, *The model's user*); there no credential is within a command's reach (`NO MODEL READS A
 CREDENTIAL`). A
 tool answers each failure of its own as text and throws nothing, so that every call gets a result.

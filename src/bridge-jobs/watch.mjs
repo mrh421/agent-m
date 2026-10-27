@@ -10,12 +10,13 @@ import { agentDriver, installedAgents } from "../agent-processes/index.mjs";
 import { readRegister } from "../documents/index.mjs";
 import { kindOf } from "../job-catalogue/index.mjs";
 import { appendToRecord, jobCost, newJobId, recordsNewestFirst, takeJob } from "../job-ledger/index.mjs";
-import { prepareJob, runJob } from "../job-runner/index.mjs";
+import { failedBecause, prepareJob, runJob } from "../job-runner/index.mjs";
 import { participantSchema, participantsOf } from "../participant-list/index.mjs";
 import { productFacts } from "../progress-measures/index.mjs";
 import { queueJob } from "../runtimes/index.mjs";
 import { sprintsToClose } from "../work-plans/index.mjs";
-import { checkoutAt, cloneOrFetch, defaultHead, exclusively, foldersOf, hostOf, removeClone, workingClone } from "./workfolders.mjs";
+import { checkoutAt, cloneOrFetch, defaultHead, exclusively, foldersOf, hostOf, makeOutbox, publish, removeClone, workingClone } from "./workfolders.mjs";
+import { enclosureOf } from "./enclosures.mjs";
 
 const PARTICIPANTS = "docs/participants.md";
 const QUIT = "the Bridge was quit";
@@ -192,7 +193,7 @@ function createWatcher(config) {
     running.set(record.id, mine);
     live.set(record.id, mine);
     const logged = { lines: [], partial: "", ended: false };
-    const working = folders.job(record.id);
+    const working = folders.job(record.id), cleanup = [];
     let result = null, failed = null, listed = null;
     try {
       // Taking is one at a time in this program, on the head read just before: two watchers of one name that took on the same head in the same
@@ -206,7 +207,8 @@ function createWatcher(config) {
       jobsTaken.set(record.id, listed);
       logs.set(record.id, logged);
       try {
-        const installed = (await installedAgents()).find((each) => each.name === agent.name);
+        // No enclosure, no agent (ARC-054): the job ends failed with the enclosure's reason and its one-time step.
+        const enclosure = await enclosureOf(config.enclosures, agent.folder);
         const head = await host.readSnapshot(taken.commit);
         const instanceFolder = await checkoutAt(await cloneOrFetch(instance, folders.instance), record.agentM.commit);
         const instanceHost = await hostOf(instance, instanceFolder);
@@ -220,13 +222,25 @@ function createWatcher(config) {
           person: record.startedBy, now: new Date(), agentM: record.agentM, jobId: record.id,
         };
         await workingClone(product, working);
-        const driver = agentDriver(installed, { workdir: working, keyVariable: null }, participant);
+        // The agent pushes into its outbox; the Bridge, outside the enclosure, pushes what it made to the origin before the writer reads it.
+        const outbox = await makeOutbox(working);
+        cleanup.push(outbox.path);
+        const writable = [working, outbox.path];
+        await enclosure.prepare({ writable, readable: [instanceFolder] });
+        const installed = (await installedAgents({ enclosure, workdir: working })).find((each) => each.name === agent.name);
+        const enclosed = agentDriver(installed, { workdir: working, keyVariable: null, enclosure, writable }, participant);
+        const driver = { ...enclosed, send: async (input, options) => {
+          const answer = await enclosed.send(input, options);
+          await publish({ outbox, clone: folder, job: record.id });
+          return answer;
+        } };
         const prepared = await prepareJob(record.kind, context, { drafter: participant, reviewers: [], limit: record.limit });
         result = await runJob(prepared, { drafter: driver, reviewers: [] }, { attended: false, context, signal: controller.signal, onOutput: (chunk) => appended(logged, chunk) });
       } catch (error) {
         failed = error;
       }
       await removeClone(working);
+      for (const path of cleanup) await removeClone(path);
       if (mine.cancelledByPage && !mine.quit) {
         // A cancel through the page (POST /v1/jobs/{id}/cancel): the Bridge commits nothing more; the person's page appends the record of the cancel.
         listed.state = "cancelled";
@@ -251,9 +265,10 @@ function createWatcher(config) {
     const usage = result ? totalUsage(result.usage) : null;
     const written = result?.written;
     const part = { part: "end", at: new Date(), draft: tasks.has(record.id) ? null : written?.shown ?? null, rounds: result?.rounds ?? [], usage, cost: jobCost(usage, participant), log: null };
-    if (failed || result?.stoppedBecause === "unusable") {
+    const unusable = result ? failedBecause(result) : null;
+    if (failed || unusable) {
       Object.assign(part, { state: cancelled ? "cancelled" : "failed", results: [],
-        reason: quit ? QUIT : cancelled ? "the job was cancelled" : failed ? reasonOf(failed) : "the answer could not be read" });
+        reason: quit ? QUIT : cancelled ? "the job was cancelled" : failed ? reasonOf(failed) : unusable, ...(unusable ? { stoppedBecause: result.stoppedBecause } : {}) });
     } else {
       Object.assign(part, { state: "done", results: [...(written?.commits ?? []), ...(written?.files ?? []), ...(written?.pullRequest ? [written.pullRequest] : [])],
         reason: null, stoppedBecause: result.stoppedBecause, forPerson: result.forPerson });

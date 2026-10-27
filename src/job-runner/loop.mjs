@@ -68,9 +68,21 @@ function readAnswer(text, envelope) {
   return why ? { why } : { value };
 }
 
+const CANNOT_BE_READ = "the answer cannot be read: ";
 const unreadable = (why) => finding({ artifact: "answer", line: 1, kind: "error",
-  rule: "A DRAFT THAT FAILS A CHECK GOES BACK TO ITS PARTICIPANT", what: `the answer cannot be read: ${why}`,
+  rule: "A DRAFT THAT FAILS A CHECK GOES BACK TO ITS PARTICIPANT", what: `${CANNOT_BE_READ}${why}`,
   fix: "answer with one JSON object of the form the output schema gives" });
+
+/**
+ * failedBecause(result: JobResult) -> string | null — why a run that ran to its end ends its job failed: for a result stopped
+ * `unusable`, "the participant's answer could not be read: <why>", the why of its last round's finding on the answer; null
+ * for any other result. The one rule every route that ends a job applies, so that no unusable run ends done. Pure.
+ */
+export function failedBecause(result) {
+  if (result?.stoppedBecause !== "unusable") return null;
+  const said = result.rounds.at(-1)?.findings.find((f) => f.artifact === "answer" && f.what.startsWith(CANNOT_BE_READ));
+  return `the participant's answer could not be read${said ? `: ${said.what.slice(CANNOT_BE_READ.length)}` : ""}`;
+}
 
 // A reviewing participant's findings, each a warning, or null when its answer cannot be read.
 function reviewed(text, kind) {

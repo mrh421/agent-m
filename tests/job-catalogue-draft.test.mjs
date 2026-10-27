@@ -26,7 +26,7 @@ try {
   if (error.name !== "DuplicateStrategy") throw error;
 }
 for (const [category, name] of [["recipes", "named-requirements"], ["recipes", "spec-with-queues"],
-  ["recipes", "chapters-for-requirements"], ["recipes", "use-case-with-neighbours"], ["recipes", "whole-spec"],
+  ["recipes", "chapters-for-requirements"], ["recipes", "issue-context"], ["recipes", "use-case-with-neighbours"], ["recipes", "whole-spec"],
   ["recipes", "use-cases"], ["recipes", "accepted-use-cases"], ["recipes", "whole-architecture"], ["recipes", "chapters-for-architecture"],
   ["preconditions", "rests-on-accepted"], ["checks", "requirement-form"], ["checks", "identifier-kept"],
   ["steps", "due-diligence"], ["writers", "queue-entries"], ["writers", "open-files"]]) {
@@ -48,7 +48,7 @@ const prepare = (kind, params) => prepareJob(kind, contextOf(params), { drafter:
 // guards: ONE DEFINITION, THREE DRIVERS
 // given: the kinds change-requirements, change-use-case and change-architecture of the catalogue
 // input: kindOf of each
-// expect: the recipes are, in this order, instruction, conversation, draft — the third and only the third optional — and then, for change-requirements named-requirements, spec-with-queues and chapters-for-requirements, for change-use-case use-case-with-neighbours and chapters-for-requirements, for change-architecture whole-spec, use-cases, whole-architecture and chapters-for-architecture, none optional
+// expect: the recipes are, in this order, instruction, conversation, draft — the third optional, and for change-requirements issue-context too (MOD-job-catalogue: "issue-context?") — and then, for change-requirements named-requirements, spec-with-queues and chapters-for-requirements, for change-use-case use-case-with-neighbours and chapters-for-requirements, for change-architecture whole-spec, use-cases, whole-architecture and chapters-for-architecture, none optional
 test("kindOf — the three change kinds name draft? right after conversation, then the recipes they named before", async () => {
   const expected = {
     "change-requirements": ["named-requirements", "spec-with-queues", "chapters-for-requirements"],
@@ -59,6 +59,7 @@ test("kindOf — the three change kinds name draft? right after conversation, th
   for (const name of CHANGE_KINDS) {
     assert.deepEqual((await kindOf(name)).recipes,
       [{ name: "instruction", optional: false }, { name: "conversation", optional: false }, { name: "draft", optional: true },
+        ...(name === "change-requirements" ? [{ name: "issue-context", optional: true }] : []),
         ...expected[name].map((recipe) => ({ name: recipe, optional: false }))], name);
   }
 });

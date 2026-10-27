@@ -120,7 +120,8 @@ spec:
     - exit "$AGENT_M_STATUS"
 # --- the agent's job, written once for each key the file reads and once for none: the lines below are written once for each ---
 @@agent-id@@:
-  # The agent's machine: the product and the instance read without a token, the one key of the participant the run names, no other secret.
+  # The agent's machine: the product and the instance read without a token — the job's token is taken out of the clone's remote before anything runs —, the one key
+  # of the participant the run names, no other secret; the model's user, as whom a model's run works where the machine can make that user (MOD-workflow-entries).
   stage: test
   image: node:22
   inherit:
@@ -133,6 +134,7 @@ spec:
     AGENT_M_INSTANCE: "@@repository@@"
     AGENT_M_COMMIT: "@@commit@@"
     AGENT_M_PART: "agent"
+    AGENT_M_MODEL_USER: "agent-m-model"
     AGENT_M_KEY_NAMES: "@@key-names@@"
     AGENT_M_KEY: "@@agent@@"
     AGENT_M_INPUT_JOB: $[[ inputs.job ]]
@@ -152,6 +154,8 @@ spec:
   script:
     # Only the job the plan chose works; every other ends here, before anything runs.
     - if [ "$AGENT_M_AGENT" != "@@agent@@" ]; then echo "The plan chose the agent's job $AGENT_M_AGENT, not this one."; exit 0; fi
+    # GitLab's clone holds the job's token in its remote's address: nothing on this machine fetches with it, so the address is the project's own, without it.
+    - git remote set-url origin "$CI_PROJECT_URL.git"
     # The committer of what the job commits in its checkouts is the person who started the pipeline.
     - git config --global user.name "$GITLAB_USER_NAME"
     - git config --global user.email "$GITLAB_USER_EMAIL"

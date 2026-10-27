@@ -21,12 +21,13 @@ export function withMailIds(text, ids) {
 
 /**
  * @param {"mail-added" | "reply-sent" | "question-sent" | "no-reply" | "item-added" | "closed-with"} kind
- * @param {string} subject
+ * @param {string | null} subject  null (or "") only for "closed-with" of a bug fix, which has no item
  * @param {string} date
  * @param {string} [link]
  * @returns {string}
  */
 export function noteText(kind, subject, date, link) {
+  if (kind === "closed-with" && (subject === null || subject === "")) return `Closed with ${link}.`;
   const identifier = kind === "item-added" || kind === "closed-with" ? wholeItemIdentifier : wholeIdentifier;
   if (identifier.exec(subject)?.[0] !== subject) {
     throw Object.assign(new Error("Use a mail or item identifier for this note."), { name: "NotAnIdentifier" });

@@ -5,7 +5,12 @@ folder: src/bridge-jobs/
 realises:
 follows:
   - ARC-040
+  - ARC-054
 uses:
+  - MOD-agent-enclosure.AgentEnclosure
+  - MOD-agent-processes.Enclosure
+  - MOD-repository-hosts.PullRequest
+  - MOD-repository-hosts.HostError
   - MOD-bridge-http.bridgeApi
   - MOD-bridge-http.BridgeHandlers
   - MOD-endpoint-calls.EndpointConfig
@@ -27,6 +32,7 @@ uses:
   - MOD-job-runner.Prepared
   - MOD-job-runner.prepareJob
   - MOD-job-runner.runJob
+  - MOD-job-runner.failedBecause
   - MOD-job-catalogue.kindOf
   - MOD-job-ledger.JobRecord
   - MOD-job-ledger.RecordPart
@@ -60,7 +66,9 @@ of the coding agents it offers — those of its computer's installed agents the 
 FINDS THE INSTALLED AGENTS`) —, each in that agent's working folder (`THE BRIDGE IS CONFIGURED IN ITS WINDOW OR FROM AN
 EXPORT`): those the page hands over, and the queued ones it takes itself from the product repositories it serves — with
 the same job runner, catalogue and ledger as the page and CI, and the agent's own login on this computer (`A LOCAL AGENT
-USES THE PERSON'S OWN LOGIN`). For a job of the page, it also calls a model endpoint the page cannot call. While no tab is open, it keeps the runs it serves going: it
+USES THE PERSON'S OWN LOGIN`). Every process of an agent it starts runs in that agent's enclosure (ARC-054); the
+repositories are reached only by the Bridge, outside it, with the computer's own git login (`NO MODEL READS A
+CREDENTIAL`). For a job of the page, it also calls a model endpoint the page cannot call. While no tab is open, it keeps the runs it serves going: it
 computes their next actions from the records and takes those of its own route (`A RUN CONTINUES WITHOUT A CLICK BETWEEN
 ITS JOBS`), and it starts an agent's sprint close when the sprint ends (`A SPRINT CLOSED BY AN AGENT STARTS BY
 ITSELF`). It answers the agents, jobs, ask and probe routes of the Bridge's API. It runs in Node, in the Bridge's main
@@ -71,7 +79,9 @@ process.
 - `index.mjs` — the interface.
 - `handlers.mjs` — the agents, jobs, ask and probes routes.
 - `watch.mjs` — reading the served products, taking and resuming jobs, advancing runs, sprint ends.
-- `workfolders.mjs` — a working clone per job.
+- `workfolders.mjs` — a working clone per job, its outbox, and the branches published from it.
+- `pull-requests.mjs` — a product's pull requests through the server's command-line client, logged in as the person.
+- `enclosures.mjs` — the working enclosure of an agent, or the refusal to start it, naming why.
 - `probes.mjs` — the harmless requests of the probes.
 - `access.mjs` — whether this computer's own git login reaches the repositories: one fetch of each into an empty
   repository in a temporary folder (`testAccess`).
@@ -82,17 +92,32 @@ process.
 
 It keeps no state of a job beyond its record: in memory, the jobs it runs with their logs and the asks in flight; on
 disk, in the working folder of each agent it offers, a clone of the instance, one clone per served product, and one
-working clone per running job of that agent, removed when the job ends. Before an agent starts a job, the job's working
-clone holds the product's branch, and the instance's clone the commit of the instance the job's record names
-(`agent_m`, MOD-job-ledger). Which agents it offers with their working folders, which products it serves, and the
+working clone per running job of that agent with its outbox, both removed when the job ends, and the agent's home
+(MOD-agent-enclosure). Before an agent starts a job, the job's working clone holds the product's branch, and the
+instance's clone the commit of the instance the job's record names (`agent_m`, MOD-job-ledger).
+
+**The outbox.** The Bridge makes the job's working clone with the computer's own git login, then the outbox beside it —
+`jobs/<id>.out.git`, a bare repository cloned from the working clone — and sets the outbox as the working clone's push
+address, before the agent starts; the outbox's branches at that moment are the job's base. The agent may write the
+working clone and the outbox and nothing else of the working folder: the clones of the instance and of the products, in
+which the Bridge runs git with the computer's login, are read-only to it. After the agent has answered, the Bridge fetches
+the outbox's branches into its clone of the product, under `refs/agent-m/<job id>/`, pushes every branch that is new or
+moved against the base to the origin under its name, never forced, and points the clone's own branch of that name at
+it, so that the job's writer reads it there; the branch checked out in the clone is pushed and not pointed. A push the
+origin refuses fails the job, naming the branch and what git said. The Bridge runs git in the working clone and the
+outbox only before the agent starts; afterwards it only fetches the outbox's objects from its own clone, which runs no
+command the outbox's configuration names: a hook or a command written there would run with the person's rights. Which agents it offers with their working folders, which products it serves, and the
 Bridge's name — the name the route of its participants carries in `docs/participants.md` —, come from the Bridge's
 settings (MOD-desktop-shell).
 
 ## Interfaces
 
-- `jobHandlers` — the handlers of the `jobs` routes of `bridgeApi`, of MOD-bridge-http's type `BridgeHandlers`:
-  - `GET /v1/agents` — the coding agents it offers, with their versions and whether they are ready and logged in, and
-    the supported agents missing on this computer (`THE BRIDGE FINDS THE INSTALLED AGENTS`).
+- `jobHandlers({ agents, enclosures, … })` — the handlers of the `jobs` routes of `bridgeApi`, of MOD-bridge-http's type
+  `BridgeHandlers`, for the agents the Bridge offers (`{ name, folder }`) and their enclosures (`enclosures: (folder:
+  string) -> AgentEnclosure`):
+  - `GET /v1/agents` — the coding agents it offers, with their versions and whether they are ready and logged in — both
+    asked in the agent's enclosure, and not ready where the enclosure does not work —, and the supported agents missing
+    on this computer (`THE BRIDGE FINDS THE INSTALLED AGENTS`).
   - `POST /v1/jobs` — a job the page handed over: its start record is already committed by the person's click; the
     Bridge takes it and runs it as a queued job, from its record; the hand-over only spares it the wait for its next
     reading. A job whose record says that its task travels with the hand-over is run with the request's `task` as its
@@ -122,11 +147,13 @@ settings (MOD-desktop-shell).
     is `invalid-request`; a provider or local-endpoint failure is the returned diagnosis; `upstream-failed` names another
     probe-handler failure.
 - `startWatching(config: { bridgeName: string, agents: { name: string, folder: string }[], products: { address: string
-  }[], every: number }) -> void` — with the agents the Bridge offers and their working folders, starts reading every
+  }[], every: number, enclosures: (folder: string) -> AgentEnclosure }) -> void` — with the agents the Bridge offers,
+  their working folders and their enclosures, starts reading every
   served product through Access's local clone with the computer's own git login, at the
   given interval and after every hand-over: queued jobs whose participant's route names this Bridge and an agent it
   offers are taken — a commit
-  only on the head that was read, so that no other route takes them too — and run; jobs of this Bridge waiting at a gate
+  only on the head that was read, so that no other route takes them too — and run, a run that MOD-job-runner's
+  `failedBecause` fails ending its job `failed` with that reason; jobs of this Bridge waiting at a gate
   whose record now exists are resumed (`A JOB STOPS AT EVERY GATE`); the next actions of every run of a served product
   are computed from the product's facts, those of this route taken and those of other routes queued by their start
   records; a sprint whose close
@@ -148,10 +175,19 @@ which the page shows it and a run starts the job that follows.
 An endpoint configuration and its key — of a test, of a models listing or of an ask — exist only for that request. The handler retains
 neither in a clone, job record, log, disk file, shell setting nor process command.
 
-Access's local clone does files and commits only — no pull request, issue or CI run. On a Bridge the coding agent opens
-its pull request with its own tools and its own login on this computer; the Bridge records the branch and the pull
-request the agent reports in the job's end record, and the Definition-of-Done check in the product's CI
-(MOD-workflow-entries' `onDoneCheck`) verifies it.
+Access's local clone does files and commits only — no pull request, issue or CI run. On a Bridge the host of a product
+on GitHub adds the two functions a pull request needs, `listPullRequests` and `openPullRequest` in MOD-repository-hosts'
+form, through the server's own command-line client `gh` logged in as the person, run by the Bridge outside every
+enclosure with `--repo` naming the product; so the job's writer opens the pull request of the branch the Bridge pushed,
+as it does with a server's API. Where `gh` is missing or not logged in, and for a product on GitLab, both functions fail
+with `NotSupported`, and the writer records the branch without a pull request. The Bridge records the branch and the pull
+request in the job's end record, and the Definition-of-Done check in the product's CI (MOD-workflow-entries'
+`onDoneCheck`) verifies it.
+
+**No enclosure, no agent.** The agents' enclosures are given by the composing program, one per working folder
+(`enclosures`). Without them, or where an agent's enclosure answers that it does not work, no process of that agent is
+started: `GET /v1/agents` names the agent as not ready, a job ends failed and an ask fails, each with the enclosure's
+reason and its one-time step.
 
 On a Bridge, `productFacts` runs with the local clone, so the facts that need the server — pull requests, CI runs and
 their results — are `unknown`, and `nextActions` starts nothing that depends on them: merges and CI results are advanced
@@ -165,14 +201,19 @@ credentials (MOD-repository-hosts' `readSnapshot`).
 ## Files
 
 In each served product, through Access's local clone: reads `docs/process.md`, the plan or backlog, `docs/jobs/` and
-`docs/gates/`, and the instance's `docs/participants.md`; appends to job records; the agent's own commits and pull
-request come from the working clone. Through its clone of the instance, which fetches that commit: the instance's
+`docs/gates/`, and the instance's `docs/participants.md`; appends to job records; pushes the branches the agent made, from
+the job's outbox, and opens their pull requests with `gh`. Through its clone of the instance, which fetches that commit: the instance's
 process models at the commit a served product's declaration names. In the working folder of each agent it offers: the
 clones. Nothing else.
 
 ## Uses
 
 - `MOD-bridge-http.bridgeApi`, `MOD-bridge-http.BridgeHandlers` — the routes it answers.
+- `MOD-agent-enclosure.AgentEnclosure` — whether an agent's enclosure works, its preparation before a start, its home;
+  `MOD-agent-processes.Enclosure` — the part of it given to the agent's driver, to the list of installed agents and to the
+  probe.
+- `MOD-repository-hosts.PullRequest`, `MOD-repository-hosts.HostError` — the form in which the host of a product on GitHub
+  answers its pull requests, and `NotSupported` where gh cannot open them.
 - `MOD-repository-hosts.connect`, `MOD-repository-hosts.readSnapshot`, `MOD-repository-hosts.parseAddress` — the served
   products, each connected by its address, through the local clone with the computer's own git login; the instance at
   the commit a declaration or a job's record names, through its clone, which fetches the commit with that login; and the
@@ -184,7 +225,7 @@ clones. Nothing else.
 - `MOD-endpoint-calls.EndpointConfig`, `testEndpoint`, `listModels`, `endpointDriver` — an endpoint's test, its models'
   listing and the requests of a job of the page to a model endpoint.
 - `MOD-job-runner.JobContext`, `Prepared`, `prepareJob`, `runJob`, `MOD-job-catalogue.kindOf` — running a job of any kind
-  from its record, unattended.
+  from its record, unattended; `MOD-job-runner.failedBecause` — whether its job ends failed, and why.
 - `MOD-job-ledger.JobRecord`, `RecordPart`, `takeJob`, `appendToRecord`, `jobState` — taking, resuming and ending jobs in
   their records, a draft handed back in the end; `recordsNewestFirst` — the job records of a served product it looks
   through; `jobCost` — the cost an end records; `newJobId` — the identifier of a sprint's close it starts.

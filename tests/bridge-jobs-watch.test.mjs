@@ -37,6 +37,7 @@ import test from "node:test";
 import { registerStrategies } from "../src/job-runner/index.mjs";
 import { startRecord } from "../src/job-ledger/index.mjs";
 import * as bridgeJobs from "../src/bridge-jobs/index.mjs";
+import { openEnclosures } from "./enclosure-fixture.mjs";
 
 const { jobHandlers, startWatching, stopWatching } = bridgeJobs;
 process.env.GIT_CONFIG_GLOBAL = "/dev/null";
@@ -113,16 +114,20 @@ const ID = (n) => `JOB-20261011-090${n}-aaa${n}`;
 
 // The Bridge's computer: a PATH of the fixture agent and the wrappers, the instance (two commits; the record names the first) and the products. The
 // agent answers with its working folder and, once started, waits for the gate file when `gated`; it writes a mark when it ends.
-async function world(run, { gated = false, fails = false } = {}) {
+async function world(run, { gated = false, fails = false, branch = null, undrafted = false } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-m-327-")));
   const bin = join(root, "bin"), calls = join(root, "calls"), gate = join(root, "gate"), finished = join(root, "finished");
   mkdirSync(bin);
   writeFileSync(calls, "");
   script(bin, "git", `exec ${REAL_GIT} "$@"`);
   script(bin, "sleep", `exec ${REAL_SLEEP} "$@"`);
-  const event = JSON.stringify({ type: "text", part: { text: JSON.stringify({ draft: { decision: "passed", reason: "@PWD@" }, answers: [] }) } }).replace("@PWD@", `'"$PWD"'`);
+  // With `undrafted`, the agent answers JSON whose envelope has no draft.
+  const event = JSON.stringify({ type: "text", part: { text: JSON.stringify(undrafted ? { answers: [] } : { draft: { decision: "passed", reason: "@PWD@" }, answers: [] }) } })
+    .replace("@PWD@", `'"$PWD"'`);
+  // With `branch`, the agent commits a file on that branch of its checkout and pushes it to its push address, which it records.
+  const commits = branch ? `git checkout -q -b ${branch} && printf 'change\\n' > change.txt && git add change.txt && git commit -q -m change && git push -q origin ${branch} && printf 'pushed to %s\\n' "$(git remote get-url --push origin)" >> ${calls}; ` : "";
   script(bin, "opencode", `case "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';; models) echo opencode/big-pickle;;
-run) printf '%s\\n' "$PWD $*" >> ${calls}; ${gated ? `while [ ! -e ${gate} ]; do sleep 0.02; done; ` : ""}${fails ? "echo boom >&2; exit 3; " : ""}printf '%s\\n' ok >> ${finished}
+run) printf '%s\\n' "$PWD $*" >> ${calls}; ${commits}${gated ? `while [ ! -e ${gate} ]; do sleep 0.02; done; ` : ""}${fails ? "echo boom >&2; exit 3; " : ""}printf '%s\\n' ok >> ${finished}
 printf '%s\\n' '${event}' '{"type":"step_finish","part":{"tokens":{"input":11,"output":7}}}';; esac`);
   const instance = repository(root, "instance", { "docs/participants.md": PARTICIPANTS, "marker.md": "v1\n" });
   const first = git(instance.seed, "rev-parse", "HEAD");
@@ -163,7 +168,7 @@ printf '%s\\n' '${event}' '{"type":"step_finish","part":{"tokens":{"input":11,"o
     rmSync(root, { recursive: true, force: true });
   }
 }
-const watch = (w, agents, extra = {}) => startWatching({ bridgeName: "lab-pc", agents, products: [{ address: PRODUCT_A }], every: 100, instance: INSTANCE, ...extra });
+const watch = (w, agents, extra = {}) => startWatching({ bridgeName: "lab-pc", agents, products: [{ address: PRODUCT_A }], every: 100, instance: INSTANCE, enclosures: openEnclosures(), ...extra });
 const runs = (w) => w.calls().filter((line) => / run /.test(line));
 
 // ---------------------------------------------------------------- a queued job of this Bridge
@@ -345,6 +350,26 @@ test("a job whose agent fails ends failed with the failure's words", async () =>
   }, { fails: true });
 });
 
+// TST-2026271043 · level: unit · module: MOD-bridge-jobs
+// guards: A JOB IS RECORDED IN ITS PRODUCT REPOSITORY; UC-011
+// given: an agent that answers, in every round, JSON whose envelope has no `draft` — `{ "answers": [] }` —; known positive: the same job whose agent answers a draft ends `done` (TST-472096)
+// input: startWatching; wait for the record's end
+// expect: the job ends `failed` with no results, its reason "the participant's answer could not be read: the answer has no draft" — MOD-job-runner's failedBecause —, its round record saying `stopped because: unusable`; no file of the writer is on the origin
+test("TST-2026271043: a job whose agent answers without a draft ends failed, its reason naming why", async () => {
+  await world(async (w) => {
+    const job = w.queue(PRODUCT_A, JOB(ID(1), "drafter"));
+    watch(w, [{ name: "opencode", folder: w.folder("agent-work") }]);
+    await w.ended(job);
+
+    const record = w.originText(PRODUCT_A, job.path);
+    assert.match(record, /^state: failed$/m);
+    assert.match(record, /^results:$/m);
+    assert.match(record, /^reason: the participant's answer could not be read: the answer has no draft$/m);
+    assert.match(record, /stopped because: unusable/);
+    assert.equal(w.originText(PRODUCT_A, `docs/gates/${job.id}.md`), "");
+  }, { undrafted: true });
+});
+
 // ---------------------------------------------------------------- pause and quit
 
 // TST-472104 · level: unit · module: MOD-bridge-jobs
@@ -389,4 +414,63 @@ test("quit ends a running job as cancelled, with nothing written after", async (
     assert.equal(w.finished(), false);
     assert.equal((record.match(/^## End$/gm) ?? []).length, 1);
   }, { gated: true });
+});
+
+// ---------------------------------------------------------------- the enclosure and the outbox (ARC-054)
+
+// TST-1381001 · level: unit · module: MOD-bridge-jobs
+// guards: NO MODEL READS A CREDENTIAL; UC-011
+// given: a queued job of drafter, whose agent commits change.txt on the branch agent/work in its checkout and pushes it to its push address; opencode offered with a working folder and an enclosure that records what it is asked
+// input: startWatching; wait for the record's end
+// expect: the agent pushed to <folder>/jobs/<id>.out.git, the outbox, not to the product's address; the origin then holds agent/work at a commit whose change.txt reads "change", pushed by the Bridge, and its main holds no change.txt; the agent was started through the enclosure, with its checkout as working folder and exactly the checkout and the outbox writable, after the enclosure was asked whether it works and prepared with them; the record ends done; the checkout and the outbox are removed; counter-proof: the branch is not on the origin before the job ends
+test("TST-1381001: the agent pushes into its outbox, and the Bridge pushes its branch to the origin", async () => {
+  await world(async (w) => {
+    const job = w.queue(PRODUCT_A, JOB(ID(1), "drafter"));
+    const folder = w.folder("agent-work"), asked = [];
+    const branchOnOrigin = () => spawnSync(REAL_GIT, ["--git-dir", w.products[PRODUCT_A].origin, "rev-parse", "--verify", "--quiet", "refs/heads/agent/work"], { encoding: "utf8" }).stdout.trim();
+    assert.equal(branchOnOrigin(), "", "counter-proof: the branch is not on the origin before the job");
+    watch(w, [{ name: "opencode", folder }], { enclosures: openEnclosures({ asked }) });
+    await w.ended(job);
+
+    const working = join(folder, "jobs", job.id), outbox = `${working}.out.git`;
+    assert.ok(w.calls().includes(`pushed to ${outbox}`), `the agent's push address is its outbox: ${w.calls().join(" | ")}`);
+    assert.notEqual(branchOnOrigin(), "", "the Bridge pushed the agent's branch");
+    assert.equal(spawnSync(REAL_GIT, ["--git-dir", w.products[PRODUCT_A].origin, "show", "agent/work:change.txt"], { encoding: "utf8" }).stdout, "change\n");
+    assert.equal(w.originText(PRODUCT_A, "change.txt"), "", "main is not changed");
+    const wraps = asked.filter((entry) => entry.call === "wrap" && entry.args[0] === "run");
+    assert.equal(wraps.length, 1, JSON.stringify(asked));
+    assert.deepEqual(wraps[0].at, { workdir: working, writable: [working, outbox] });
+    assert.equal(wraps[0].folder, folder);
+    const order = asked.map((entry) => entry.call);
+    assert.ok(order.indexOf("works") < order.indexOf("prepare") && order.indexOf("prepare") < order.lastIndexOf("wrap"), order.join(", "));
+    assert.deepEqual(asked.find((entry) => entry.call === "prepare").at.writable, [working, outbox]);
+    assert.match(w.originText(PRODUCT_A, job.path), /^state: done$/m);
+    assert.equal(existsSync(working), false);
+    assert.equal(existsSync(outbox), false);
+  }, { branch: "agent/work" });
+});
+
+// TST-1381002 · level: unit · module: MOD-bridge-jobs
+// guards: NO MODEL READS A CREDENTIAL
+// given: two queued jobs of drafter; first a Bridge whose composition gives no enclosures, then one whose enclosure answers that it does not work, with the reason "bwrap: not found" and the step "an administrator installs the package bubblewrap"
+// input: startWatching for each in turn; wait for each record's end
+// expect: the first ends failed, its reason saying that no agent is started outside an enclosure; the second ends failed, its reason holding the enclosure's reason and its step; the agent was started by neither; counter-proof: TST-1381001, where the enclosure works, starts it
+test("TST-1381002: without a working enclosure no agent is started, and the job ends failed naming why", async () => {
+  await world(async (w) => {
+    const first = w.queue(PRODUCT_A, JOB(ID(1), "drafter"));
+    startWatching({ bridgeName: "lab-pc", agents: [{ name: "opencode", folder: w.folder("agent-work") }], products: [{ address: PRODUCT_A }], every: 100, instance: INSTANCE });
+    await w.ended(first);
+    const record = w.originText(PRODUCT_A, first.path);
+    assert.match(record, /^state: failed$/m);
+    assert.match(record, /^reason: .*no agent is started outside an enclosure/m);
+    await stopWatching("quit");
+
+    const second = w.queue(PRODUCT_A, JOB(ID(2), "drafter"));
+    watch(w, [{ name: "opencode", folder: w.folder("agent-work-2") }], { enclosures: openEnclosures({ works: { works: false, reason: "bwrap: not found", setup: "an administrator installs the package bubblewrap" } }) });
+    await w.ended(second);
+    const refused = w.originText(PRODUCT_A, second.path);
+    assert.match(refused, /^state: failed$/m);
+    assert.match(refused, /^reason: .*bwrap: not found.*an administrator installs the package bubblewrap/m);
+    assert.equal(runs(w).length, 0, "no agent was started");
+  });
 });

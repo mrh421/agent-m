@@ -19,6 +19,7 @@ Task's arguments never hold the prompt: the agent reads it on its standard input
       { "name": "Login check", "value": { "type": "text", "required": true } },
       { "name": "Key variable", "value": { "type": "text" } },
       { "name": "Endpoint", "value": { "type": "text" } },
+      { "name": "Key holder", "value": { "type": "text" } },
       { "name": "Install macos", "value": { "type": "url", "required": true } },
       { "name": "Install windows", "value": { "type": "url", "required": true } },
       { "name": "Install linux", "value": { "type": "url", "required": true } }
