@@ -124,7 +124,11 @@ Each row also holds the description the drafter reads and the JSON schema of its
 with a `tool_limit` of 30, and its draft may hold, beside `answer` and `edits`, a `handOver` of the tool's arguments,
 `{ kind, works_on, task }`, so that a drafter offered no tools — a coding agent, or an endpoint without *use tools* —
 proposes a hand-over in its answer as the tool would hold it; `change-requirements`, `change-use-case` and `change-architecture` name the three that read
-and `hand-over`, since their draft is their answer and a change of them may still be handed to CI (UC-019 6b). A tool's capability is besides *use tools*, which a drafter must declare to be offered
+and `hand-over`, since their draft is their answer and a change of them may still be handed to CI (UC-019 6b). The kinds
+that change code or run tests — `implement`, `refactor`, `fix-bug`, `write-tests`, `propose-tests`, `run-tests` and
+`check-resource` — name the seven tools of MOD-checkout-tools, `read`, `write`, `edit`, `bash`, `grep`, `glob` and
+`webfetch`, rows of `tools.md` too, with a `tool_limit` of 200, so that a model endpoint does their work in the job's
+checkout; only a program in Node registers those tools. A tool's capability is besides *use tools*, which a drafter must declare to be offered
 any tool at all.
 
 For a kind of `review: person`, the click that lets the result go on is the one its use case names: *Write proposals*

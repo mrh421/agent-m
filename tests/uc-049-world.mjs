@@ -181,13 +181,10 @@ export async function withWorkflow(s, { answers, inputs = null, token = "github_
     const files = Object.fromEntries(Object.entries({ ...s.product.files, ...given }).map(([path, text]) => [path, path.startsWith("docs/jobs/") ? text.replaceAll("c0ffee0000000000000000000000000000000000", instance.commit) : text]));
     const product = checkout(root, "product", files);
     const agentM = { version: "2026.10.0", commit: instance.commit };
-    // The coding agent a hand-over to a model endpoint runs, for a kind that changes code or runs tests, is opencode (MOD-agent-processes); the runner's is a fixture executable that answers with
-    // `agent.answer` (the draft) or fails with `agent.fail`. A kind that only reads and drafts runs through Agent M's own job runner calling the endpoint (MOD-workflow-entries, onDispatch), which then
-    // answers `agent.answer` where no `answers` are given: the same model behind either driver.
+    // A hand-over to a model endpoint runs through Agent M's own job runner calling the endpoint (MOD-workflow-entries, onDispatch), whatever its kind; the endpoint answers `agent.answer`
+    // (the draft) where no `answers` are given. No coding agent is on the runner's PATH.
     const bin = join(root, "bin");
     mkdirSync(bin);
-    writeFileSync(join(bin, "answer.json"), JSON.stringify({ type: "text", part: { text: JSON.stringify({ draft: agent?.answer ?? {}, answers: [] }) } }) + "\n" + JSON.stringify({ type: "step_finish", part: { tokens: { input: 11, output: 7 } } }) + "\n");
-    writeFileSync(join(bin, "opencode"), `#!/bin/sh\ncase "$1" in\n --version) echo "1.2.3";;\n auth) echo "1 credentials";;\n run) ${agent?.fail ? `echo ${JSON.stringify(agent.fail)} >&2; exit 1` : `cat "${join(bin, "answer.json")}"`};;\nesac\n`, { mode: 0o755 });
     const eventPath = join(root, "event.json");
     if (inputs) writeFileSync(eventPath, JSON.stringify({ inputs }));
     const environment = { GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: inputs ? "workflow_dispatch" : "push", ...(inputs ? { GITHUB_EVENT_PATH: eventPath } : {}), GITHUB_WORKSPACE: join(root, "ws"), GITHUB_SERVER_URL: "https://github.com", GITHUB_REPOSITORY: s.repo,

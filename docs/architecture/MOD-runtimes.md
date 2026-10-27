@@ -175,8 +175,8 @@ On GitLab each job's name begins with `agent-m-`. How a job comes to receive onl
 
 The agent's machine is the agent's job: it receives the one key of the participant the run names, never the person's
 token. It reads the product with the workflow's own read access — GitHub's checkout, GitLab's clone of the project — and
-clones the instance without a token; a start that names an `endpoint` first installs opencode at a pinned version, the
-agent that works with that endpoint (MOD-agent-processes), since the server's runners hold none. It writes nothing to the
+clones the instance without a token; it installs no coding agent: a start that names an `endpoint` runs that endpoint's
+job in Agent M's own loop, with the tools of MOD-checkout-tools in the product's checkout (MOD-workflow-entries). It writes nothing to the
 product: what the job commits lands in the run's result, which it leaves as an artifact of the job — on GitHub kept one
 day, on GitLab kept one hour and downloadable by no one, only the jobs of the pipeline that need it taking it. The
 writing machine is the job that writes: it runs no agent and calls no model, downloads the result, refuses it where it
@@ -212,7 +212,7 @@ pins — the commit the run's checkout of the instance is at —, not the commit
 - `routesFor(participant: Participant, participants: Participant[], product: { visibility: "public" | "private" |
   "internal", jobWorkflow: boolean }, needs: ResourceNeed[]) -> RouteOffer[]` — the routes by the participant's route in the register: a model endpoint in the
   tab, called directly or through the Bridge its configuration names, and, where its route names the CI secret of its
-  key, on the server's runners too, where opencode works with that endpoint (MOD-agent-processes); a CI agent in CI, on
+  key, on the server's runners too, where Agent M's own loop calls that endpoint (MOD-workflow-entries); a CI agent in CI, on
   the server's runners or on its runner; a CLI or sandboxed agent through the Bridge its route names; a subagent — whose
   route `reachedThrough` names another participant — the routes of that participant among `participants`, as
   MOD-participant-list's `eligible` finds it there, its job's input naming the subagent for that participant to start. A self-hosted runner is offered only for a repository whose server reports

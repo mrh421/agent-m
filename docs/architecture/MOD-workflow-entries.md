@@ -20,14 +20,17 @@ uses:
   - MOD-participant-list.participantSchema
   - MOD-endpoint-calls.endpointDriver
   - MOD-endpoint-calls.diagnoseEndpoint
-  - MOD-endpoint-calls.testEndpoint
   - MOD-agent-processes.agentDriver
+  - MOD-checkout-tools.checkoutStrategies
+  - MOD-checkout-tools.checkoutPrompt
   - MOD-job-runner.JobContext
   - MOD-job-runner.registerStrategies
   - MOD-job-runner.prepareJob
   - MOD-job-runner.runJob
   - MOD-job-runner.handOverParams
+  - MOD-job-runner.withheld
   - MOD-job-catalogue.kindOf
+  - MOD-job-catalogue.toolsOf
   - MOD-job-ledger.JobRecord
   - MOD-job-ledger.RecordPart
   - MOD-job-ledger.newJobId
@@ -65,6 +68,9 @@ uses:
   - MOD-source-register.fetchLegalText
   - MOD-source-register.versionCommits
   - MOD-source-register.sourceStrategies
+  - MOD-source-register.sourceSchemas
+  - MOD-source-register.registerPaths
+  - MOD-source-register.restrictedPlaces
   - MOD-reuse-facts.reuseStrategies
   - MOD-resource-list.resourceStrategies
   - MOD-test-schedule.applyPipelineSchedule
@@ -108,7 +114,8 @@ It runs in Node, in GitHub Actions or GitLab CI, on hosted or self-hosted runner
 - `main.mjs` — reads the entry's name from the command line and the environment, and runs it.
 - `compose.mjs` — connects the repository twice — through Access's local clone for its files and records, and through
   the server's API with the same token for pull requests, issues and checks —, reads the participants and the
-  declaration, and registers the strategies.
+  declaration, and registers the strategies — on the agent's machine also those of MOD-checkout-tools, naming as hidden
+  every key the job workflow names and the person's token.
   - In a product's job workflow it also connects the checkout of the instance as a host, through Access's local clone.
     That host is `productFacts`' `instanceAt`: the instance at the commit a product's declaration names, which is
     another commit than the one the checkout holds.
@@ -225,21 +232,30 @@ the writing machine.
   inputs the dashboard named (UC-024): writes the job's start record, those inputs its parameters, and runs it as
   `onRecordsChanged` runs a job. On a run a hand-over started (UC-049 4a), whose input `job` names a queued record whose
   task travels with the hand-over: takes that job and runs it with the input `task` as its instruction — for a model
-  endpoint, the endpoint the input `endpoint` names, with the key from the CI secret the input `secret` names: a job of a
-  kind that only reads and drafts text — whose `needs` hold *draft text* and nothing but *draft text* and *read the repository*, as
-  `converse` and the change kinds of requirements, use cases and the architecture — runs through Agent M's own job
-  runner, MOD-endpoint-calls' `endpointDriver` calling the endpoint, with its tool loop where the record declares *use
-  tools*, as in the tab, and a job handed on from it in the same run takes the same driver; a job of any other kind —
-  one that changes code or runs tests — runs with opencode working with that endpoint (MOD-agent-processes) —; a record that holds `declares` is run with the `Participant` of
-  MOD-participant-list's shape built from it alone — its name and model from `participant` and `model`, its place from
-  `## Destinations`, its context and capabilities from `declares`, the type *model endpoint* and no price —, any other
+  endpoint, the endpoint the input `endpoint` names, with the key from the CI secret the input `secret` names, through
+  Agent M's own job runner, MOD-endpoint-calls' `endpointDriver` calling the endpoint, with its tool loop where the
+  participant declares *use tools*, as in the tab, its input beginning with Agent M's `AGENTS.md` as text; a job handed
+  on from it in the same run takes the same driver. A job of a kind that only reads and drafts text — whose `needs` hold
+  *draft text* and nothing but *draft text* and *read the repository*, as `converse` and the change kinds of
+  requirements, use cases and the architecture — works in no checkout. A job of any other kind — one that changes code or
+  runs tests — works in the job's checkout of the product, `JobContext`'s `product.checkout`, with the tools of
+  MOD-checkout-tools, which only the agent's machine registers, and with MOD-checkout-tools' `checkoutPrompt` for that
+  checkout as the endpoint's system prompt; no command of `bash` receives a key the job workflow names or the person's
+  token. Every job's context carries the places of the restricted sources, MOD-source-register's `restrictedPlaces` over
+  the instance's register for the product; where the content of one in the product — a path of `places.contents` — is
+  refused to the participant's place by MOD-job-runner's `withheld`, the job's parameter `refuses` names `bash`, since a
+  command can read any file of the checkout, and the job's end notes `bash is not offered:` with that refusal
+  (`RESTRICTED CONTENT GOES ONLY WHERE ITS SOURCE PERMITS`) —; a record that holds `declares` is run with the
+  `Participant` of MOD-participant-list's shape built from it alone — its name and model from `participant` and `model`,
+  its place from `## Destinations`, its context and capabilities from `declares`, the type *model endpoint* and no price,
+  and, for a kind that works in the checkout, also *use tools* and the capabilities its kind's tools need —, any other
   with the participant of the instance's list that it names; it writes the task to no file, and a branch whose commit
   messages or pull request text hold the task's words is refused by name, the job then ending failed with nothing
   merged — on the agent's machine, where the branch is not on the server yet, `writeResult` refuses it; it appends the job's end with its commits, files and pull request, and leaves the answer in the run's summary
   and log — in the log between the lines `--- answer of <id> ---` and `--- end of the answer of <id> ---` —, where the
   prompt bar reads it. An endpoint the run cannot reach ends it `failed`, its summary naming the
-  reason that MOD-endpoint-calls' `diagnoseEndpoint` gives and the routes that would work — a self-hosted runner, or a
-  Bridge (UC-049 4d).
+  reason that MOD-endpoint-calls' `diagnoseEndpoint` gives — the diagnosis its `EndpointFailed` carries — and the routes
+  that would work — a self-hosted runner, or a Bridge (UC-049 4d).
 - `chooseAgentKey(env: CiEnvironment) -> Promise<EntryStatus>` — before the agent's machine starts, on a machine that
   holds no secret: which agent's job of the route runs, given on GitHub as the step's output `agent`, on GitLab as the line
   `AGENT_M_AGENT=<n>` of the job's dotenv report — the place, from
@@ -328,8 +344,8 @@ entry with `failed` and the server's or participant's message, and a job it had 
 
 ## Files
 
-In a product: reads the snapshot of the checkout — `docs/participants.md` and `SPEC.md`, whose requirements are the
-process requirements, through the instance's checkout, the product's
+In a product: reads the snapshot of the checkout — `docs/participants.md`, the register of sources and `SPEC.md`, whose
+requirements are the process requirements, through the instance's checkout, the product's
 `docs/process.md`, its plan or backlog, `docs/jobs/` and `docs/gates/` —, writes job and gate records and the results of
 jobs through Access's local clone — on the agent's machine into the result's own repository, which the writing
 machine pushes —; reads pull requests and closes issues through the server's API, since the local clone
@@ -353,12 +369,15 @@ sections with their decisions and the fetched texts of sources. Reads secrets on
 - `MOD-test-document.TestDeclaration`, `testDeclarations` — the declarations of the product's tests, to which a report's
   outcomes are matched.
 - `MOD-endpoint-calls.endpointDriver`, `MOD-agent-processes.agentDriver` — the drivers of CI participants;
-  `MOD-endpoint-calls.diagnoseEndpoint` — why a handed-over run could not reach its endpoint;
-  `MOD-endpoint-calls.testEndpoint` — after a handed-over run's agent failed working with an endpoint, one short request to
-  that endpoint, whose diagnosis names the reason where the endpoint is the cause.
+  `MOD-endpoint-calls.diagnoseEndpoint` — why a handed-over run could not reach its endpoint.
+- `MOD-checkout-tools.checkoutStrategies`, `MOD-checkout-tools.checkoutPrompt` — the tools and the system prompt of a
+  model endpoint that works in the job's checkout, on the agent's machine.
 - `MOD-job-runner.JobContext`, `registerStrategies`, `prepareJob`, `runJob`, `MOD-job-catalogue.kindOf` — running a job of
   any kind from its record, unattended; `MOD-job-runner.handOverParams` — the parameters of a hand-over run in the same
-  job.
+  job; `MOD-job-runner.withheld` — whether a restricted source's content in the checkout refuses `bash`;
+  `MOD-job-catalogue.toolsOf` — the capabilities a kind's tools need, for a participant built from `declares`.
+- `MOD-source-register.sourceSchemas`, `registerPaths`, `restrictedPlaces` — the places of the restricted sources a job's
+  context carries.
 - `MOD-job-ledger.JobRecord`, `RecordPart`, `newJobId`, `startRecord`, `takeJob`, `appendToRecord`, `jobState` — the
   records of the jobs it takes, their parameters, and their ends with a draft handed back.
 - `MOD-runtimes.queueJob` — queueing the actions of other routes.

@@ -22,6 +22,15 @@ gate_points:
 review: none
 writer: branch-and-pull-request
 limit: 5
+tools:
+  - read
+  - write
+  - edit
+  - bash
+  - grep
+  - glob
+  - webfetch
+tool_limit: 200
 ---
 ## Purpose
 

@@ -23,6 +23,15 @@ gate_points:
 review: person
 writer: return-draft
 limit: 5
+tools:
+  - read
+  - write
+  - edit
+  - bash
+  - grep
+  - glob
+  - webfetch
+tool_limit: 200
 ---
 ## Purpose
 

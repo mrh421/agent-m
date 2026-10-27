@@ -151,8 +151,6 @@ jobs:
       - run: |
           git config --global user.name "${{ github.actor }}"
           git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
-      - if: github.event_name == 'workflow_dispatch' && inputs.endpoint != ''
-        run: npm install --global opencode-ai@1.19.0
       - if: github.event_name == 'push'
         working-directory: instance
         run: node src/workflow-entries/main.mjs onRecordsChanged

@@ -72,9 +72,9 @@ never an argument: it is written to the agent's standard input, so no size of a 
   "openai-compatible" | "anthropic", baseUrl: string, model: string } | null }, participant: Participant) -> Driver` — a
   driver whose `send` starts the agent in the working folder and writes `driverPrompt(input)`, its task, to the agent's
   standard input — where `endpoint` is
-  given, made to work with that endpoint as the register's Endpoint column says, its key from `keyVariable`, for the work
-  a conversation with a model endpoint hands to CI (UC-049 4a); an agent whose Endpoint is `—` refuses it with
-  `EndpointUnsupported`, before it starts —, streams its output
+  given, made to work with that endpoint as the register's Endpoint column says, its key from `keyVariable` — CI does not
+  run a model endpoint's work this way: it runs it in Agent M's own loop (MOD-workflow-entries) —; an agent whose
+  Endpoint is `—` refuses it with `EndpointUnsupported`, before it starts —, streams its output
   through `onOutput`, and returns its final answer and the usage it reported, or `null` usage. For a job that works in the
   folder — implementing, fixing, generating tests —, the agent commits, pushes and opens its pull request itself with the
   git credentials of its machine — the computer's own login on a Bridge, the person's token from a CI secret in CI

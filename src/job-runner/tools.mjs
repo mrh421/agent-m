@@ -13,7 +13,7 @@
 
 import { kindOf, toolsOf } from "../job-catalogue/index.mjs";
 import { misfit } from "./loop.mjs";
-import { strategyOf } from "./registry.mjs";
+import { registered, strategyOf } from "./registry.mjs";
 
 const refusal = (why) => `refused: ${why}`;
 // The most files one search-files call reads.
@@ -22,15 +22,15 @@ const SEARCH_LIMIT = 200;
 /**
  * offerTools(kind, drafter, context) -> Promise<{ use: ToolUse, held } | null> — the ToolUse of one exchange with the drafter, and what the
  * exchange holds. A drafter whose type is `model endpoint` and that declares `use tools`, for a kind that names tools, is offered the kind's
- * tools in its order, less every tool whose capability it does not declare and every tool the job's parameter `refuses` names; any other
- * drafter gets null. `limit` is the kind's `toolLimit`. `call` checks a call's arguments against the tool's schema with the runner's own
+ * tools in its order, less every tool whose capability it does not declare, every tool no program registered — the browser registers none of
+ * MOD-checkout-tools' — and every tool the job's parameter `refuses` names; any other drafter gets null. `limit` is the kind's `toolLimit`. `call` checks a call's arguments against the tool's schema with the runner's own
  * `misfit`, and answers a tool not offered, or arguments the schema refuses, with a refusal.
  */
 export async function offerTools(kind, drafter, context) {
   const named = kind.tools ?? [];
   if (!drafter || drafter.type !== "model endpoint" || !drafter.capabilities.includes("use tools") || named.length === 0) return null;
   const refuses = Array.isArray(context.params.refuses) ? context.params.refuses : [];
-  const definitions = (await toolsOf(named)).filter((tool) => drafter.capabilities.includes(tool.needs) && !refuses.includes(tool.name));
+  const definitions = (await toolsOf(named)).filter((tool) => drafter.capabilities.includes(tool.needs) && registered("tools", tool.name) && !refuses.includes(tool.name));
   const held = { edits: new Map(), handOver: null };
   const here = { ...context, exchange: { drafter, held } };
   const call = async (name, args) => {

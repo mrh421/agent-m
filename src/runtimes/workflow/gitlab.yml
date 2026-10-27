@@ -155,7 +155,6 @@ spec:
     # The committer of what the job commits in its checkouts is the person who started the pipeline.
     - git config --global user.name "$GITLAB_USER_NAME"
     - git config --global user.email "$GITLAB_USER_EMAIL"
-    - if [ -n "$AGENT_M_INPUT_ENDPOINT" ]; then npm install --global opencode-ai@1.19.0; fi
     - git clone "https://github.com/$AGENT_M_INSTANCE.git" ../instance
     - git -C ../instance checkout "$AGENT_M_COMMIT"
     - cd ../instance

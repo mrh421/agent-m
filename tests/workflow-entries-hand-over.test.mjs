@@ -1,22 +1,22 @@
 // MOD-workflow-entries' entries onDispatch and onRecordsChanged for a job whose task travels with a conversation's hand-over (ITM-498), as the accepted text
 // of docs/architecture/MOD-workflow-entries.md states them: "onRecordsChanged … takes each queued job whose route is this CI service, except one whose task
 // travels with its hand-over, which `onDispatch` takes"; "onDispatch … On a run a hand-over started (UC-049 4a), whose input `job` names a queued record
-// whose task travels with the hand-over: takes that job and runs it with the input `task` as its instruction — for a model endpoint, with opencode working
-// with the endpoint the input `endpoint` names and the key from the CI secret the input `secret` names (MOD-agent-processes) —; it writes the task to no file, and a branch
-// whose commit messages or pull request text hold the task's words is refused by name, the job then ending failed with nothing merged; it appends the job's
-// end with its commits, files and pull request, and leaves the participant's answer in the run's summary and log … An endpoint the run cannot reach ends it
-// `failed`, its summary naming the reason that MOD-endpoint-calls' `diagnoseEndpoint` gives and the routes that would work — a self-hosted runner, or a
-// Bridge (UC-049 4d)." For UC-049 4a, 4d.
+// whose task travels with the hand-over: takes that job and runs it with the input `task` as its instruction — for a model endpoint, the endpoint the input
+// `endpoint` names, with the key from the CI secret the input `secret` names, called by Agent M's own job runner through MOD-endpoint-calls' `endpointDriver` —; it
+// writes the task to no file, and a branch whose commit messages or pull request text hold the task's words is refused by name, the job then ending failed with
+// nothing merged; it appends the job's end with its commits, files and pull request, and leaves the participant's answer in the run's summary and log … An endpoint
+// the run cannot reach ends it `failed`, its summary naming the reason that MOD-endpoint-calls' `diagnoseEndpoint` gives and the routes that would work — a
+// self-hosted runner, or a Bridge (UC-049 4d)." For UC-049 4a, 4d.
 // Run: node --test tests/workflow-entries-hand-over.test.mjs
 //
 // Module: MOD-workflow-entries
 // Guards: UC-049; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET; A HOSTED JOB WRITES WITH THE PERSON'S TOKEN FROM A CI SECRET; AN UNSUPPORTED ENDPOINT SAYS SO
 // Level: component
 //
-// Deterministic, no network, no real agent: the product and the instance are temporary git repositories laid out as the job workflow lays them out (the
-// fixture of tests/workflow-entries-job-workflow.test.mjs is the model, as is the agent fixture of tests/bridge-job-task-492.test.mjs): an executable named
-// opencode on the PATH answers a fixed draft and appends the arguments and the OPENCODE_CONFIG_CONTENT it was started with to a file outside the repositories.
-// The GitHub API, which the entry reaches for a pull request's facts, is a fake `fetch`. The kind is decide-gate, whose recipe `gate-inputs` and writer
+// Deterministic, no network, no real agent and no real model: the product and the instance are temporary git repositories laid out as the job workflow lays them
+// out (the fixture of tests/workflow-entries-job-workflow.test.mjs is the model): the model endpoint is a spy on `fetch` that answers, for the endpoint's address,
+// as the case asks — a fixed draft, a refusal, or a connection that fails — and records every request; the waits between the retries of a failed request are
+// shortened to nothing. The GitHub API, which the entry reaches for a pull request's facts, is a fake answering every other address. The kind is decide-gate, whose recipe `gate-inputs` and writer
 // `gate-record` this file registers: the recipe puts the job's instruction into the prompt, the writer commits the gate's record, and where the case asks for it
 // pushes a branch of its own with the commit message the case plants. Where the module file leaves a reading open, the test states the one it takes, and the
 // pull request names it:
@@ -45,7 +45,6 @@ const entries = await import("../src/workflow-entries/main.mjs").catch((error) =
 const { runEntry } = entries;
 const REAL_GIT = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim();
 const REAL_SLEEP = spawnSync("sh", ["-c", "command -v sleep"], { encoding: "utf8" }).stdout.trim();
-const REAL_CAT = spawnSync("sh", ["-c", "command -v cat"], { encoding: "utf8" }).stdout.trim();
 
 // ---------------------------------------------------------------- the fixtures
 
@@ -149,12 +148,14 @@ registerStrategies("tests/workflow-entries-hand-over.test.mjs", {
   } },
 });
 
-// The fake GitHub API: the pull request 7 of the product as `pushed` describes it, with no checks, files or reviews.
+// The fake GitHub API: the pull request 7 of the product as `pushed` describes it, with no checks, files or reviews. It answers every request the world's spy does
+// not send to the model endpoint.
+let github = null;
 function fakeGitHub(world = null) {
   const requests = [];
   requests.histories = [];
   const json = (value) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
-  globalThis.fetch = async (address) => {
+  github = async (address) => {
     const url = new URL(String(address));
     const path = url.pathname.replace("/repos/alice/thesis-tool", "");
     requests.push(path);
@@ -192,24 +193,15 @@ function fakeEndpoint() {
   return requests;
 }
 
-// The computer of the workflow: the PATH holds git, sleep and the fixture agent opencode, which answers `agent`: "ok" (the fixed draft) or "unreachable"
-// (it says on its error output what it was started with and that it could not connect, and ends with 1). `records` are the queued records of the product.
-async function world({ records = [], agent = "ok", probe = refuse, baseMessage = null }, run) {
+// The computer of the workflow: the PATH holds git and sleep, and no coding agent. The model endpoint at ENDPOINT.baseUrl is the spy's `endpoint`, which answers the
+// fixed draft (`works`), refuses, or fails as the case asks; every other address goes to the fake GitHub API where a case set it up, and is refused otherwise.
+// `records` are the queued records of the product.
+async function world({ records = [], endpoint = works, baseMessage = null }, run) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-m-ITM-498-")));
-  const workspace = join(root, "ws"), bin = join(root, "bin"), calls = join(root, "calls"), summary = join(root, "summary.md");
+  const workspace = join(root, "ws"), bin = join(root, "bin"), summary = join(root, "summary.md");
   mkdirSync(bin);
-  writeFileSync(calls, "");
   script(bin, "git", `exec ${REAL_GIT} "$@"`);
   script(bin, "sleep", `exec ${REAL_SLEEP} "$@"`);
-  const event = JSON.stringify({ type: "text", part: { text: JSON.stringify({ draft: { decision: "passed", reason: ANSWER }, answers: [] }) } });
-  script(bin, "opencode", `case "$1" in --version) echo 1.4.0;; auth) echo '1 credentials';;
-run) printf 'RUN %s\\n' "$*" >> ${calls}
-${REAL_CAT} >> ${calls}; printf '\\n' >> ${calls}
-printf 'CONFIG %s\\n' "$OPENCODE_CONFIG_CONTENT" >> ${calls}
-${agent === "ok" ? `printf '%s\\n' '${event}' '{"type":"step_finish","part":{"tokens":{"input":11,"output":7}}}'`
-  : agent === "quoting" ? `printf 'agent started with: %s\\nagent stopped: internal error 17 while asking: %s\\n' "$*" '${TASK}' >&2; exit 1`
-  : agent === "failed" ? `printf 'agent started with: %s\\nagent stopped: internal error 17\\n' "$*" >&2; exit 1`
-  : `printf 'agent started with: %s\\nfetch failed: connect ECONNREFUSED 10.0.0.5:8080 while asking: %s\\n' "$*" '${TASK}' >&2; exit 1`};; esac`);
   const instance = repository(root, "instance", { "README.md": "# Instance\n", "docs/participants.md": PARTICIPANTS }, join(workspace, "instance"));
   const agentM = { version: "2026.10.0", commit: git(join(workspace, "instance"), "rev-parse", "HEAD") };
   const files = Object.fromEntries(records.map((start) => { const { path, text: body } = startRecord(jobStart(start.id, { ...start, agentM })); return [path, body]; }));
@@ -222,18 +214,26 @@ ${agent === "ok" ? `printf '%s\\n' '${event}' '{"type":"step_finish","part":{"to
   const head = git(productDir, "rev-parse", "HEAD");
   plan = { pullRequest: false, plant: null, dir: productDir };
   pushed = null;
+  github = null;
   const lines = [];
   const writers = [process.stdout, process.stderr].map((stream) => [stream, stream.write]);
   for (const [stream, write] of writers) stream.write = (chunk, ...rest) => { lines.push(String(chunk)); return write.call(stream, chunk, ...rest); };
-  const saved = { PATH: process.env.PATH, CI: process.env.CI, FIXTURE_KEY: process.env.FIXTURE_KEY, fetch: globalThis.fetch };
+  const saved = { PATH: process.env.PATH, CI: process.env.CI, FIXTURE_KEY: process.env.FIXTURE_KEY, fetch: globalThis.fetch, setTimeout: globalThis.setTimeout };
   Object.assign(process.env, { PATH: bin, CI: "true", FIXTURE_KEY: KEY });
+  // A failed request of the endpoint is sent again after seconds (MOD-endpoint-calls' retries); here every wait of a second or more is made at once.
+  globalThis.setTimeout = (callback, ms, ...rest) => saved.setTimeout(callback, ms >= 1000 ? 0 : ms, ...rest);
   const dir = ["--git-dir", product];
-  // Every request the entry makes reaches this spy and nothing else: `probe` answers or refuses it, and no request leaves the machine.
+  // Every request the entry makes reaches this spy and nothing else: a request to the endpoint's address is recorded and answered by `endpoint`, any other by the fake
+  // GitHub API or refused, and no request leaves the machine.
   const probes = [];
   globalThis.fetch = async (address, init = {}) => {
+    if (!String(address).startsWith(ENDPOINT.baseUrl)) {
+      if (github) return github(address, init);
+      throw new TypeError(`uncontrolled request: ${address}`);
+    }
     const request = { address: String(address), headers: init.headers ?? {}, body: String(init.body ?? ""), answered: null };
     probes.push(request);
-    return probe(request);
+    return endpoint(request);
   };
   try {
     return await run({ root, head, productDir, product, instance, summary, probes, lines: () => lines.join("\n"), agentM,
@@ -244,8 +244,9 @@ ${agent === "ok" ? `printf '%s\\n' '${event}' '{"type":"step_finish","part":{"to
       // Everything the product's repository holds anywhere: every commit message, and every file at every commit of every branch.
       everything: () => git(root, ...dir, "rev-list", "--all").split("\n").filter(Boolean).map((commit) => [git(root, ...dir, "log", "-1", "--format=%B", commit),
         ...git(root, ...dir, "ls-tree", "-r", "--name-only", commit).split("\n").filter(Boolean).map((file) => git(root, ...dir, "show", `${commit}:${file}`))].join("\n")).join("\n"),
-      starts: () => readFileSync(calls, "utf8").split(/^RUN /m).filter(Boolean),
-      calls: () => readFileSync(calls, "utf8"),
+      // The requests that reached the model endpoint, and all of them as one text: what the endpoint was sent.
+      starts: () => probes,
+      calls: () => probes.map((request) => `${request.address}\n${JSON.stringify(request.headers)}\n${request.body}`).join("\n"),
       dispatch: (inputs, env = {}) => {
         const payload = join(root, "event.json");
         writeFileSync(payload, JSON.stringify({ inputs }));
@@ -262,13 +263,18 @@ ${agent === "ok" ? `printf '%s\\n' '${event}' '{"type":"step_finish","part":{"to
     for (const [stream, write] of writers) stream.write = write;
     for (const name of ["PATH", "CI", "FIXTURE_KEY"]) { if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name]; }
     globalThis.fetch = saved.fetch;
+    globalThis.setTimeout = saved.setTimeout;
+    github = null;
     rmSync(root, { recursive: true, force: true });
   }
 }
-// The default answer of the spy: the connection is refused, as the endpoint of TST-498006 refuses it.
-const refuse = () => { throw new TypeError("fetch failed: connect ECONNREFUSED 10.0.0.5:8080"); };
 // An answer of the spy: the status and JSON body of a model endpoint, recorded with the request.
 const answer = (status, body) => (request) => { request.answered = JSON.stringify(body); return new Response(request.answered, { status, headers: { "content-type": "application/json" } }); };
+// The default answer of the endpoint: the fixed draft, whose reason is the answer the run leaves in its summary and log.
+const works = answer(200, { choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ draft: { decision: "passed", reason: ANSWER }, answers: [] }) } }],
+  usage: { prompt_tokens: 11, completion_tokens: 7 } });
+// An endpoint that refuses the connection, as the endpoint of TST-498006 does.
+const refuse = () => { throw new TypeError("fetch failed: connect ECONNREFUSED 10.0.0.5:8080"); };
 const HAND_OVER = { id: JOB };
 const INPUTS = { job: JOB, task: TASK, endpoint: JSON.stringify(ENDPOINT), secret: "FIXTURE_KEY" };
 const holdsTask = (haystack) => haystack.includes("zebra-498");
@@ -277,20 +283,19 @@ const holdsTask = (haystack) => haystack.includes("zebra-498");
 
 // TST-498001 · level: component · module: MOD-workflow-entries
 // guards: UC-049; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
-// given: a product whose `main` holds a queued job of kind decide-gate for the model endpoint hand-bot, route `ci hosted`, whose record says task `with the hand-over` and holds no instruction; the instance's participants list hand-bot with the route `endpoint fixture secret FIXTURE_KEY`; the fixture agent opencode on the PATH; the job workflow's environment with the person's token, the key FIXTURE_KEY and a file for GITHUB_STEP_SUMMARY
+// given: a product whose `main` holds a queued job of kind decide-gate for the model endpoint hand-bot, route `ci hosted`, whose record says task `with the hand-over` and holds no instruction; the instance's participants list hand-bot with the route `endpoint fixture secret FIXTURE_KEY`; the fixture endpoint answers the fixed draft; no coding agent on the PATH; the job workflow's environment with the person's token, the key FIXTURE_KEY and a file for GITHUB_STEP_SUMMARY
 // input: onDispatch with the inputs job, task "Please widen the footer of the lending page to 960 pixels, token zebra-498" and endpoint the JSON text of { kind openai-compatible, baseUrl https://llm.example.test/v1, model fixture-llm }
-// expect: outcome `done`; opencode is started once, its prompt holds the token zebra-498 once, its OPENCODE_CONFIG_CONTENT holds the baseUrl and the model and names the key by {env:FIXTURE_KEY} and holds neither the key's value nor the token zebra-498; on main in order: the commit that takes the job, the writer's commit, the commit that ends it; the record's End says `state: done`, names the writer's commit and the file as results, holds no draft; every commit message and every file at every commit of the product holds no zebra-498 — while the agent's own record of what it was started with does, which shows that the search finds the token where it is; nothing the entry printed holds zebra-498; the file GITHUB_STEP_SUMMARY names holds the answer "The footer is widened, token otter-498", and so does the log
-test("TST-498001: a dispatched hand-over runs opencode with the task and the endpoint, and writes the task nowhere", async () => {
+// expect: outcome `done`; the endpoint is asked once, at https://llm.example.test/v1/chat/completions, for the model fixture-llm, with the key FIXTURE_KEY's value as its bearer, its body holding the token zebra-498 once; on main in order: the commit that takes the job, the writer's commit, the commit that ends it; the record's End says `state: done`, names the writer's commit and the file as results, holds no draft; every commit message and every file at every commit of the product holds no zebra-498 — while the request the endpoint was sent does, which shows that the search finds the token where it is; nothing the entry printed holds zebra-498; the file GITHUB_STEP_SUMMARY names holds the answer "The footer is widened, token otter-498", and so does the log
+test("TST-498001: a dispatched hand-over runs Agent M's own loop with the task and the endpoint, and writes the task nowhere", async () => {
   await world({ records: [HAND_OVER] }, async (w) => {
     const status = await w.dispatch(INPUTS);
     assert.equal(status.outcome, "done", status.summary);
-    assert.equal(w.starts().length, 1, "the agent was started once");
-    assert.equal(w.starts()[0].split("zebra-498").length - 1, 1, "its prompt holds the task once");
-    const config = JSON.parse(/^CONFIG (.*)$/m.exec(w.calls())[1]);
-    assert.equal(config.provider["agent-m"].options.baseURL, "https://llm.example.test/v1");
-    assert.equal(config.model, "agent-m/fixture-llm");
-    assert.equal(config.provider["agent-m"].options.apiKey, "{env:FIXTURE_KEY}");
-    assert.ok(!w.calls().includes(KEY), "the key's value is not given to the agent's configuration");
+    assert.equal(w.starts().length, 1, "the endpoint was asked once");
+    const [request] = w.starts();
+    assert.equal(request.address, "https://llm.example.test/v1/chat/completions");
+    assert.equal(JSON.parse(request.body).model, "fixture-llm");
+    assert.equal(request.headers.Authorization, `Bearer ${KEY}`, "the key of the named secret is the bearer");
+    assert.equal(request.body.split("zebra-498").length - 1, 1, "its prompt holds the task once");
     assert.deepEqual(w.subjects().slice(0, 3), [`end ${JOB}: done`, "gate fixture decided", `take ${JOB} (https://github.com/alice/thesis-tool/actions/runs/4711)`]);
     const record = w.originText(`docs/jobs/${JOB}.md`);
     const writerCommit = git(w.root, "--git-dir", w.product, "log", "-1", "--format=%H", "--grep=gate fixture decided", "main");
@@ -299,7 +304,7 @@ test("TST-498001: a dispatched hand-over runs opencode with the task and the end
     assert.ok(end.includes(writerCommit), "the writer's commit is a result");
     assert.ok(end.includes(GATE_PATH), "the file is a result");
     assert.doesNotMatch(end, /```json/, "no draft in the end");
-    assert.ok(holdsTask(w.calls()), "known positive: the search finds the task where the agent was started with it");
+    assert.ok(holdsTask(w.calls()), "known positive: the search finds the task where the endpoint was sent it");
     assert.equal(holdsTask(w.everything()), false, "no commit message and no file of the product holds the task");
     assert.equal(holdsTask(w.lines() + status.summary), false, "nothing the entry printed holds the task");
     assert.ok(readFileSync(w.summary, "utf8").includes(ANSWER), "the run's summary holds the answer");
@@ -312,7 +317,7 @@ test("TST-498001: a dispatched hand-over runs opencode with the task and the end
 // guards: UC-049; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON
 // given: as TST-498001; and the same dispatch for each of the inputs without task, with task "" and with task "   "
 // input: onDispatch for each
-// expect: outcome `failed` each time, the summary holds "the task travels with its hand-over, and this run was started without it"; the one commit on main is `end <job>: failed`, whose record End says `state: failed` and holds that reason; the job is not taken (no Taken part); opencode is never started; the endpoint input is not asked about
+// expect: outcome `failed` each time, the summary holds "the task travels with its hand-over, and this run was started without it"; the one commit on main is `end <job>: failed`, whose record End says `state: failed` and holds that reason; the job is not taken (no Taken part); the endpoint is never asked
 test("TST-498002: a hand-over dispatched without its task ends failed with the reason and writes only the end", async () => {
   for (const inputs of [{ job: JOB, endpoint: INPUTS.endpoint }, { ...INPUTS, task: "" }, { ...INPUTS, task: "   " }]) {
     await world({ records: [HAND_OVER] }, async (w) => {
@@ -324,7 +329,7 @@ test("TST-498002: a hand-over dispatched without its task ends failed with the r
       assert.match(record, /## End[^]*state: failed/);
       assert.ok(record.includes(NO_TASK));
       assert.doesNotMatch(record, /## Taken/);
-      assert.equal(w.starts().length, 0, "the agent was not started");
+      assert.equal(w.starts().length, 0, "the endpoint was not asked");
     });
   }
 });
@@ -333,7 +338,7 @@ test("TST-498002: a hand-over dispatched without its task ends failed with the r
 // guards: UC-049; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
 // given: as TST-498001, but the environment lacks the key FIXTURE_KEY; and, as the known positive, the same with the key
 // input: onDispatch with the task and the endpoint
-// expect: without the key outcome `not run`, the summary naming FIXTURE_KEY, main as it was and opencode never started; with it outcome `done`
+// expect: without the key outcome `not run`, the summary naming FIXTURE_KEY, main as it was and the endpoint never asked; with it outcome `done`
 test("TST-498003: a hand-over whose participant's key is missing is not run, naming the secret, with nothing written", async () => {
   await world({ records: [HAND_OVER] }, async (w) => {
     const status = await w.dispatch(INPUTS, { FIXTURE_KEY: undefined });
@@ -349,9 +354,9 @@ test("TST-498003: a hand-over whose participant's key is missing is not run, nam
 
 // TST-498004 · level: component · module: MOD-workflow-entries
 // guards: UC-049
-// given: a product whose `main` holds a queued job of the route `ci hosted` that says task `with the hand-over`, and another that says task `in parameters` and names its endpoint in its parameters, for the CI agent ci-bot; the fixture endpoint; the fixture agent opencode
+// given: a product whose `main` holds a queued job of the route `ci hosted` that says task `with the hand-over`, and another that says task `in parameters` and names its endpoint in its parameters, for the CI agent ci-bot; the fixture endpoint
 // input: onRecordsChanged
-// expect: outcome `done`; the job that says `in parameters` is taken and ends `state: done` (the known positive) after one request to the endpoint; the record of the hand-over job is exactly as queued; opencode is never started
+// expect: outcome `done`; the job that says `in parameters` is taken and ends `state: done` (the known positive) after one request to the endpoint — the only request, so that the hand-over job was not run —; the record of the hand-over job is exactly as queued
 test("TST-498004: onRecordsChanged leaves a job whose task travels with its hand-over queued", async () => {
   await world({ records: [HAND_OVER, { id: IN_RECORD, participant: "ci-bot", task: "in parameters", params: { endpoint: { name: "fixture", ...ENDPOINT } } }] }, async (w) => {
     const asked = fakeEndpoint();
@@ -361,7 +366,6 @@ test("TST-498004: onRecordsChanged leaves a job whose task travels with its hand
     assert.match(w.originText(`docs/jobs/${IN_RECORD}.md`), /## End[^]*state: done/);
     assert.equal(w.originText(`docs/jobs/${JOB}.md`), queued, "the hand-over job is left as it was queued");
     assert.equal(asked.length, 1, "the endpoint was asked once, for the job that says in parameters");
-    assert.equal(w.starts().length, 0, "opencode was not started");
   });
 });
 
@@ -404,11 +408,11 @@ test("TST-498005: a branch whose commit message or pull request text holds the t
 
 // TST-498006 · level: component · module: MOD-workflow-entries
 // guards: UC-049; AN UNSUPPORTED ENDPOINT SAYS SO; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON
-// given: as TST-498001, but the fixture agent says on its error output what it was started with — the prompt, which holds the task — and, as its last line, that it could not connect (ECONNREFUSED 10.0.0.5:8080) while asking the task, and ends with 1
+// given: as TST-498001, but every request to the endpoint fails with the connection error "fetch failed: connect ECONNREFUSED 10.0.0.5:8080"
 // input: onDispatch with the task and the endpoint
-// expect: outcome `failed`; the summary and the record's End hold the reason `not reachable` that diagnoseEndpoint gives for an error without status run in Node, and name "a self-hosted runner" and "a Bridge"; the record ends `state: failed`; no zebra-498 in the summary, the record, any commit or anything the entry printed; the agent's error output, which holds the task, is where the search finds it (the known positive: the fixture's calls file)
+// expect: outcome `failed`; the summary and the record's End hold the reason `not reachable` that diagnoseEndpoint gives for an error without status run in Node, and name "a self-hosted runner" and "a Bridge"; the record ends `state: failed`; no zebra-498 in the summary, the record, any commit or anything the entry printed; the requests sent to the endpoint, which hold the task, are where the search finds it (the known positive)
 test("TST-498006: an endpoint the run cannot reach ends it failed with the diagnosis and the routes that would work, without the task", async () => {
-  await world({ records: [HAND_OVER], agent: "unreachable" }, async (w) => {
+  await world({ records: [HAND_OVER], endpoint: refuse }, async (w) => {
     const status = await w.dispatch(INPUTS);
     assert.equal(status.outcome, "failed");
     const end = w.originText(`docs/jobs/${JOB}.md`).split(/^## End$/m)[1];
@@ -418,20 +422,20 @@ test("TST-498006: an endpoint the run cannot reach ends it failed with the diagn
       assert.match(said, /a Bridge/);
     }
     assert.match(end, /state: failed/);
-    assert.ok(holdsTask(w.calls()), "known positive: the agent was started with the task");
+    assert.ok(holdsTask(w.calls()), "known positive: the endpoint was sent the task");
     assert.equal(holdsTask(status.summary + w.lines() + w.everything()), false, "the task reaches no summary, record, commit or output");
   });
 });
 
-// ---------------------------------------------------------------- the agent failed: the endpoint is tested once (ITM-539)
+// ---------------------------------------------------------------- the endpoint's own failure is the reason (ITM-539)
 
 // TST-539001 · level: component · module: MOD-workflow-entries
 // guards: UC-049; AN UNSUPPORTED ENDPOINT SAYS SO
-// given: as TST-498006, but the fixture agent ends with 1 after the last line "agent stopped: internal error 17", which says nothing of the endpoint; the endpoint answers the request of testEndpoint with 401 and the message "Invalid API key."
+// given: as TST-498001, but the endpoint answers the job's request with 401 and the message "Invalid API key."
 // input: onDispatch with the task and the endpoint
-// expect: outcome `failed`; the summary and the record's End hold the reason `key refused` and the message "Invalid API key.", do not hold `not reachable`, and name "a self-hosted runner" and "a Bridge"; exactly one request reached the endpoint, at https://llm.example.test/v1, carrying the key FIXTURE_KEY's value and the model fixture-llm, and neither the task nor the agent's last line; the record ends `state: failed`; no zebra-498 in the summary, the record, any commit or anything the entry printed (known positive: the agent was started with the task)
+// expect: outcome `failed`; the summary and the record's End hold the reason `key refused` and the message "Invalid API key.", do not hold `not reachable`, and name "a self-hosted runner" and "a Bridge"; exactly one request reached the endpoint — a refused key is not asked again, and no test request follows —, at https://llm.example.test/v1, carrying the key FIXTURE_KEY's value and the model fixture-llm; the record ends `state: failed`; no zebra-498 in the summary, the record, any commit or anything the entry printed (known positive: the request holds the task)
 test("TST-539001: a refused key is named as refused, not as unreachable", async () => {
-  await world({ records: [HAND_OVER], agent: "failed", probe: answer(401, { error: { message: "Invalid API key." } }) }, async (w) => {
+  await world({ records: [HAND_OVER], endpoint: answer(401, { error: { message: "Invalid API key." } }) }, async (w) => {
     const status = await w.dispatch(INPUTS);
     assert.equal(status.outcome, "failed");
     const end = w.originText(`docs/jobs/${JOB}.md`).split(/^## End$/m)[1];
@@ -447,9 +451,7 @@ test("TST-539001: a refused key is named as refused, not as unreachable", async 
     assert.ok(w.probes[0].address.startsWith("https://llm.example.test/v1"), w.probes[0].address);
     assert.ok(JSON.stringify(w.probes[0].headers).includes(KEY), "the request carries the key");
     assert.ok(w.probes[0].body.includes("fixture-llm"), "the request names the model");
-    assert.equal(holdsTask(w.probes[0].body + JSON.stringify(w.probes[0].headers)), false, "the request holds no task");
-    assert.equal(w.probes[0].body.includes("agent stopped"), false, "the request holds nothing of the agent's output");
-    assert.ok(holdsTask(w.calls()), "known positive: the agent was started with the task");
+    assert.ok(holdsTask(w.calls()), "known positive: the endpoint was sent the task");
     assert.equal(holdsTask(status.summary + w.lines() + w.everything()), false, "the task reaches no summary, record, commit or output");
   });
 });
@@ -460,7 +462,7 @@ test("TST-539001: a refused key is named as refused, not as unreachable", async 
 // input: onDispatch with the task and the endpoint
 // expect: outcome `failed`; the summary and the record's End hold the reason `model unknown` and "The model fixture-llm does not exist", not `not reachable`, and "[the task]" where the endpoint repeated the task; one request reached the endpoint; no zebra-498 in the summary, the record, any commit or anything the entry printed (known positive: the endpoint's answer, as the spy recorded it, holds the task)
 test("TST-539002: an unknown model is named as unknown, and the task an endpoint repeats is hidden", async () => {
-  await world({ records: [HAND_OVER], agent: "failed", probe: answer(404, { error: { message: `The model fixture-llm does not exist (asked: ${TASK})` } }) }, async (w) => {
+  await world({ records: [HAND_OVER], endpoint: answer(404, { error: { message: `The model fixture-llm does not exist (asked: ${TASK})` } }) }, async (w) => {
     const status = await w.dispatch(INPUTS);
     assert.equal(status.outcome, "failed");
     const end = w.originText(`docs/jobs/${JOB}.md`).split(/^## End$/m)[1];
@@ -478,11 +480,11 @@ test("TST-539002: an unknown model is named as unknown, and the task an endpoint
 
 // TST-539003 · level: component · module: MOD-workflow-entries
 // guards: UC-049; AN UNSUPPORTED ENDPOINT SAYS SO
-// given: as TST-539001, but the request of testEndpoint is refused by a connection error with the message "connect ECONNREFUSED 10.0.0.9:9", which the agent's output does not hold
+// given: as TST-539001, but every request to the endpoint is refused by a connection error with the message "connect ECONNREFUSED 10.0.0.9:9"
 // input: onDispatch with the task and the endpoint
-// expect: outcome `failed`; the summary and the record's End hold the reason `not reachable` and the message "connect ECONNREFUSED 10.0.0.9:9", and name "a self-hosted runner" and "a Bridge"; one request reached the endpoint; the record ends `state: failed`
-test("TST-539003: an endpoint nothing answers is named as not reachable in the words of the test request", async () => {
-  await world({ records: [HAND_OVER], agent: "failed", probe: () => { throw new TypeError("connect ECONNREFUSED 10.0.0.9:9"); } }, async (w) => {
+// expect: outcome `failed`; the summary and the record's End hold the reason `not reachable` and the message "connect ECONNREFUSED 10.0.0.9:9", and name "a self-hosted runner" and "a Bridge"; six requests reached the endpoint — the job's request and the five retries a network error is given (MOD-endpoint-calls) —; the record ends `state: failed`
+test("TST-539003: an endpoint nothing answers is named as not reachable in the words of the failed request", async () => {
+  await world({ records: [HAND_OVER], endpoint: () => { throw new TypeError("connect ECONNREFUSED 10.0.0.9:9"); } }, async (w) => {
     const status = await w.dispatch(INPUTS);
     assert.equal(status.outcome, "failed");
     const end = w.originText(`docs/jobs/${JOB}.md`).split(/^## End$/m)[1];
@@ -493,42 +495,20 @@ test("TST-539003: an endpoint nothing answers is named as not reachable in the w
       assert.match(said, /a Bridge/);
     }
     assert.match(end, /state: failed/);
-    assert.equal(w.probes.length, 1, "the endpoint was asked once");
-  });
-});
-
-// TST-539004 · level: component · module: MOD-workflow-entries
-// guards: UC-049; AN UNSUPPORTED ENDPOINT SAYS SO
-// given: as TST-539001, but the fixture agent's last line is "agent stopped: internal error 17 while asking: <the task>" and it ends with 1; the endpoint answers the request of testEndpoint as a working OpenAI-compatible endpoint does, with a message "ok"
-// input: onDispatch with the task and the endpoint
-// expect: outcome `failed`; the summary and the record's End name the exit code 1 ("exit code 1") and the agent's last output with the task hidden ("agent stopped: internal error 17 while asking: [the task]"), and hold none of: `not reachable`, `key refused`, `model unknown`, "self-hosted runner", "Bridge", "routes"; the record ends `state: failed`; one request reached the endpoint; no zebra-498 in the summary, the record, any commit or anything the entry printed (known positive: the agent's own error output and its calls file hold the task)
-test("TST-539004: where the endpoint works, the failure is the agent's: its exit code and last output, no diagnosis, no routes", async () => {
-  await world({ records: [HAND_OVER], agent: "quoting", probe: answer(200, { choices: [{ message: { content: "ok" } }] }) }, async (w) => {
-    const status = await w.dispatch(INPUTS);
-    assert.equal(status.outcome, "failed");
-    const end = w.originText(`docs/jobs/${JOB}.md`).split(/^## End$/m)[1];
-    for (const said of [status.summary, end]) {
-      assert.match(said, /exit code 1/);
-      assert.ok(said.includes("agent stopped: internal error 17 while asking: [the task]"), said);
-      assert.doesNotMatch(said, /not reachable|key refused|model unknown|self-hosted runner|Bridge|routes/);
-    }
-    assert.match(end, /state: failed/);
-    assert.equal(w.probes.length, 1, "the endpoint was asked once");
-    assert.ok(holdsTask(w.calls()), "known positive: the agent was started with the task");
-    assert.equal(holdsTask(status.summary + w.lines() + w.everything()), false, "the task reaches no summary, record, commit or output");
+    assert.equal(w.probes.length, 6, "the request and its five retries");
   });
 });
 
 // TST-539005 · level: component · module: MOD-workflow-entries
 // guards: UC-049
-// given: as TST-498001: the fixture agent succeeds; the endpoint would answer 401
+// given: as TST-498001: the endpoint answers the job's request with the fixed draft
 // input: onDispatch with the task and the endpoint
-// expect: outcome `done`; no request reached the endpoint (the entry asks the endpoint only after the agent failed)
-test("TST-539005: a hand-over run whose agent succeeds makes no request to the endpoint", async () => {
-  await world({ records: [HAND_OVER], probe: answer(401, { error: { message: "Invalid API key." } }) }, async (w) => {
+// expect: outcome `done`; exactly one request reached the endpoint: no test request follows a run that worked
+test("TST-539005: a hand-over run whose endpoint answers asks it once, and sends no test request", async () => {
+  await world({ records: [HAND_OVER] }, async (w) => {
     const status = await w.dispatch(INPUTS);
     assert.equal(status.outcome, "done", status.summary);
-    assert.equal(w.probes.length, 0);
+    assert.equal(w.probes.length, 1);
   });
 });
 
@@ -547,7 +527,7 @@ test("TST-538001: a task found only in the pull request description refuses the 
     plan = { pullRequest: true, plant: "body", dir: w.productDir };
     const status = await w.dispatch({ ...INPUTS, task: `  ${TASK}  ` });
     assert.ok(holdsTask(pushed.body), "known positive: the description holds the task");
-    assert.ok(holdsTask(w.calls()), "known positive: the agent received the task");
+    assert.ok(holdsTask(w.calls()), "known positive: the endpoint was sent the task");
     assert.equal(holdsTask(pushed.title + pushed.message), false, "neither the title nor commit message holds it");
     assert.ok(api.includes("/pulls/7"));
     assert.equal(status.outcome, "failed", status.summary);
@@ -579,7 +559,7 @@ test("TST-538002: a no-PR branch is refused for a task in a non-tip commit", asy
     const history = await historyOf(w, pushed.commit);
     assert.ok(history.find((row) => row.commit === pushed.taskCommit).message.includes(TASK), "known positive: public history holds the task in the earlier commit");
     assert.equal(holdsTask(history[0].message), false, "the tip is clean");
-    assert.ok(holdsTask(w.calls()), "the agent received the task");
+    assert.ok(holdsTask(w.calls()), "the endpoint was sent the task");
     assert.equal(status.outcome, "failed", "a task-bearing no-PR branch must fail");
     const end = w.originText(`docs/jobs/${JOB}.md`).split(/^## End$/m)[1];
     assert.match(end, /state: failed/);
@@ -626,7 +606,7 @@ test("TST-538003: a task on merged side history is new branch history too", asyn
 // guards: UC-049; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON
 // given: a clean no-PR branch; once with clean shared history and once with the task already present only in a shared base commit before the job runs
 // input: public onDispatch with the task and endpoint for each fixture
-// expect: done in both runs, done End listing the writer's tip with no pull request, task or secret; branch tip remains unmerged; the agent receives the task, and the shared-task variant's public branch/base histories positively contain the same task-bearing commit
+// expect: done in both runs, done End listing the writer's tip with no pull request, task or secret; branch tip remains unmerged; the endpoint is sent the task, and the shared-task variant's public branch/base histories positively contain the same task-bearing commit
 test("TST-538004: clean no-PR work succeeds and shared base task text is not new work", async () => {
   for (const baseMessage of [null, `earlier recorded work: ${TASK}`]) {
     await world({ records: [HAND_OVER], baseMessage }, async (w) => {
@@ -634,7 +614,7 @@ test("TST-538004: clean no-PR work succeeds and shared base task text is not new
       plan = { branchOnly: true, dir: w.productDir };
       const status = await w.dispatch(INPUTS);
       const branchHistory = await historyOf(w, pushed.commit), baseHistory = await historyOf(w, pushed.base);
-      assert.ok(holdsTask(w.calls()), "known positive: the agent receives the task");
+      assert.ok(holdsTask(w.calls()), "known positive: the endpoint is sent the task");
       if (baseMessage !== null) {
         const shared = branchHistory.find((row) => row.message.includes(TASK));
         assert.ok(shared, "known positive: branch history contains the old task message");
@@ -690,7 +670,7 @@ test("TST-538006: a branch or base history failure ends the hand-over failed and
       assert.ok((await historyOf(w, w.head)).some((row) => row.commit === w.head), "known positive: this public history API reads the existing fixture commit");
       plan = { branchOnly: true, failHistory, dir: w.productDir };
       const status = await w.dispatch(INPUTS);
-      assert.ok(holdsTask(w.calls()), "known positive: the agent received the task");
+      assert.ok(holdsTask(w.calls()), "known positive: the endpoint was sent the task");
       assert.equal(status.outcome, "failed", `${failHistory} history failure is not a clean branch`);
       const end = w.originText(`docs/jobs/${JOB}.md`).split(/^## End$/m)[1];
       assert.match(end, /state: failed/);
@@ -735,20 +715,19 @@ const ASKS_FOR_INPUT_KEY = { ...INPUTS, secret: "INPUT_KEY" };
 
 // TST-1189001 · level: component · module: MOD-workflow-entries
 // guards: UC-049; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
-// given: as TST-498001, whose participant's route names FIXTURE_KEY, but the workflow file names two keys, FIXTURE_KEY and INPUT_KEY, each with a value of its own, and the dispatch's input secret is INPUT_KEY; and a second run whose agent fails while the endpoint answers 401
+// given: as TST-498001, whose participant's route names FIXTURE_KEY, but the workflow file names two keys, FIXTURE_KEY and INPUT_KEY, each with a value of its own, and the dispatch's input secret is INPUT_KEY; and a second run whose endpoint answers 401
 // input: onDispatch with the task, the endpoint and the secret INPUT_KEY; and, for the second run, the same
-// expect: outcome `done`, opencode started once, its configuration names the key by {env:INPUT_KEY} and by no other variable, and holds neither value; no commit, file or output of the product holds the task or either value; in the second run the one request that reached the endpoint carries INPUT_KEY's value and not FIXTURE_KEY's
-test("TST-1189001: the agent's key is the one the input secret names, not the participant's", async () => {
+// expect: outcome `done`, the endpoint asked once with INPUT_KEY's value as its bearer, and FIXTURE_KEY's value in no request; no commit or file of the product holds the task or either value; in the second run the one request that reached the endpoint carries INPUT_KEY's value and not FIXTURE_KEY's
+test("TST-1189001: the endpoint's key is the one the input secret names, not the participant's", async () => {
   await world({ records: [HAND_OVER] }, async (w) => {
     const status = await w.dispatch(ASKS_FOR_INPUT_KEY, BOTH);
     assert.equal(status.outcome, "done", status.summary);
     assert.equal(w.starts().length, 1);
-    const config = JSON.parse(/^CONFIG (.*)$/m.exec(w.calls())[1]);
-    assert.equal(config.provider["agent-m"].options.apiKey, "{env:INPUT_KEY}");
-    assert.ok(!w.calls().includes("{env:FIXTURE_KEY}") && !w.calls().includes(KEY) && !w.calls().includes(INPUT_KEY_VALUE), "the configuration names the variable and holds no value");
+    assert.equal(w.starts()[0].headers.Authorization, `Bearer ${INPUT_KEY_VALUE}`, "the key of the named secret is the bearer");
+    assert.equal(w.calls().includes(KEY), false, "the participant's key is in no request");
     assert.equal(holdsTask(w.everything()) || w.everything().includes(INPUT_KEY_VALUE) || w.everything().includes(KEY), false, "no commit or file holds the task or a key");
   });
-  await world({ records: [HAND_OVER], agent: "failed", probe: answer(401, { error: { message: "Invalid API key." } }) }, async (w) => {
+  await world({ records: [HAND_OVER], endpoint: answer(401, { error: { message: "Invalid API key." } }) }, async (w) => {
     const status = await w.dispatch(ASKS_FOR_INPUT_KEY, BOTH);
     assert.equal(status.outcome, "failed");
     assert.equal(w.probes.length, 1);
@@ -762,7 +741,7 @@ test("TST-1189001: the agent's key is the one the input secret names, not the pa
 // guards: UC-049; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
 // given: as TST-1189001, but the workflow file names INPUT_KEY and the repository holds no value for it (the variable is empty); and, as the known positive, the same with the value
 // input: onDispatch with the secret INPUT_KEY
-// expect: outcome `not run`; the summary names INPUT_KEY in the form `<SECRET> is missing`, so that "not run — " + the summary matches /not run — (\S+) is missing/ with INPUT_KEY; main is as it was, the job is not taken, opencode is never started; the summary does not say that the workflow names no such key; with the value outcome `done`
+// expect: outcome `not run`; the summary names INPUT_KEY in the form `<SECRET> is missing`, so that "not run — " + the summary matches /not run — (\S+) is missing/ with INPUT_KEY; main is as it was, the job is not taken, the endpoint is never asked; the summary does not say that the workflow names no such key; with the value outcome `done`
 test("TST-1189002: a named secret the repository lacks ends the run not run, naming it", async () => {
   await world({ records: [HAND_OVER] }, async (w) => {
     const status = await w.dispatch(ASKS_FOR_INPUT_KEY, { ...BOTH, INPUT_KEY: "" });
@@ -779,7 +758,7 @@ test("TST-1189002: a named secret the repository lacks ends the run not run, nam
 // guards: UC-049; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
 // given: as TST-1189001, but the workflow file names only FIXTURE_KEY (AGENT_M_KEY_NAMES), although a variable INPUT_KEY with a value is in the environment
 // input: onDispatch with the secret INPUT_KEY
-// expect: outcome `not run`; the summary names INPUT_KEY as missing in the form `<SECRET> is missing`, says that the job workflow names no such key and that it is installed again from Settings; main is as it was, opencode is never started, and the value of INPUT_KEY is in no output
+// expect: outcome `not run`; the summary names INPUT_KEY as missing in the form `<SECRET> is missing`, says that the job workflow names no such key and that it is installed again from Settings; main is as it was, the endpoint is never asked, and the value of INPUT_KEY is in no output
 test("TST-1189003: a name the workflow file does not name ends the run not run, and says to install the job workflow again from Settings", async () => {
   await world({ records: [HAND_OVER] }, async (w) => {
     const status = await w.dispatch(ASKS_FOR_INPUT_KEY, { INPUT_KEY: INPUT_KEY_VALUE });
@@ -797,7 +776,7 @@ test("TST-1189003: a name the workflow file does not name ends the run not run, 
 // guards: UC-049; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET; A HOSTED JOB WRITES WITH THE PERSON'S TOKEN FROM A CI SECRET
 // given: as TST-1189001, with the person's token AGENT_M_TOKEN and the participant's FIXTURE_KEY in the environment; and, as the known positive, the same with the secret INPUT_KEY
 // input: onDispatch with the secret AGENT_M_TOKEN; with the secret `constructor`; with the secret INPUT_KEY
-// expect: for the first two outcome `not run`, naming that name as missing, opencode never started, main as it was, and neither the token's value nor any other key's in the summary or output; for INPUT_KEY outcome `done`
+// expect: for the first two outcome `not run`, naming that name as missing, the endpoint never asked, main as it was, and neither the token's value nor any other key's in the summary or output; for INPUT_KEY outcome `done`
 test("TST-1189004: no other secret is read: the person's token and a name that is no key are not run", async () => {
   await world({ records: [HAND_OVER] }, async (w) => {
     for (const name of ["AGENT_M_TOKEN", "constructor"]) {
@@ -820,15 +799,16 @@ const DECLARED = { context: 100000, capabilities: ["draft text", "read the repos
 // guards: UC-049; THE PROMPT BAR'S ENDPOINTS AND CLI SESSIONS ARE BOUND AS PARTICIPANTS ARE; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
 // given: as TST-498001, but the queued job's participant is "nvidia", whom the instance's participants do not list, and its record declares the context 100000 and the capabilities draft text and read the repository (`declares`), its place in ## Destinations
 // input: onDispatch with the task, the endpoint and the secret FIXTURE_KEY
-// expect: outcome `done`; opencode is started once with the endpoint's address and model and the key named by {env:FIXTURE_KEY}; the log holds the answer between the lines `--- answer of <job> ---` and `--- end of the answer of <job> ---`
+// expect: outcome `done`; the endpoint is asked once, at its address, for its model, with FIXTURE_KEY's value as its bearer; the log holds the answer between the lines `--- answer of <job> ---` and `--- end of the answer of <job> ---`
 test("TST-1192001: a hand-over of an endpoint the instance does not list runs as the participant its record declares", async () => {
   await world({ records: [{ ...HAND_OVER, participant: "nvidia", declares: DECLARED }] }, async (w) => {
     const status = await w.dispatch(INPUTS);
     assert.equal(status.outcome, "done", status.summary);
-    assert.equal(w.starts().length, 1, "the agent was started once");
-    const config = JSON.parse(/^CONFIG (.*)$/m.exec(w.calls())[1]);
-    assert.equal(config.provider["agent-m"].options.baseURL, "https://llm.example.test/v1");
-    assert.equal(config.provider["agent-m"].options.apiKey, "{env:FIXTURE_KEY}");
+    assert.equal(w.starts().length, 1, "the endpoint was asked once");
+    const [request] = w.starts();
+    assert.equal(request.address, "https://llm.example.test/v1/chat/completions");
+    assert.equal(JSON.parse(request.body).model, "fixture-llm");
+    assert.equal(request.headers.Authorization, `Bearer ${KEY}`);
     const log = w.lines();
     const from = log.indexOf(`--- answer of ${JOB} ---`), to = log.indexOf(`--- end of the answer of ${JOB} ---`);
     assert.ok(from !== -1 && to > from, "the answer stands between its two lines");
@@ -840,7 +820,7 @@ test("TST-1192001: a hand-over of an endpoint the instance does not list runs as
 // guards: UC-049; A JOB GOES ONLY TO A HOLDER OF ITS ROLE
 // given: as TST-1192001, but the record of the unlisted "nvidia" declares nothing — the form of a job handed to a participant of the instance's list —; and, as the known positive, TST-1192001's record
 // input: onDispatch with the task, the endpoint and the secret FIXTURE_KEY
-// expect: outcome `failed`, the summary says the instance does not list nvidia; opencode is never started and main is as it was
+// expect: outcome `failed`, the summary says the instance does not list nvidia; the endpoint is never asked and main is as it was
 test("TST-1192002: a hand-over to an unlisted participant whose record declares nothing still fails", async () => {
   await world({ records: [{ ...HAND_OVER, participant: "nvidia" }] }, async (w) => {
     const status = await w.dispatch(INPUTS);

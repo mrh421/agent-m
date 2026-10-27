@@ -10,10 +10,12 @@
 // writer at once. The entry keeps nothing between runs.
 
 import { appendToRecord, jobCost, jobState, newJobId, recordsNewestFirst, startRecord, takeJob } from "../job-ledger/index.mjs";
-import { kindOf } from "../job-catalogue/index.mjs";
-import { handOverParams, prepareJob, provenanceLines, runJob } from "../job-runner/index.mjs";
-import { endpointDriver, testEndpoint } from "../endpoint-calls/index.mjs";
+import { kindOf, toolsOf } from "../job-catalogue/index.mjs";
+import { handOverParams, prepareJob, provenanceLines, runJob, withheld } from "../job-runner/index.mjs";
+import { endpointDriver } from "../endpoint-calls/index.mjs";
 import { agentDriver, installedAgents } from "../agent-processes/index.mjs";
+import { checkoutPrompt } from "../checkout-tools/index.mjs";
+import { registerPaths, restrictedPlaces, sourceSchemas } from "../source-register/index.mjs";
 import { participantSchema, participantsOf } from "../participant-list/index.mjs";
 import { readDocument } from "../documents/index.mjs";
 import { productFacts } from "../progress-measures/index.mjs";
@@ -79,13 +81,6 @@ async function endRecord(host, path, part, trailers) {
 // How a job's end is written: on the agent's machine kept for the writing machine, which writes it once the result is written (result.mjs); elsewhere at once.
 const endOf = (composed) => (composed.result ? (path, part, trailers) => composed.result.end(path, part, trailers) : (path, part, trailers) => endRecord(composed.product.host, path, part, trailers));
 
-// The driver of a model endpoint a hand-over names: opencode working with that endpoint, its key the variable the participant's secret names (MOD-agent-processes).
-async function opencodeDriver(participant, endpoint, secretName, workdir) {
-  const agent = (await installedAgents()).find((each) => each.name === "opencode");
-  if (!agent?.installed) throw Object.assign(new Error("opencode is not installed on this runner."), { name: "AgentMissing" });
-  return agentDriver(agent, { workdir, keyVariable: secretName ?? null, endpoint }, participant);
-}
-
 // The endpoint a hand-over's input names: { kind, baseUrl, model } read from its JSON text.
 function endpointOf(text) {
   let read = null;
@@ -96,10 +91,29 @@ function endpointOf(text) {
   return { kind: read.kind, baseUrl: read.baseUrl, model: read.model };
 }
 
-// A kind that only reads and drafts text — its needs hold draft text and nothing but draft text and read the repository — runs through Agent M's own job runner
-// calling the endpoint (MOD-endpoint-calls' endpointDriver); any other through opencode (MOD-workflow-entries, onDispatch).
+// A kind that only reads and drafts text — its needs hold draft text and nothing but draft text and read the repository — works in no checkout; any other works in the
+// job's checkout of the product with the tools of MOD-checkout-tools (MOD-workflow-entries, onDispatch). Either runs through Agent M's own job runner calling the endpoint.
 const READS_AND_DRAFTS = new Set(["draft text", "read the repository"]);
 const readsAndDrafts = (kind) => kind.needs.includes("draft text") && kind.needs.every((need) => READS_AND_DRAFTS.has(need));
+
+// The places of the restricted sources (JobContext.places): MOD-source-register's restrictedPlaces over the entries of the instance's register, read from its checkout,
+// for the product's address. No mail reaches CI.
+async function placesOf(instanceSnapshot, address) {
+  const { entry } = sourceSchemas();
+  const paths = registerPaths(instanceSnapshot.paths);
+  await instanceSnapshot.readMany?.(paths);
+  const register = [];
+  for (const path of paths) register.push(readDocument(entry, path, (await instanceSnapshot.read(path)) ?? ""));
+  return { ...restrictedPlaces(register, address), mailbox: null };
+}
+
+// Why bash is withheld from a participant in a checkout: MOD-job-runner's refusal for the first path of a restricted source's content whose source does not allow the
+// participant's place — bash can read any file of the checkout —; null where every source allows it (RESTRICTED CONTENT GOES ONLY WHERE ITS SOURCE PERMITS).
+function bashWithheld(context, participant) {
+  const asked = { ...context, exchange: { drafter: participant } };
+  for (const { paths } of context.places.contents ?? []) for (const path of paths) { const why = withheld(asked, path); if (why) return why; }
+  return null;
+}
 
 // What a writer's outcome lists in the job's end: its commits, files and pull request, and its notes.
 const resultsOf = (outcome) => (outcome ? [...outcome.commits, ...outcome.files, ...(outcome.pullRequest ? [outcome.pullRequest] : []), ...outcome.notes.map((note) => `note: ${note}`)] : []);
@@ -190,25 +204,37 @@ async function runJobOf(env, composed, participants, row, handOver = null) {
     for (const secret of [env.job.personToken, ...Object.values(env.job.keys)].filter(Boolean)) said = said.split(secret).join("[secret]");
     return said;
   };
+  const instanceSnapshot = await instance.host.readSnapshot("HEAD");
   const context = { kind: null, params: handOver ? { ...(record.params ?? {}), instruction: handOver.task } : record.params ?? {}, product: { address: product.address, snapshot: await product.host.readSnapshot("HEAD"), host: product.host },
-    instance: { snapshot: await instance.host.readSnapshot("HEAD"), host: instance.host, checkout: instance.checkout },
-    connect: async (address) => product.host, participants, places: { sources: {}, mailbox: null }, gates: [], person: record.startedBy ?? null, now: env.now,
+    instance: { snapshot: instanceSnapshot, host: instance.host, checkout: instance.checkout },
+    connect: async (address) => product.host, participants, places: await placesOf(instanceSnapshot, product.address), gates: [], person: record.startedBy ?? null, now: env.now,
     agentM: record.agentM, jobId: record.id };
-  let ended = { state: "failed", results: [], draft: null, rounds: [], usage: null, reason: null }, outcome = null, endpoint = null;
+  let ended = { state: "failed", results: [], draft: null, rounds: [], usage: null, reason: null }, outcome = null, endpoint = null, notes = [];
   try {
     context.kind = await kindOf(record.kind);
     endpoint = handOver?.endpoint ? endpointOf(handOver.endpoint) : null;
-    // A model endpoint driven by Agent M's own tool loop works in no checkout: its input begins with AGENTS.md as text, not as a path in the
-    // instance's checkout, which only a coding agent can read (EVERY MODEL READS AGENT M'S AGENTS.MD FIRST).
-    const ownLoop = endpoint ? readsAndDrafts(context.kind) : Boolean((record.params ?? {}).endpoint);
-    if (ownLoop) context.instance = { ...context.instance, checkout: undefined };
+    // A model endpoint driven by Agent M's own tool loop gets AGENTS.md as text, not as a path in the instance's checkout, which only a coding agent
+    // reads (EVERY MODEL READS AGENT M'S AGENTS.MD FIRST).
+    if (endpoint || (record.params ?? {}).endpoint) context.instance = { ...context.instance, checkout: undefined };
+    // A hand-over's endpoint of a kind that changes code or runs tests works in the job's checkout of the product, with the tools of MOD-checkout-tools — bash
+    // refused where a restricted source's content there may not go to its place.
+    const inCheckout = Boolean(endpoint) && !readsAndDrafts(context.kind);
+    if (inCheckout) {
+      context.product = { ...context.product, checkout: job.productDir ?? instance.checkout };
+      const why = bashWithheld(context, participant);
+      if (why) {
+        context.params = { ...context.params, refuses: [...(Array.isArray(context.params.refuses) ? context.params.refuses : []), "bash"] };
+        notes.push(`bash is not offered: ${why}`);
+      }
+    }
     const prepared = await prepareJob(record.kind, context, { drafter: participant, reviewers: [], limit: record.limit });
     if (prepared.blocking.length > 0 || prepared.notFitting.length > 0) {
       throw Object.assign(new Error(prepared.blocking.map((found) => found.what).join("; ") || "the job does not fit its participant"), { name: "NotStartable" });
     }
+    const config = endpoint ? { name: "hand-over", ...endpoint, key: job.keys[secretName] ?? null } : null;
     const driver = !endpoint ? await driverOf(participant, record.params ?? {}, secretName, job.keys[secretName], instance.checkout)
-      : readsAndDrafts(context.kind) ? endpointDriver({ name: "hand-over", ...endpoint, key: job.keys[secretName] ?? null }, participant)
-        : await opencodeDriver(participant, endpoint, secretName, job.productDir ?? instance.checkout);
+      : inCheckout ? endpointDriver(config, participant, undefined, { system: await checkoutPrompt({ folder: context.product.checkout, now: env.now }) })
+        : endpointDriver(config, participant);
     const result = await runJob(prepared, { drafter: driver, reviewers: [] }, { attended: false, context });
     outcome = result.written;
     // What the participant handed on is run in the same run, and its results join the job's (UC-049 4f).
@@ -222,20 +248,14 @@ async function runJobOf(env, composed, participants, row, handOver = null) {
     const handedBack = context.kind.writer === "return-draft";
     const made = outcome ? [...outcome.commits, ...(handOver || outcome.pullRequest ? [...outcome.files, ...(outcome.pullRequest ? [outcome.pullRequest] : [])] : [])] : [];
     // A result is one item of the end's list, in which a comma separates items: a comma of a note or a reason becomes a semicolon.
-    const listed = [...made, ...[...(outcome?.notes ?? []).map((note) => `note: ${note}`), ...passed].map((line) => line.replaceAll(",", ";"))];
+    const listed = [...made, ...[...[...notes, ...(outcome?.notes ?? [])].map((note) => `note: ${note}`), ...passed].map((line) => line.replaceAll(",", ";"))];
     ended = { state: "done", results: listed.length > 0 ? listed : handedBack ? [] : ["no change"],
       draft: handOver ? null : handedBack ? (outcome?.shown ?? result.draft) : null, rounds: result.rounds, usage: usageOf(result.usage), reason: null,
       stoppedBecause: result.stoppedBecause, drafter: result.drafter };
   } catch (error) {
     let reason = error?.message ?? String(error);
-    if (endpoint && error?.name === "AgentFailed") {
-      const said = String(error.lastOutput ?? "").trim().split("\n").filter(Boolean).at(-1) ?? error.message;
-      // One short request to the endpoint, with the key the agent was given: where it fails, its diagnosis is the reason; where it works, the run reached it and the failure is the agent's.
-      const probe = await testEndpoint({ name: "hand-over", ...endpoint, key: job.keys[secretName] ?? null });
-      reason = probe.works ? `the agent failed (exit code ${error.exitCode}) working with the endpoint ${endpoint.baseUrl} (${endpoint.model}): ${said}`
-        : `the run failed against the endpoint ${endpoint.baseUrl} (${endpoint.model}): ${probe.diagnosis.reason} — ${probe.diagnosis.message}. The routes that would work: a self-hosted runner, or a Bridge.`;
-    } else if (endpoint && error?.name === "EndpointFailed" && error.diagnosis) {
-      // The job runner called the endpoint itself (a kind that only reads and drafts): its own diagnosis is the reason (UC-049 4d).
+    if (endpoint && error?.name === "EndpointFailed" && error.diagnosis) {
+      // The job runner called the endpoint itself: its own diagnosis is the reason (UC-049 4d).
       reason = `the run failed against the endpoint ${endpoint.baseUrl} (${endpoint.model}): ${error.diagnosis.reason} — ${error.diagnosis.message}. The routes that would work: a self-hosted runner, or a Bridge.`;
     }
     ended = { ...ended, reason: handOver ? hidden(reason) : reason };
@@ -417,7 +437,7 @@ async function runHandOver(env, composed, listed, row, inputs) {
   // A job that is a model endpoint's own, which the prompt bar offered from a browser's configuration (THE PROMPT BAR'S ENDPOINTS AND CLI SESSIONS ARE BOUND
   // AS PARTICIPANTS ARE): the instance does not list it, so it is the participant its record declares — its name, model, place (## Destinations), context and
   // capabilities (`declares`) — with the route of the endpoint the input names. Any other job goes only to a participant the instance lists.
-  const own = !listed.some((each) => each.name === record.participant) && inputs.endpoint && record.declares ? declaredParticipant(record, inputs) : null;
+  const own = !listed.some((each) => each.name === record.participant) && inputs.endpoint && record.declares ? await declaredParticipant(record, inputs) : null;
   const participants = own ? [...listed, own] : listed;
   const participant = participants.find((each) => each.name === record.participant);
   if (!participant) return failedStatus(`${record.id} names the participant ${record.participant}, whom the instance does not list.`);
@@ -441,11 +461,16 @@ async function runHandOver(env, composed, listed, row, inputs) {
   return runRows(env, composed, participants, [row], { task, endpoint: inputs.endpoint ?? null, secret });
 }
 
-// The participant a record declares for a model endpoint the instance does not list (MOD-job-ledger's `declares`).
-function declaredParticipant(record, inputs) {
+// The participant a record declares for a model endpoint the instance does not list (MOD-job-ledger's `declares`). For a kind that works in the checkout, it also
+// declares `use tools` and the capabilities its kind's tools need, since it works there with the tools of MOD-checkout-tools; a kind the catalogue lacks adds none, and
+// the job then fails by its name.
+async function declaredParticipant(record, inputs) {
   const secret = typeof inputs.secret === "string" && inputs.secret ? ` secret ${inputs.secret}` : "";
+  const declared = Array.isArray(record.declares.capabilities) ? record.declares.capabilities : [];
+  const kind = await kindOf(record.kind).catch(() => null);
+  const tooling = kind && !readsAndDrafts(kind) && kind.tools.length > 0 ? ["use tools", ...(await toolsOf(kind.tools)).map((tool) => tool.needs)] : [];
   return { name: record.participant, type: "model endpoint", model: record.model ?? null, context: record.declares.context ?? null, price: null,
-    capabilities: Array.isArray(record.declares.capabilities) ? record.declares.capabilities : [], place: record.destinations?.[0]?.place || null,
+    capabilities: [...new Set([...declared, ...tooling])], place: record.destinations?.[0]?.place || null,
     route: `endpoint ${record.participant}${secret}` };
 }
 

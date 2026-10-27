@@ -84,13 +84,17 @@ test("kindOf — converse offers all five tools with a limit of 30, the change k
   }
 });
 
+// The kinds whose participant changes code or runs tests, and the tools of MOD-checkout-tools each of them names, in tools.md's order.
+const CODING = ["implement", "refactor", "fix-bug", "write-tests", "propose-tests", "run-tests", "check-resource"];
+const CHECKOUT = ["read", "write", "edit", "bash", "grep", "glob", "webfetch"];
+
 // TST-484005 · level: unit · module: MOD-job-catalogue
 // guards: ONE DEFINITION, THREE DRIVERS
-// given: the catalogue as shipped; known positive: the four kinds above name tools
+// given: the catalogue as shipped; known positive: the four kinds above and the seven kinds that change code or run tests name tools
 // input: kindOf of every kind of kindNames()
-// expect: every kind but those four has tools [] and a toolLimit of 0
+// expect: every kind but those eleven has tools [] and a toolLimit of 0
 test("kindOf — a kind that names no tools has an empty list and a limit of 0", async () => {
-  const offering = ["converse", "change-requirements", "change-use-case", "change-architecture"];
+  const offering = ["converse", "change-requirements", "change-use-case", "change-architecture", ...CODING];
   let seen = 0;
   for (const name of await kindNames()) {
     const kind = await kindOf(name);
@@ -98,7 +102,21 @@ test("kindOf — a kind that names no tools has an empty list and a limit of 0",
     seen += 1;
     assert.deepEqual([kind.tools, kind.toolLimit], [[], 0], name);
   }
-  assert.equal(seen, 22, "the other 22 kinds were looked at");
+  assert.equal(seen, 15, "the other 15 kinds were looked at");
+});
+
+// TST-2026301 · level: unit · module: MOD-job-catalogue
+// guards: ONE DEFINITION, THREE DRIVERS
+// given: the catalogue as shipped
+// input: kindOf of each kind that changes code or runs tests — implement, refactor, fix-bug, write-tests, propose-tests, run-tests, check-resource —; and toolsOf of the tools each names
+// expect: each names read, write, edit, bash, grep, glob and webfetch, in that order, and a toolLimit that is a positive whole number of at least 100, since such work takes many calls; each of those tools is a row of tools.md, so that toolsOf gives it
+test("kindOf — the kinds that change code or run tests offer the tools of the checkout", async () => {
+  for (const name of CODING) {
+    const kind = await kindOf(name);
+    assert.deepEqual(kind.tools, CHECKOUT, name);
+    assert.ok(Number.isInteger(kind.toolLimit) && kind.toolLimit >= 100, `${name} has a limit of tool calls for coding work`);
+    assert.deepEqual((await catalogue.toolsOf(kind.tools)).map((tool) => tool.name), CHECKOUT, name);
+  }
 });
 
 // TST-484006 · level: unit · module: MOD-job-catalogue

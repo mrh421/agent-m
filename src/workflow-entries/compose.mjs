@@ -26,6 +26,7 @@ import * as workPlans from "../work-plans/index.mjs";
 import * as runPlanner from "../run-planner/index.mjs";
 import * as runtimes from "../runtimes/index.mjs";
 import * as reuseFacts from "../reuse-facts/index.mjs";
+import { checkoutStrategies } from "../checkout-tools/index.mjs";
 import { prepareResult } from "./result.mjs";
 
 const fs = globalThis.process?.getBuiltinModule?.("node:fs");
@@ -220,6 +221,18 @@ function registerStrategiesOnce() {
   for (const [owner, module, name] of OFFERED) if (module[name]) registerStrategies(owner, module[name]);
 }
 
+// The tools of MOD-checkout-tools, with which a model endpoint works in the product's checkout, registered on the agent's machine only, once for the program. `HIDDEN`
+// names the variables a command of bash does not receive — every key the job workflow names and the person's token —; it is the one list the registered bash reads,
+// filled for each composition, since the strategies are registered once.
+const HIDDEN = [];
+let checkoutRegistered = false;
+function registerCheckoutTools(job) {
+  HIDDEN.splice(0, HIDDEN.length, ...Object.keys(job.keys), job.tokenName);
+  if (checkoutRegistered) return;
+  checkoutRegistered = true;
+  registerStrategies("MOD-checkout-tools", checkoutStrategies({ hidden: HIDDEN }));
+}
+
 /**
  * composeProduct(env: CiEnvironment) -> { product: { address, host }, instance: { address, host, checkout }, result?: { pullRequest, end } } — the product's and
  * the instance's checkouts connected through the local clone, with the person's token from AGENT_M_TOKEN, every secret's value given as a secret no commit
@@ -238,11 +251,12 @@ export function composeProduct(env) {
   };
 }
 
-// The agent's machine: no token. The product's checkout pushes into the result's own repository (result.mjs' prepareResult), so that every commit a job makes
+// The agent's machine: no token, and the tools of MOD-checkout-tools registered. The product's checkout pushes into the result's own repository (result.mjs' prepareResult), so that every commit a job makes
 // travels in the result; a pull request the writer `branch-and-pull-request` opens is kept for the writing machine, which opens it — or takes the one the
 // branch has —, and stands under its pending address until then; the server is asked for no pull request here, so the writer finds none.
 function composeAgentPart(env, secrets) {
   const { job } = env;
+  registerCheckoutTools(job);
   const result = prepareResult(job.productDir, job.resultDir, env.branch);
   const product = checkoutHost(env.repository, job.productDir, env.branch, null, secrets);
   const instanceAddress = originOf(job.instanceDir, env.repository);

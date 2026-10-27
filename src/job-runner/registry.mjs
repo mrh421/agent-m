@@ -29,6 +29,9 @@ export function registerStrategies(owner, strategies) {
   for (const { category, name, strategy } of adding) if (!registry.get(category).has(name)) registry.get(category).set(name, { owner, strategy });
 }
 
+/** registered(category: string, name: string) -> boolean — whether a module registered a strategy under the name. */
+export const registered = (category, name) => registry.get(category).has(name);
+
 /**
  * strategyOf(category: string, name: string) -> Function — the strategy registered under the name. Throws
  * UnknownStrategy { strategy } for a name no module registered.
