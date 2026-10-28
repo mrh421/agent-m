@@ -890,10 +890,10 @@ async function route() {
       const hosts = { instance: { host: connect(parseAddress(`https://github.com/${T.instance}`), { token: ghToken() }) }, product: { host: connect(parseAddress(T.product.address), { token: token() }) } };
       await route.render(main(), hosts);
       if (kind === "process") main().insertAdjacentHTML("afterbegin", `<section class="head"><h2>${h(route.title)}</h2></section>`);
-    } else if (kind === "backlog") {
+    } else if (kind === "backlog" || kind === "board" || kind === "implement") {
       loading += 1;
       try {
-        await implementationPages.routes.find((r) => r.name === "backlog").render(main(), implementationContext(), {});
+        await implementationPages.routes.find((r) => r.name === kind).render(main(), implementationContext(), kind === "backlog" ? {} : params);
       } finally {
         loading -= 1;
       }
