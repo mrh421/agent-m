@@ -305,3 +305,21 @@ test("the repository's artifacts are read only for a pull request the writer ope
   assert.deepEqual(await writeRecording(local, { items: ["ITM-9"] }), [], "a local host: no docs read");
   assert.equal(local.calls.filter(([name]) => name === "openPullRequest").length, 0);
 });
+
+// TST-SPRINTBASE-1 · level: unit · module: MOD-runtimes
+// guards: CODE ENTERS THE DEFAULT BRANCH THROUGH A PULL REQUEST WITH GREEN CI; UC-024
+// given: the server host of TST-567001 (default branch `develop`) that also holds the branch `sprint/team1/01`; the job's snapshot holds docs/backlog/sprints/team1/01.md, a sprint with no `end` and the selection ITM-9, branch sprint/team1/01; the job names the item ITM-9
+// input: the writer with the usual answer; then again with a sprint that has an `end`; with a sprint whose selection lacks ITM-9; and with a sprint whose branch the host does not hold
+// expect: the pull request is opened into `sprint/team1/01`; in each of the other three cases it is opened into `develop`
+test("the writer opens the pull request into the branch of the open sprint that selects the item, else into the default branch", async () => {
+  const sprint = (fields) => ["---", "sprint: 1", "goal: g", "start: 2026-10-28", `end:${fields.end ?? ""}`, "closer: mrh", `branch: ${fields.branch ?? "sprint/team1/01"}`, "selection:", ...(fields.selection ?? ["ITM-9"]).map((id) => `  - ${id}`), "---", "# team1 Sprint 01", ""].join("\n");
+  const baseOf = async (fields) => {
+    const server = fakeHost({ branches: { [JOB]: treeOf("c1", BRANCH_FILES), "sprint/team1/01": treeOf("s1", {}) } });
+    await write(server.host, undefined, undefined, treeOf(SNAPSHOT_COMMIT, { ...BASE_FILES, "docs/backlog/sprints/team1/01.md": sprint(fields) }));
+    return server.calls.find(([name]) => name === "openPullRequest")[1].base;
+  };
+  assert.equal(await baseOf({}), "sprint/team1/01");
+  assert.equal(await baseOf({ end: " 2026-11-04" }), "develop", "a closed sprint is no base");
+  assert.equal(await baseOf({ selection: ["ITM-77"] }), "develop", "a sprint that does not select the item is no base");
+  assert.equal(await baseOf({ branch: "sprint/team1/99" }), "develop", "a branch the host does not hold is no base");
+});

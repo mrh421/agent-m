@@ -7,6 +7,7 @@
 // for the pull request. The job's own snapshot, `context.product.snapshot`, says what the branch changed and, through MOD-trace-graph's `traceGraph`, which modules the plan steps and backlog items the job names change. Strategies, JobContext, JobResult and WriteOutcome are MOD-job-runner's types.
 
 import { provenanceLines } from "../job-runner/index.mjs";
+import { parseFrontMatter } from "../text-tools/index.mjs";
 import { testDeclarations } from "../test-document/index.mjs";
 import { traceGraph } from "../trace-graph/index.mjs";
 
@@ -14,6 +15,22 @@ import { traceGraph } from "../trace-graph/index.mjs";
 const failure = (name, message, fields) => Object.assign(new Error(message), { name, ...fields });
 const unique = (values) => [...new Set(values)];
 const named = (value) => (Array.isArray(value) ? value.map(String) : []);
+
+// The branch the pull request is opened into where a sprint is open: that of the sprint of docs/backlog/sprints/<team>/<nn>.md, in the job's snapshot, that has no `end` and selects
+// one of the backlog items the job names, provided the host holds the branch; null where there is none, and the default branch is the base.
+const SPRINT_FILE = /^docs\/backlog\/sprints\/[^/]+\/\d+\.md$/;
+async function sprintBase(snapshot, host, items) {
+  if (items.length === 0) return null;
+  for (const path of snapshot.paths.filter((each) => SPRINT_FILE.test(each))) {
+    const { fields } = parseFrontMatter(await snapshot.read(path) ?? "");
+    const branch = typeof fields.branch === "string" ? fields.branch.trim() : "";
+    if (!branch || (typeof fields.end === "string" && fields.end.trim() !== "")) continue;
+    if (!named(fields.selection).some((item) => items.includes(item))) continue;
+    try { await host.readSnapshot(branch); } catch (error) { if (error?.name === "NotFound") continue; throw error; }
+    return branch;
+  }
+  return null;
+}
 
 // The files the branch adds or changes against the job's snapshot: those whose blob differs from the blob the snapshot has, a file the snapshot lacks having none.
 const changedFiles = (branch, snapshot) => branch.paths.filter((path) => branch.blob(path) !== snapshot.blob(path)).sort();
@@ -53,7 +70,7 @@ function describe(result, context, modules, tests) {
 
 /**
  * The writer branch-and-pull-request(result, context) -> Promise<WriteOutcome> — reads the branch the participant's answer reports (`result.draft.branch`) through `context.product.host`;
- * with a host of a server's API it opens the pull request into the default branch `repositoryInfo` names, unless the branch has one open or merged, and gives it the description of
+ * with a host of a server's API it opens the pull request into the branch of the open sprint that selects one of the job's backlog items, else into the default branch `repositoryInfo` names, unless the branch has one open or merged, and gives it the description of
  * `describe`; with a local host — one whose `listPullRequests` throws NotSupported — it opens nothing. It returns the pull request's address, or the one the agent reported. Throws NoBranch
  * for a branch the host does not hold, NoCommits for one with no commit beyond the job's snapshot, and what the host throws.
  */
@@ -84,7 +101,8 @@ async function branchAndPullRequest(result, context) {
 
   const { defaultBranch } = await host.repositoryInfo();
   const work = [...named(context.params?.steps), ...named(context.params?.items)];
-  const opened = await host.openPullRequest({ branch: name, base: defaultBranch, title: `${context.jobId}: ${context.kind.name}${work.length ? ` ${work.join(", ")}` : ""}`,
+  const base = await sprintBase(snapshot, host, named(context.params?.items)) ?? defaultBranch;
+  const opened = await host.openPullRequest({ branch: name, base, title: `${context.jobId}: ${context.kind.name}${work.length ? ` ${work.join(", ")}` : ""}`,
     body: describe(result, context, await modulesOf(snapshot, work), await newTests(branch, snapshot, files)) });
   return outcome(opened.url);
 }
