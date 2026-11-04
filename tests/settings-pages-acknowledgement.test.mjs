@@ -39,8 +39,7 @@ async function settings(entries) {
 // guards: UC-042; CONFIGURATION LIVES IN THE BROWSER; EVERY SETTING IS REACHED FROM ONE PAGE
 // given: this browser has the public Settings GitHub-token row and no shared-origin acknowledgement.
 // input: the person presses Change, explicitly ticks I have read this, reloads Settings, presses Change again, then unchecks it.
-// expect: the accepted canonical acknowledgement date is stored only by the tick, restores the checkbox on reload,
-// and unchecking removes its browser record without a repository write.
+// expect: the accepted canonical acknowledgement date is stored only by the tick, restores the checkbox on reload, and unchecking removes its browser record without a repository write.
 test("TST-290128: shared-origin acknowledgement persists only for the explicit checkbox choice", async () => {
   const productAddress = "https://github.com/fixture/product";
   const first = await settings({

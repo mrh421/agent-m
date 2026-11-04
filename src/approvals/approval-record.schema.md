@@ -11,7 +11,7 @@ language names it.
 - `blob` is the 40-hex git blob SHA of the text the reviewer saw — of the proposal, for `spec` (`AN APPROVAL NAMES THE EXACT
   TEXT`).
 - `queue`, `entry`, `proposal`, `target`, `anchor` and `section` stand only for `kind: spec`: the queue's folder, the
-  entry's two-digit number, the proposal's path, the SPEC file it changes, the heading its section starts with, and the
+  entry's number, the proposal's path, the SPEC file it changes, the heading its section starts with, and the
   blob SHA of that section as it stood beside the proposal.
 - `limitation` stands only for `kind: release-report`: zero or more lines `<TST-<nnn> or rate> — <reason>`, one per
   failing test or worse rate.
@@ -26,9 +26,9 @@ blob: 2699e35d0c413d3a814286dec77c49ad7598b4b1
 
 ```text
 kind: spec
-queue: docs/spec-freigaben/2026-09-23d_instanz-und-token
+queue: docs/spec-freigaben/configuration-and-secrets
 entry: 01
-proposal: docs/spec-freigaben/2026-09-23d_instanz-und-token/01-konfiguration-token.md
+proposal: docs/spec-freigaben/configuration-and-secrets/01-configuration-and-secrets.md
 blob: 47a9e8a383b0f1db6e98760b9a1f1325d8303844
 target: SPEC.md
 anchor: ## 7. Configuration and secrets
@@ -53,7 +53,6 @@ section: f8fbf7328c329ac0d2fc73e3901f1db1027a0f61
     "anchor": { "type": "text", "requiredWhen": { "field": "kind", "in": ["spec"] } },
     "section": { "type": "sha", "digits": 40, "requiredWhen": { "field": "kind", "in": ["spec"] } },
     "limitation": { "type": "list", "item": { "type": "text" } }
-  },
-  "noHistory": true
+  }
 }
 ```

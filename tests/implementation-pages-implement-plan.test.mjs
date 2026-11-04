@@ -15,6 +15,7 @@
 //     <ul data-reasons>; <p data-selected> says how many steps are selected.
 //   - The current phase is the phase of the first step, in the plan's order, that is not done; the ready, startable steps of that phase are ticked.
 //   - A missing process model or a missing plan is <p data-missing> naming what is missing, with <a href="#process"> and <a href="#plan">; a model that works from a backlog has <a data-backlog-link href="#backlog">.
+//   - ITM-1170: where repositoryInfo gives greenToMerge false, the page says so in one <p data-green-to-merge> with a link to the host's webLinks branchProtection (UC-024 12a).
 // Each test states its input and its expected result before it runs (given / input / expect). The counter-proofs are recorded in the pull request.
 
 import test from "node:test";
@@ -25,6 +26,7 @@ import { readFileSync } from "node:fs";
 import "./site-frame-dom.mjs";
 const { view } = await import("../src/implementation-pages/index.mjs");
 const route = view.routes.find((candidate) => candidate.name === "implement");
+const { endedJob, REJECTED } = await import("./implementation-pages-ended-job.mjs");
 
 const fetched = [];
 globalThis.fetch = async (address) => { fetched.push(String(address)); throw new Error(`the test's network refuses ${address}`); };
@@ -89,9 +91,14 @@ function snapshotOf(files, web, commits) {
   return { repository: { server: "github", path: "acme/product", web }, ref: "main", commit: "c".repeat(40), paths: Object.keys(files), blob: (path) => (Object.hasOwn(files, path) ? blobOf(files[path]) : null),
     read: async (path) => (Object.hasOwn(files, path) ? files[path] : null), commits };
 }
-async function render(files) {
+// `greenToMerge` is what the hosts' repositoryInfo gives (ITM-1170); webLinks gives the server's page for branch protection.
+const BRANCH_PROTECTION = `${ADDRESS}/settings/branches`;
+async function render(files, { greenToMerge = null } = {}) {
   const commits = [];
-  const hostOf = (shot) => ({ async repositoryInfo() { return { defaultBranch: "main", visibility: "public", canWrite: true, archived: false, description: "" }; }, async readSnapshot() { return shot; },
+  const hostOf = (shot) => ({ async repositoryInfo() { return { defaultBranch: "main", visibility: "public", canWrite: true, archived: false, description: "", greenToMerge }; }, async readSnapshot() { return shot; },
+    webLinks() { return { actions: `${shot.repository.web}/actions`, branchProtection: `${shot.repository.web}/settings/branches` }; },
+    // The file at each commit, as the one snapshot holds it (MOD-repository-hosts' readFileAt), for the declared model the route reads (ITM-1264).
+    async readFileAt(path, at) { const held = await shot.read(path); return new Map(at.map((commit) => [commit, held])); },
     async listPullRequests() { return []; }, async containsCommit() { return false; }, async commitFiles(change) { commits.push(change); throw new Error("a render writes nothing"); } });
   const product = snapshotOf(files, ADDRESS), instance = snapshotOf({ "SPEC.md": "# Instance\n", "docs/participants.md": REGISTER }, "https://github.com/acme/agent-m");
   const context = { page: "review", instance: { repository: "acme/agent-m", host: hostOf(instance) }, product: { address: ADDRESS, kind: "github", host: hostOf(product), tokenStored: true }, store: {}, go() {} };
@@ -180,4 +187,35 @@ test("a ready step of a later phase is selectable but not preselected", async ()
   assert.equal(ticked(tickOf(target, "ITM-014")), false, "it is not preselected");
   assert.equal(ticked(tickOf(target, "ITM-012")), true);
   assert.equal(ticked(tickOf(target, "ITM-010")), true);
+});
+
+// TST-1170008 · level: unit · module: MOD-implementation-pages
+// guards: UC-024; CODE ENTERS THE DEFAULT BRANCH THROUGH A PULL REQUEST WITH GREEN CI
+// given: the product of TST-732001, a model that plans its work, on a server whose repositoryInfo gives greenToMerge false; counter-proof: the same product on a server that gives true
+// input: the route implement's render, once for each
+// expect: with false, one <p data-green-to-merge> says that the server does not enforce "merge only on green" and links the page for branch protection (https://github.com/acme/product/settings/branches); with true, none; known positive: the steps are listed on each; nothing is fetched
+test("on a planned model's implement page too, a server that does not enforce green CI before a merge is named, with its page for branch protection", async () => {
+  const open = await render(productFiles(), { greenToMerge: false });
+  assert.equal(found(open.target, "[data-step]").length, 4, "known positive: the steps are listed");
+  const note = found(open.target, "[data-green-to-merge]");
+  assert.equal(note.length, 1);
+  assert.match(text(note[0]), /does not enforce/);
+  assert.match(text(note[0]), /merge only on green/);
+  assert.deepEqual(found(note[0], "a").map((link) => link.getAttribute("href")), [BRANCH_PROTECTION]);
+  const guarded = await render(productFiles(), { greenToMerge: true });
+  assert.equal(found(guarded.target, "[data-step]").length, 4, "known positive: the steps are listed");
+  assert.equal(found(guarded.target, "[data-green-to-merge]").length, 0, "counter-proof: a server that enforces it is not named");
+});
+
+// TST-1421003 · level: unit · module: MOD-implementation-pages
+// guards: UC-024; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED
+// given: the product of TST-732001, in which the only job of the step ITM-010 ended failed at a rejected gate, its End reason "the gate Building → Checking was rejected by docs/gates/20261102-0900-building-checking-1421.md: The review found no test."
+// input: the route implement's render
+// expect: ITM-010 is ready and selectable and its row carries that reason in <p data-returned>; ITM-012, ready with no job, has none
+test("TST-1421003: UC-024 10a a ready step that a rejected gate returned shows the reason in its row; a step with no reason shows none", async () => {
+  const { target } = await render({ ...productFiles(), ...endedJob("ITM-010", REJECTED) });
+  assert.equal(rowOf(target, "ITM-010").getAttribute("data-state"), "ready", "known positive: the step a rejected gate returned is ready");
+  assert.equal(tickOf(target, "ITM-010").getAttribute("disabled"), null, "and selectable");
+  assert.deepEqual(found(rowOf(target, "ITM-010"), "[data-returned]").map(text), [REJECTED]);
+  assert.deepEqual(found(rowOf(target, "ITM-012"), "[data-returned]").map(text), []);
 });

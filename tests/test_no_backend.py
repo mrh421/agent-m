@@ -28,10 +28,13 @@ on its own (KEIN SPEC-ZUGRIFF AUS PRODUKT-CODE). Three checks:
    browser imports (a reading, stated at its entry below); and the own data files — schemas, models, practices —
    of the modules whose files state that they read them when
    they are loaded: MOD-documents, MOD-model-catalogue, MOD-participant-list, MOD-source-register, MOD-product-process,
-   MOD-site-frame (its explanations.md), MOD-personal-data, MOD-resource-list, MOD-reuse-facts and MOD-prompt-bar,
+   MOD-site-frame (its explanations.md), MOD-personal-data, MOD-resource-list, MOD-reuse-facts, MOD-prompt-bar and MOD-runtimes (its
+   job workflow's templates, the Parts its file names beside it, which the page uses in a browser),
    each at most once in its module's folder, in MOD-spec-document's form: `fetch(url)` in `ownFile(url)`, and every address the
-   file builds resolved from a path beginning with `./` against the module's own address; and MOD-source-register's
-   official EU publication repository fetch for legal texts, to publications.europa.eu. Every other fetch, XMLHttpRequest,
+   file builds resolved from a path beginning with `./` against the module's own address; MOD-source-register's
+   official EU publication repository fetch for legal texts, to publications.europa.eu; and, in any file, an import() of a
+   module of the site itself, by a relative address written out (`./` or `../`) that names a tracked file of the site — the
+   browser loads it from the origin the page came from. Every other fetch, XMLHttpRequest,
    WebSocket, EventSource, beacon, worker, dynamic import, created loading element, CSS import or url() is a finding,
    unless it is listed below with the reason it calls no other origin — a file's entry exactly as often as listed, a
    module folder's at most as often.
@@ -44,6 +47,7 @@ every vendored library for request channels.
 
 Only tracked files are read, so a scratch file in a working tree changes nothing. Counter-proofs:
 docs/measurements/2026-10-01_product-rules-repository-checks.md."""
+import json
 import posixpath
 import re
 import subprocess
@@ -129,14 +133,16 @@ def _own_origin(text: str, at: int) -> bool:
     return "new URL(`../../docs/assets/dashboard/" in window and "import.meta.url" in window
 
 
-FRAME_ASSET_LOADING = "the frame's own look.css or lettered brand asset, resolved from its module address"
+FRAME_ASSET_LOADING = "the frame's own look.css or lettered brand asset, resolved from its module address, or the modulepreload or preload link for the modules and files the page's data names for a route"
 
 
-def _site_frame_asset(text: str, at: int) -> bool:
+def _site_frame_asset(text: str, at: int, files: dict[str, str]) -> bool:
     """MOD-site-frame: its three static header resources are adjacent own files, wired directly to their elements."""
     own = ('const LOOK = new URL("./look.css", import.meta.url).href;',
            'const PRL_LOGO = new URL("./brand/prl-lettered.png", import.meta.url).href;',
            'const PRL_LOGO_DARK = new URL("./brand/prl-lettered-white.png", import.meta.url).href;')
+    if _route_preload_link(text, at, files):
+        return True
     if not all(item in text for item in own):
         return False
     window = text[at:at + 240]
@@ -145,13 +151,40 @@ def _site_frame_asset(text: str, at: int) -> bool:
             or (window.startswith('createElement("img")') and 'logo.setAttribute("src", PRL_LOGO)' in window))
 
 
-FRAME_VIEW_IMPORT = "a view module of the site, loaded from its own origin: viewAddress(slug), resolved as ../<slug>/index.mjs against the module's own address"
+ROUTE_PRELOAD_DATA = re.compile(r'<script type="application/json" id="route-preloads">(.*?)</script>', re.S)
+ROUTE_PRELOAD_ATTRIBUTES = ('{ rel: "modulepreload", as: "json" }', '{ rel: "modulepreload" }', '{ rel: "preload", as: "fetch", crossorigin: "" }')
+
+
+def _route_preload_link(text: str, at: int, files: dict[str, str]) -> bool:
+    """MOD-site-frame (Parts, preloads.mjs; Interfaces, Route): before it imports a route's own file the frame asks at once for the modules and
+    files the page's data names for that route. The link is the one preloadLink(href, attributes) creates, once per address: its attributes are
+    those the loop sets, its href is set from preloadLink's own parameter, and every call of preloadLink gives an href of the route's data
+    (`modules` or `files` of routePreloads(...)) and a literal rel of modulepreload or preload. The data the pages hold names only addresses
+    relative to the page (no scheme, no //), so no other origin is asked for."""
+    head = "function preloadLink(href, attributes) {"
+    calls = re.findall(r"preloadLink\(href, (.*)\);$", text, re.M)
+    pages = [data for f, t in files.items() if f.endswith(".html") for data in ROUTE_PRELOAD_DATA.findall(t)]
+    named = [v for page in pages for route in json.loads(page).values() for kind in ("modules", "files") for v in route.get(kind, [])]
+    return (text[at:].startswith('createElement("link");\n  for (const [name, value] of Object.entries(attributes)) link.setAttribute(name, value);\n'
+                                 '  link.setAttribute("href", href);')
+            and text.count(head) == 1 and "linked.has(href)" in text and calls != [] and text.count("preloadLink(") == len(calls) + 1
+            and all(c.startswith(ROUTE_PRELOAD_ATTRIBUTES[1:]) or c.startswith('href.endsWith(".json") ? ' + ROUTE_PRELOAD_ATTRIBUTES[0]) for c in calls)
+            and "for (const href of modules) preloadLink" in text and "for (const href of files) preloadLink" in text
+            and "const { modules, files } = routePreloads(route.name);" in text
+            and all(not re.match(r"[a-z][a-z0-9+.-]*:|//", v, re.I) for v in named))
+
+
+_site_frame_asset.site = True  # its preload-link evidence reads the pages' data
+
+
+FRAME_VIEW_IMPORT = "a view module of the site, loaded from its own origin: viewAddress(slug), resolved as ../<slug>/routes.mjs against the module's own address"
 
 
 def _site_frame_view_import(text: str, at: int) -> bool:
-    """MOD-site-frame's routing.mjs loads a view module (its file: start.mjs "loads the named view modules from their folders"): the
-    argument of the import() is viewAddress(slug), and the file's one viewAddress resolves ../<slug>/index.mjs against import.meta.url."""
-    resolves = re.findall(r"^const viewAddress = \(slug\) => new URL\(`\.\./\$\{slug\}/index\.mjs`, import\.meta\.url\)\.href;$", text, re.M)
+    """MOD-site-frame's routing.mjs loads a view module (its file: start.mjs "loads the named view modules (`routes.mjs` of each view's
+    folder) from their folders"): the argument of the import() is viewAddress(slug), and the file's one viewAddress resolves
+    ../<slug>/routes.mjs against import.meta.url."""
+    resolves = re.findall(r"^const viewAddress = \(slug\) => new URL\(`\.\./\$\{slug\}/routes\.mjs`, import\.meta\.url\)\.href;$", text, re.M)
     return text[at:].startswith("import(viewAddress(slug))") and len(resolves) == 1 and len(re.findall(r"\bviewAddress\s*=", text)) == 1
 
 
@@ -252,12 +285,22 @@ IMPORT_SPECIFIER = re.compile(r"""(?:\bimport|\bexport)\s*(?:[\w$*{}\s,]*?\bfrom
                               r"""|\bimport\(\s*(["'`])(\.{1,2}/[^"'`$]+)\3\s*\)""")
 
 
+def resolve(base: str, specifier: str) -> str:
+    """The site's path a relative specifier names, read from the file at `base`."""
+    return posixpath.normpath(posixpath.join(posixpath.dirname(base), specifier))
+
+
+def own_module_import(path: str, text: str, at: int, files: dict[str, str]) -> bool:
+    """An import() at `at` whose argument is a relative address written out (`./` or `../`, no expression in it) that names a file of the
+    site: the browser resolves it against the importing module's own address, so it loads from the origin the page came from."""
+    m = IMPORT_SPECIFIER.match(text, at)
+    return bool(m and m.group(4)) and resolve(path, m.group(4)) in files
+
+
 def browser_modules(files: dict[str, str]) -> set[str]:
     """The modules the site loads in a browser: the module each script tag of a page names, the view modules its data-views name —
-    MOD-site-frame's viewAddress(slug), ../<slug>/index.mjs against src/site-frame/, that is src/<slug>/index.mjs —, and every module these
+    src/<slug>/index.mjs, which imports the routes.mjs that MOD-site-frame's viewAddress(slug) loads and that imports it —, and every module these
     import, statically or by an import() of a relative address written out. A page's address of another origin is check 1's and 2's."""
-    def resolve(base: str, specifier: str) -> str:
-        return posixpath.normpath(posixpath.join(posixpath.dirname(base), specifier))
     queue = []
     for path, text in files.items():
         if not path.endswith(".html"):
@@ -394,7 +437,7 @@ PERMITTED_CHANNELS = {
     ("src/personal-data/", "fetch"): (1, OWN_DATA_FILES, _own_data_file),
     ("src/resource-list/", "fetch"): (1, OWN_DATA_FILES, _own_data_file),
     ("src/reuse-facts/", "fetch"): (1, OWN_DATA_FILES, _own_data_file),
-    ("src/site-frame/", "loading element"): (3, FRAME_ASSET_LOADING, _site_frame_asset),  # link, source and img
+    ("src/site-frame/", "loading element"): (4, FRAME_ASSET_LOADING, _site_frame_asset),  # look link, source, img, and the route preload link
     ("src/markdown-render/mermaid.mjs", "loading element"): (1, MERMAID_LIBRARY_LOADING, _mermaid_library_script),
     # MOD-mail-routes' sign-in library: Microsoft's sign-in service is the mail provider's, which NO SERVER permits; its requests are
     # the library's two fetches (GET, POST), its preconnect link and its silent iframe — four, read from the library's file.
@@ -407,6 +450,9 @@ PERMITTED_CHANNELS = {
     ("src/result-records/", "fetch"): (1, OWN_DATA_FILES, _own_data_file),
     ("src/job-ledger/", "fetch"): (1, OWN_DATA_FILES, _own_data_file),
     ("src/prompt-bar/", "fetch"): (1, OWN_DATA_FILES, _own_data_file),
+    # MOD-runtimes' templates workflow/github.yml and workflow/gitlab.yml (its Parts), which jobWorkflowFiles fills and which "the page uses in a
+    # browser" (its Responsibility): read as the modules above read theirs, as MOD-test-schedule reads its templates/ (ITM-1202).
+    ("src/runtimes/", "fetch"): (1, OWN_DATA_FILES, _own_data_file),
     ("src/site-frame/dashboard-app.mjs", "import()"): (1, "a view file of the dashboard, from its own origin", _own_origin),
     ("src/site-frame/dashboard-app.mjs", "loading element"): (1, "a view's style sheet, from its own origin", _own_origin),
     ("src/site-frame/routing.mjs", "import()"): (1, FRAME_VIEW_IMPORT, _site_frame_view_import),
@@ -457,6 +503,8 @@ def channel_findings(files: dict[str, str], permitted=PERMITTED_CHANNELS) -> lis
     for path, text in sorted(files.items()):
         for name, rx in CHANNELS:
             for m in rx.finditer(text):
+                if name == "import()" and own_module_import(path, text, m.start(), files):
+                    continue  # no other origin: needs no entry, and counts toward none
                 key = _entry(path, name, permitted)
                 seen[key] = seen.get(key, 0) + 1
                 line = text.count("\n", 0, m.start()) + 1
@@ -680,8 +728,7 @@ class NoServer(unittest.TestCase):
         both = [f"{path}:2: fetch: not {WEBFETCH}", f"{path}:3: fetch: not {WEBFETCH}"]
         for module, line, own in (("src/site-frame/start.mjs", 'import { checkoutPrompt } from "../checkout-tools/index.mjs";\n', []),
                                   ("src/main-page/index.mjs", 'export { webfetch } from "../checkout-tools/webfetch.mjs";\n', []),
-                                  ("src/main-page/home.mjs", 'const tools = await import("../checkout-tools/index.mjs");\n',
-                                   ['src/main-page/home.mjs:2: import(): import("../checkout-tools/index.mjs");']),  # itself a finding too
+                                  ("src/main-page/home.mjs", 'const tools = await import("../checkout-tools/index.mjs");\n', []),
                                   ("src/site-frame/views.mjs", 'import "../workflow-entries/compose.mjs";\n', [])):
             with self.subTest(module=module, line=line):
                 self.assertEqual(channel_findings({**site, module: site[module] + line}), both + own)
@@ -878,9 +925,9 @@ class NoServer(unittest.TestCase):
 
     def test_counter_proof_the_site_frames_view_import_is_viewaddress_of_its_own_origin(self):
         # MOD-site-frame's routing.mjs loads a view module by its slug: the one import() takes viewAddress(slug), which resolves
-        # ../<slug>/index.mjs against the module's own address.
+        # ../<slug>/routes.mjs against the module's own address.
         path = "src/site-frame/routing.mjs"
-        own = ("const viewAddress = (slug) => new URL(`../${slug}/index.mjs`, import.meta.url).href;\n"
+        own = ("const viewAddress = (slug) => new URL(`../${slug}/routes.mjs`, import.meta.url).href;\n"
                "export async function loadView(slug) {\n  return (await import(viewAddress(slug))).view;\n}\n")
         self.assertEqual(channel_findings({path: own}), [])  # expected: no finding
         # Elsewhere the same text is found (expected: the import() at line 3 is not a permitted channel there).
@@ -890,15 +937,38 @@ class NoServer(unittest.TestCase):
         for argument in ('"https://example.org/x.mjs"', "url"):
             other = own.replace("import(viewAddress(slug))", f"import({argument})")
             self.assertEqual(channel_findings({path: other}), [f"{path}:3: import(): not {FRAME_VIEW_IMPORT}"])
-        # A viewAddress that does not resolve ../<slug>/index.mjs against the module's own address (expected: the import() at
+        # A viewAddress that does not resolve ../<slug>/routes.mjs against the module's own address (expected: the import() at
         # line 3 is found, once each).
         for foreign in (own.replace("import.meta.url", "location.href"),
-                        own.replace("`../${slug}/index.mjs`", "`https://example.org/${slug}.mjs`")):
+                        own.replace("`../${slug}/routes.mjs`", "`https://example.org/${slug}.mjs`")):
             self.assertEqual(channel_findings({path: foreign}), [f"{path}:3: import(): not {FRAME_VIEW_IMPORT}"])
         # A second import() in the file (expected: a count finding, the file's entry permits one).
         twice = own + "export const again = (slug) => import(viewAddress(slug));\n"
         self.assertEqual(channel_findings({path: twice}),
                          [f"{path}: import() found 2 times, permitted 1 ({FRAME_VIEW_IMPORT})"])
+
+    # TST-1345001 · level: unit · module: MOD-repository-hosts
+    # guards: NO SERVER
+    # given: src/text-tools/bar.mjs, a file with no entry of its own, that imports `./send.mjs` and `../prompt-bar/index.mjs` by relative addresses written out, both files of the site; and the site's own files as they stand
+    # input: channel_findings over these files, then with one import() or fetch planted in bar.mjs: an address of another origin, an address from a variable, a template with an expression, a relative address naming no file of the site, a relative address above the site's root, a fetch to another origin; then over the site's files with `import("https://example.org/x.mjs")` planted in src/prompt-bar/bar.mjs
+    # expect: no finding for the two relative imports, each planted channel is the one finding at its line 3, and the site with the planted import in src/prompt-bar/bar.mjs gives exactly that finding at the line after the file's last
+    def test_an_import_of_the_sites_own_module_by_a_relative_address_is_no_server(self):
+        path = "src/text-tools/bar.mjs"
+        own = ('const sendPart = async () => (await import("./send.mjs"));\n'
+               "const bar = () => import('../prompt-bar/index.mjs');\n")
+        files = {path: own, "src/text-tools/send.mjs": "export const send = 1;\n", "src/prompt-bar/index.mjs": "export const bar = 1;\n"}
+        self.assertEqual(channel_findings(files), [])  # known positive: the site's own modules, imported relatively, need no entry
+        for planted in ('import("https://example.org/x.mjs");', "import(url);", "import(`./${name}.mjs`);", 'import("./missing.mjs");',
+                        'import("../../../outside.mjs");', 'fetch("https://example.org/x");'):
+            with self.subTest(planted):
+                name = "fetch" if planted.startswith("fetch") else "import()"
+                self.assertEqual(channel_findings({**files, path: own + planted + "\n"}), [f"{path}:3: {name}: {planted}"])
+        # Counter-proof on the site as it stands: an import() of another origin planted in a module the emergency made lazy is found, alone.
+        bar = "src/prompt-bar/bar.mjs"
+        self.assertIn(bar, self.files)
+        line = self.files[bar].count("\n") + 1
+        planted = 'import("https://example.org/x.mjs");'
+        self.assertEqual(channel_findings({**self.files, bar: self.files[bar] + planted}), [f"{bar}:{line}: import(): {planted}"])
 
     def test_counter_proof_only_the_site_frames_own_static_header_assets_load(self):
         path = "src/site-frame/index.mjs"
@@ -907,17 +977,31 @@ class NoServer(unittest.TestCase):
                     'const PRL_LOGO_DARK = new URL("./brand/prl-lettered-white.png", import.meta.url).href;\n'
                     'const look = document.createElement("link"); look.setAttribute("href", LOOK);\n'
                     'const dark = document.createElement("source"); dark.setAttribute("srcset", PRL_LOGO_DARK);\n'
-                    'const logo = document.createElement("img"); logo.setAttribute("src", PRL_LOGO);\n')
+                    'const logo = document.createElement("img"); logo.setAttribute("src", PRL_LOGO);\n'
+                    'function preloadLink(href, attributes) {\n  if (linked.has(href)) return;\n  const link = document.createElement("link");\n'
+                    '  for (const [name, value] of Object.entries(attributes)) link.setAttribute(name, value);\n  link.setAttribute("href", href);\n}\n'
+                    'const { modules, files } = routePreloads(route.name);\n'
+                    'for (const href of modules) preloadLink(href, href.endsWith(".json") ? { rel: "modulepreload", as: "json" } : { rel: "modulepreload" });\n'
+                    'for (const href of files) preloadLink(href, { rel: "preload", as: "fetch", crossorigin: "" });\n')
         self.assertEqual(channel_findings({path: accepted}), [])
         wrong_destination = accepted.replace('"./look.css"', '"./elsewhere.css"')
         self.assertEqual(len(channel_findings({path: wrong_destination})), 3)
         foreign = accepted.replace('"./brand/prl-lettered.png"', '"https://tracker.example/logo.png"')
         self.assertEqual(len(channel_findings({path: foreign})), 4)
+        # An href written out in the link's lines, an attribute set from elsewhere, or a call that gives another rel (expected: the link at line 9 is found).
+        for changed in (accepted.replace('link.setAttribute("href", href)', 'link.setAttribute("href", "https://tracker.example/x.mjs")'),
+                        accepted.replace("Object.entries(attributes)", "Object.entries(other)"),
+                        accepted.replace('{ rel: "preload", as: "fetch", crossorigin: "" }', '{ rel: "stylesheet" }')):
+            self.assertEqual(channel_findings({path: changed})[-1:], [f"{path}:9: loading element: not {FRAME_ASSET_LOADING}"])
+        # The page's data naming an address of another origin for a route (expected: the link is found; a relative address passes).
+        page = lambda module: {"docs/index.html": '<script type="application/json" id="route-preloads">{"mail":{"modules":["%s"],"files":[]}}</script>' % module}
+        self.assertEqual(channel_findings({path: accepted, **page("../src/mail-routes/index.mjs")}), [])
+        self.assertEqual(channel_findings({path: accepted, **page("https://tracker.example/x.mjs")})[-1:], [f"{path}:9: loading element: not {FRAME_ASSET_LOADING}"])
         indirect = accepted.replace('logo.setAttribute("src", PRL_LOGO)', 'logo.setAttribute("src", target)')
         self.assertEqual(channel_findings({path: indirect})[0], f"{path}:6: loading element: not {FRAME_ASSET_LOADING}")
         extra = accepted + 'const again = document.createElement("img"); again.setAttribute("src", PRL_LOGO);\n'
         self.assertEqual(channel_findings({path: extra})[-1],
-                         f"src/site-frame/: loading element found 4 times, permitted at most 3 ({FRAME_ASSET_LOADING})")
+                         f"src/site-frame/: loading element found 5 times, permitted at most 4 ({FRAME_ASSET_LOADING})")
 
     def test_counter_proof_a_vendored_librarys_addresses_are_not_the_own_codes(self):
         # MOD-markdown-render's vendored folder is skipped by check 1, as the other vendored folders are; its own code is not.

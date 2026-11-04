@@ -21,18 +21,29 @@
 // ITM-1225: every folded explanation is the frame's `explain` of a topic of explanations.md — a level, an occasion, a field of the front matter, the secrets
 // and a self-hosted runner —; the page builds no fold of its own.
 //
+// ITM-1265: each row's number of tests is taken from the counts stored for the commit shown (MOD-progress-measures' storedView with the page `schedule`), with the line
+// storedView names while the head's are not stored yet; the test files are read only where the repository stores no view.
+//
+// ITM-1307: where no view is stored, the counts are those scheduleView gives for the declarations the route reads; the route keeps no counting rule of its own.
+//
+// ITM-1420: Save and Merge are the module's button (look.mjs), which answers only a click the browser marks as a person's.
+//
+// ITM-1418: the last runs show all five occasions. The release candidate's is the newest push run of the generated workflow on a commit that a candidate's tag
+// v<version>-rc.<N> names (listTags, listCiRuns): CiRun names no ref, and a candidate's run is the push of its tag.
+//
 // Module: MOD-test-pages
 
 import { scheduleSchema, defaultSchedule, scheduleFindings, secretsNeeded, configurationDrift, occasionsOf, proposeSchedule, applyPipelineSchedule } from "../test-schedule/index.mjs";
 import { readDocument, documentFindings } from "../documents/index.mjs";
-import { testsHead, readsAt, LEVEL_TOPIC, OCCASION_TOPIC } from "./look.mjs";
+import { testsHead, readsAt, button, LEVEL_TOPIC, OCCASION_TOPIC } from "./look.mjs";
 import { explain } from "../site-frame/index.mjs";
 import { participantSchema, participantsOf, eligible } from "../participant-list/index.mjs";
 import { resourceSchema } from "../resource-list/index.mjs";
 import { isTestFile, testDeclarations } from "../test-document/index.mjs";
-import { storedFacts } from "../progress-measures/index.mjs";
+import { scheduleView, storedView } from "../progress-measures/index.mjs";
+import { heads } from "./routes.mjs";
 
-const TITLE = "Schedule";
+const TITLE = heads.schedule.title;
 const SCHEDULE_PATH = "docs/tests/schedule.md";
 const RESOURCES_PATH = "docs/resources.md";
 const PARTICIPANTS_PATH = "docs/participants.md";
@@ -47,7 +58,11 @@ const GENERATED = { github: `.github/workflows/${GENERATED_WORKFLOW}`, gitlab: `
 // The occasion a run stands for, told by its event on GitHub or its pipeline source on GitLab; a release candidate's run is not told apart by its event.
 const OCCASION_OF_EVENT = { push: "every commit", pull_request: "pull request", merge_request_event: "pull request", schedule: "nightly",
   workflow_dispatch: "on demand", web: "on demand" };
-const RUN_OCCASIONS = ["every commit", "pull request", "nightly", "on demand"];
+// The tags of a product's release candidates, v<version>-rc.<N>, as listTags takes a pattern (MOD-release-evidence, Data: "Tags of a product's line"). The candidate's
+// tag is set on its commit before its run, and the release's v<version> later on the same commit.
+const CANDIDATE_TAGS = "v*-rc.*";
+// The events of each server that stand for an occasion, as OCCASION_OF_EVENT maps them.
+const EVENTS_OF = { github: ["push", "pull_request", "schedule", "workflow_dispatch"], gitlab: ["push", "merge_request_event", "schedule", "web"] };
 const DAY = 24 * 60 * 60 * 1000;
 
 // The topics of the frame's explanations.md that explain each key of the schedule's front matter (ITM-1225).
@@ -79,24 +94,25 @@ function refusal(row, column) {
   return null;
 }
 
-// How many tests each row holds: the row of a level counts the declarations of that level, the row paid those that name a paid service, so a paid test counts under both.
+// The Facts of the snapshot whose tests are `tests`, for scheduleView, which reads `tests` and `snapshot`: every other field "unknown" where the type of Facts allows it,
+// and empty where it does not (MOD-progress-measures, Interfaces: Facts).
+const testFacts = (snapshot, tests) => ({
+  address: "", info: "unknown", snapshot, graph: "unknown", requirements: "unknown", statuses: new Map(), queues: [], declaration: null, workflow: "unknown",
+  model: "unknown", modelUnread: null, modelSince: "unknown", participants: [], plan: { order: null, items: [], states: [] }, sprints: [], assignments: [], held: [],
+  gates: [], gateStates: [], jobs: [], pullRequests: "unknown", schedule: "unknown", ci: "unknown", tags: "unknown", results: "unknown", tests,
+  resourceNeeds: "unknown", resultCommits: "unknown", own: false, modules: [],
+});
+
+// How many tests each row holds, -> { counts, asOf }: the counts stored for the snapshot's commit, or, while those are not stored yet, the counts stored last with their commit
+// (asOf); where the repository stores none, the counts MOD-progress-measures' scheduleView gives for the declarations of the test files.
 async function testCounts(snapshot) {
-  const counts = Object.fromEntries(ROWS.map((row) => [row, 0]));
-  // The declarations stored for the commit (MOD-progress-measures' storedFacts) are counted when there are any; otherwise the test files are told to the snapshot first, to be read in batches, and counted.
-  const stored = await storedFacts(snapshot);
-  let declared;
-  if (stored) {
-    declared = stored.tests;
-  } else {
-    const paths = snapshot.paths.filter(isTestFile);
-    await snapshot.readMany?.(paths);
-    declared = (await Promise.all(paths.map(async (path) => testDeclarations(path, (await snapshot.read(path)) ?? "")))).flat();
-  }
-  for (const declaration of declared) {
-    if (declaration.level in counts) counts[declaration.level] += 1;
-    if (declaration.paid) counts.paid += 1;
-  }
-  return counts;
+  const stored = await storedView(snapshot, "schedule");
+  if (stored) return { counts: stored.view.counts, asOf: stored.asOf };
+  // The test files are told to the snapshot first, to be read in batches.
+  const paths = snapshot.paths.filter(isTestFile);
+  await snapshot.readMany?.(paths);
+  const declared = (await Promise.all(paths.map(async (path) => testDeclarations(path, (await snapshot.read(path)) ?? "")))).flat();
+  return { counts: scheduleView(testFacts(snapshot, declared)).counts, asOf: null };
 }
 
 // A row's runner field, named for a screen reader by its row and its column (THE SITE SERVES A SCREEN READER).
@@ -197,8 +213,15 @@ function scheduleForm(schedule, table, state, { participants, findings, onSave }
     field.setAttribute("data-key", key);
     return field;
   });
-  const save = el("button", "btn primary", "Save");
-  save.setAttribute("type", "button");
+  // Save answers a person's click only (THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK).
+  const save = button("btn primary", "Save", async () => {
+    save.disabled = true;
+    try {
+      await onSave(documentNow());
+    } finally {
+      check();
+    }
+  });
   const documentNow = () => {
     const now = withTable(schedule, state);
     for (const [key, input] of inputs) {
@@ -216,14 +239,6 @@ function scheduleForm(schedule, table, state, { participants, findings, onSave }
   };
   state.changed = check;
   for (const input of inputs.values()) input.addEventListener("input", check);
-  save.addEventListener("click", async () => {
-    save.disabled = true;
-    try {
-      await onSave(documentNow());
-    } finally {
-      check();
-    }
-  });
   return { form: el("div", "schedule-form", table, ...fields, findings, el("p", null, save)), check };
 }
 
@@ -293,10 +308,23 @@ function driftBlock(files, schedule, target, resources, participants) {
 
 // ---------------------------------------------------------------- the last runs (UC-027 step 7, 7a)
 
+// The run started last, or null.
+const newestOf = (runs) => runs.reduce((last, run) => (last === null || (run.started ?? "") > (last.started ?? "") ? run : last), null);
+
 // The run of an occasion started last, or null.
-function lastRun(runs, occasion) {
-  return runs.filter((run) => OCCASION_OF_EVENT[run.event] === occasion)
-    .reduce((last, run) => (last === null || (run.started ?? "") > (last.started ?? "") ? run : last), null);
+const lastRun = (runs, occasion) => newestOf(runs.filter((run) => OCCASION_OF_EVENT[run.event] === occasion));
+
+// The release candidate's last run: the newest push run of the generated workflow on a commit a candidate's tag names, one request for the tags and then one
+// for each commit they name, at once. -> { run } (null where none has run), or { unread } naming what cannot be read.
+async function candidateRun(host) {
+  let tags;
+  try { tags = await host.listTags(CANDIDATE_TAGS); } catch { return { unread: "the release tags cannot be read" }; }
+  const commits = [...new Set(tags.map((tag) => tag.commit))];
+  try {
+    return { run: newestOf((await Promise.all(commits.map((commit) => host.listCiRuns({ workflow: GENERATED_WORKFLOW, commit, event: "push", newest: 1 })))).flat()) };
+  } catch {
+    return { unread: "the runs of the release tags cannot be read" };
+  }
 }
 
 const dateOf = (iso) => (iso ?? "").slice(0, 10);
@@ -309,19 +337,19 @@ function expectedNightly(time, now) {
   return new Date(at <= now ? at : at - DAY).toISOString().slice(0, 10);
 }
 
-function lastRunsBlock(runs, schedule, server, links) {
+function lastRunsBlock(runs, candidate, schedule, server, links) {
   const block = el("section", "panel last-runs-block", el("h3", null, "The last run per occasion"));
   if (runs === null) {
     block.append(el("p", "runs-unreadable", "The runs of this repository cannot be read, so the last runs are not shown."));
     return block;
   }
-  block.append(el("table", "list last-runs", el("tbody", null, ...RUN_OCCASIONS.map((occasion) => {
-    const run = lastRun(runs, occasion);
+  block.append(el("table", "list last-runs", el("tbody", null, ...COLUMNS.map((occasion) => {
+    const { run, unread } = occasion === "release candidate" ? candidate : { run: lastRun(runs, occasion) };
     const tr = el("tr", null, labelled(el("th", null, occasion), "Occasion"),
-      labelled(el("td", null, run ? link(null, `${run.state}, ${dateOf(run.started) || "not started"}`, run.url) : "no run yet"), "Last run"));
+      labelled(el("td", null, run ? link(null, `${run.state}, ${dateOf(run.started) || "not started"}`, run.url) : unread ?? "no run yet"), "Last run"));
     tr.setAttribute("data-occasion", occasion);
     return tr;
-  }))), el("p", null, "A release candidate's run is shown on the release panel."));
+  }))));
   const nightly = ROWS.some((row) => occasionsOf(row, schedule).includes("nightly"));
   if (nightly) {
     const expected = expectedNightly(schedule.fields?.nightly, Date.now());
@@ -366,9 +394,8 @@ async function drawProposal(place, host, pullRequest, schedule) {
         link("failing-runs", "the runs of the pull request", host.webLinks().commitRuns(pullRequest.head)), "."));
     }
     if (state === "green") {
-      const merge = el("button", "btn primary merge", "Merge");
-      merge.setAttribute("type", "button");
-      merge.addEventListener("click", () => mergeAndSchedule(box, merge, host, pullRequest, schedule));
+      // Merge answers a person's click only (THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK).
+      const merge = button("btn primary merge", "Merge", () => mergeAndSchedule(box, merge, host, pullRequest, schedule));
       box.append(merge);
     }
   }
@@ -412,7 +439,7 @@ async function render(target, context) {
   const instanceHost = context.instance.host;
   const [snapshot, instance] = await Promise.all([host.readSnapshot((await host.repositoryInfo()).defaultBranch),
     instanceHost.readSnapshot((await instanceHost.repositoryInfo()).defaultBranch)]);
-  const [saved, resourcesText, participantsText, counts] = await Promise.all([snapshot.read(SCHEDULE_PATH), snapshot.read(RESOURCES_PATH),
+  const [saved, resourcesText, participantsText, { counts, asOf }] = await Promise.all([snapshot.read(SCHEDULE_PATH), snapshot.read(RESOURCES_PATH),
     instance.read(PARTICIPANTS_PATH), testCounts(snapshot)]);
   const schedule = saved === null || saved === undefined ? defaultSchedule() : readDocument(scheduleSchema, SCHEDULE_PATH, saved);
   const participants = readDocument(participantSchema(), PARTICIPANTS_PATH, participantsText);
@@ -449,8 +476,10 @@ async function render(target, context) {
   }
   if (snapshot.paths.includes(GENERATED[server])) {
     let runs = null;
-    try { runs = await host.listCiRuns({ workflow: GENERATED_WORKFLOW }); } catch { runs = null; }
-    configured.push(lastRunsBlock(runs, schedule, server, links));
+    const candidate = candidateRun(host);
+    // The newest run of each event that stands for an occasion, one request each, at once: no page of older runs is read.
+    try { runs = (await Promise.all(EVENTS_OF[server].map((event) => host.listCiRuns({ workflow: GENERATED_WORKFLOW, event, newest: 1 })))).flat(); } catch { runs = null; }
+    configured.push(lastRunsBlock(runs, await candidate, schedule, server, links));
   }
   const { defaultBranch } = await host.repositoryInfo();
   target.replaceChildren(
@@ -458,8 +487,9 @@ async function render(target, context) {
       "read now from the repository; nothing is written before Save, which opens a pull request.") }),
     el("section", "panel levels-step", el("h3", null, "The levels, what each checks, and when each runs"),
       ...(schedule.default ? [el("p", "default-schedule", "This is the book's default schedule, not yet saved for this product.")] : []),
+      ...(asOf ? [el("p", "as-of", `As of ${asOf.slice(0, 7)}: the view of the newest commit is being stored.`)] : []),
       form, proposal, ...runners),
     secretsBlock(secrets, links.secrets), ...configured);
 }
 
-export const route = { name: "schedule", entry: "tests", title: TITLE, render };
+export const route = { ...heads.schedule, render };

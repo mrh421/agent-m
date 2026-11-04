@@ -90,7 +90,7 @@ mailbox, and the replies wait in the mailbox's own *Drafts* folder.
    returns one text per mail: what the problem was, what was done, from which version the fix is live,
    and the reporter's original mail quoted below it.
 4. Agent M stores each reply as a draft in the mailbox's *Drafts* folder, complete: from the connected
-   mailbox; to that mail's reply address — and to no other reporter; subject `Re:` the mail's subject;
+   mailbox, or from the sender its connection names (UC-037, step 4.1); to that mail's reply address — and to no other reporter; subject `Re:` the mail's subject;
    `In-Reply-To` and `References` set to its `Message-ID`. The draft is nowhere else. The send dashboard
    lists it; its preview shows exactly this mail — every recipient, subject, full body, every attachment
    with name and size — and the text is editable, each edit saved to the draft.

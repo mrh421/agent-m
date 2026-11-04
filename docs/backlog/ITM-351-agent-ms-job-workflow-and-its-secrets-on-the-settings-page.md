@@ -19,6 +19,12 @@ tests:
   - unit
 origin:
   - UC-010 precondition
+built_by:
+  - 1f4c9713d0a0ef1146a87a121826fc4e92334ace
+  - 8b69d32c3ffe0137f1acfede5c5759b08584e617
+  - 715933e631b522076991606f8a41c20aa08753f7
+  - 6409b3b75c6f1fbc722df217ded2e248b4fbe4e1
+  - 582047ff1af9e252f88f80be356799c86685232e
 ---
 # ITM-351 Agent M's job workflow and its secrets on the settings page
 

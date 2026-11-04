@@ -71,8 +71,7 @@ function settingsRoute() {
 // guards: UC-003; CONFIGURATION LIVES IN THE BROWSER
 // given: an empty browser store and a constructed successful endpoint answer
 // input: the author fills the public endpoints Route and presses Test
-// expect: the Route stores endpoint:<name> before exactly one short test request, then shows the configured model working; as the endpoint declares no context,
-// the test is followed only by GET /models and GET /model/info, which state none here, and the page says so
+// expect: the Route stores endpoint:<name> before exactly one short test request, then shows the configured model working; as the endpoint declares no context, the test is followed only by GET /models and GET /model/info, which state none here, and the page says so
 test("TST-265001: direct endpoint saves before its one short test", async () => {
   const store = freshStore(), calls = [], oldFetch = globalThis.fetch;
   globalThis.fetch = async (url, init = {}) => {
@@ -181,7 +180,7 @@ test("TST-265007: disclosure precedes a hidden endpoint key without repository o
 // guards: THE SHARED PAGES ORIGIN IS DISCLOSED; EVERY STEP EXPLAINS ITSELF
 // given: the public endpoints Route for an instance whose Pages owner is fixture
 // input: the author opens the Route before entering or storing a key
-// expect: the shared-origin disclosure precedes Save and test, and the registered endpoint explanations are folded
+// expect: the shared-origin disclosure precedes Save and test, and the registered endpoint explanations are folded, the explanation of when the prompt bar appears among them (nine folds, each with the summary "What is this?")
 test("TST-265008: endpoint storage is preceded by its Pages-origin notice and folded explanations", async () => {
   const target = await render(freshStore());
   const action = byClass(target, "endpoint-test")[0];
@@ -190,7 +189,7 @@ test("TST-265008: endpoint storage is preceded by its Pages-origin notice and fo
   assert.match(disclosure.textContent, /fixture\.github\.io/);
   assert.ok(ordered.indexOf(disclosure) >= 0 && ordered.indexOf(disclosure) < ordered.indexOf(action), "the shared-origin notice precedes storage");
   const details = byTag(target, "details");
-  assert.equal(details.length, 8, "every endpoint field and action has its registered folded explanation — the place, context and CI secret one together");
+  assert.equal(details.length, 9, "every endpoint field and action has its registered folded explanation — the place, context and CI secret one together — and the prompt bar's");
   assert.ok(details.every((folded) => byTag(folded, "summary").some((summary) => summary.textContent === "What is this?")));
 });
 
@@ -235,8 +234,7 @@ test("TST-265010: Settings lists its stored endpoint with a hidden key and Show"
 // guards: A BROWSER SETTING IS TESTED AND CLEARED WHERE IT IS SHOWN; A CREDENTIAL IS NEVER PLACED IN A URL
 // given: a stored direct endpoint and a constructed successful endpoint answer
 // input: the person presses Test, then Change on the public settings Route
-// expect: Test makes one mapped direct test request without changing the stored record — followed, as no context is declared, only by GET /models and
-// GET /model/info —, and Change opens that named endpoint's form in place
+// expect: Test makes one mapped direct test request without changing the stored record — followed, as no context is declared, only by GET /models and GET /model/info —, and Change opens that named endpoint's form in place
 test("TST-265011: Settings tests a stored direct endpoint and changes its named route", async () => {
   const store = freshStore(), calls = [], navigations = [], oldFetch = globalThis.fetch;
   writeSetting(store, "endpoint:campus", ENDPOINT);
@@ -678,4 +676,30 @@ test("TST-1202002: a working test keeps the context the endpoint states, and the
     assert.match(target.textContent, /Context: 131072 tokens, as the endpoint states it\./);
     assert.doesNotMatch(target.textContent, /The prompt bar does not offer it/);
   } finally { globalThis.fetch = oldFetch; }
+});
+
+// TST-1441001 · level: unit · module: MOD-settings-pages
+// guards: UC-003; A CLEAR IS A REAL CLEAR
+// given: two endpoints stored, campus and local, each with its last test
+// input: the person presses Clear in the form of campus; then presses Clear on the line of local on the Settings page
+// expect: known positive — the form's Clear removes campus and its last test and its result reads the form's confirmation; the line's Clear removes local and its last test, the line leaves the page, and the page reads that same confirmation, "The endpoint configuration is cleared from this browser."
+test("TST-1441001: Clear on an endpoint's line confirms that nothing is stored, as the form's Clear does", async () => {
+  const store = freshStore();
+  for (const [name, setting] of [["campus", ENDPOINT], ["local", BRIDGED]]) {
+    writeSetting(store, `endpoint:${name}`, setting);
+    writeSetting(store, `last-test:endpoint:${name}`, { at: "2026-10-07T10:00:00.000Z", outcome: "working" });
+  }
+  const form = await render(store, { name: "campus" });
+  await click(byClass(form, "endpoint-clear")[0]);
+  assert.deepEqual([readSetting(store, "endpoint:campus"), readSetting(store, "last-test:endpoint:campus")], [null, null]);
+  const confirmation = byClass(form, "endpoint-result")[0].textContent;
+  assert.equal(confirmation, "The endpoint configuration is cleared from this browser.", "known positive: the form confirms");
+  const target = await renderSettings(store);
+  const local = byClass(target, "settings-endpoint").find((line) => /Endpoint: local/.test(line.textContent));
+  assert.ok(local, "known positive: local has its line");
+  assert.equal(target.textContent.includes(confirmation), false, "known negative: before the Clear the page does not confirm");
+  await click(byClass(local, "settings-endpoint-clear")[0]);
+  assert.deepEqual([readSetting(store, "endpoint:local"), readSetting(store, "last-test:endpoint:local")], [null, null], "the line's Clear removed the entries");
+  assert.doesNotMatch(target.textContent, /Endpoint: local/, "the line leaves the page");
+  assert.ok(target.textContent.includes(confirmation), "failure node: the page confirms that nothing is stored, as the form does");
 });

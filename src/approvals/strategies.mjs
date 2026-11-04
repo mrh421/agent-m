@@ -9,7 +9,8 @@
 // Strategies, JobContext and Part are MOD-job-runner's types, Finding MOD-text-tools'. A strategy reads the product of the
 // job's context through its snapshot: the use cases and the SPEC, and the status of every use case from the records beside
 // them (statuses). The job's parameters are read by name: `useCase`, the identifier of the use case a change is asked of;
-// `requirements`, the names, and `useCases`, the identifiers, of the selection a job rests on; `architecture`, true when the job rests on the architecture too.
+// `requirements`, the names, and `useCases`, the identifiers, of the selection a job rests on, and `steps` and `items`, the steps of the plan and items of the backlog
+// whose `realises` it rests on too; `architecture`, true when the job rests on the architecture too.
 
 import { artifactSchemas, readDocument } from "../documents/index.mjs";
 import { parseSpec } from "../spec-document/index.mjs";
@@ -97,6 +98,21 @@ const listOf = (value) => (Array.isArray(value) ? value.filter((each) => typeof 
 // How a use case that is not accepted stands, by its status.
 const NOT_ACCEPTED = { open: "is open", changed: "has changed since it was accepted" };
 
+// What the steps of the plan and the items of the backlog of a job's parameters `steps` and `items` name under `realises`, read with the item schema: the
+// requirements, by their names, and the use cases, by their identifiers. A name that is no step or item of the product's files names none.
+async function realisedBy(snapshot, names) {
+  const realised = { requirements: [], useCases: [] };
+  for (const name of names) {
+    const file = /^ITM-\d+$/.test(name) ? new RegExp(`^docs/(?:plan|backlog)/${name}-[^/]+\\.md$`) : null;
+    const path = file && snapshot.paths.find((each) => file.test(each));
+    if (!path) continue;
+    for (const value of listOf([readDocument(artifactSchemas().item, path, (await snapshot.read(path)) ?? "").fields.realises ?? []].flat())) {
+      (/^UC-\d+$/.test(value) ? realised.useCases : realised.requirements).push(value);
+    }
+  }
+  return realised;
+}
+
 /**
  * approvalStrategies: Strategies — the strategies this module offers the job runner (ARC-046):
  * - recipe `use-cases`: every use case of the product as one part per file, whose name holds the file's path and the use case's
@@ -118,7 +134,8 @@ const NOT_ACCEPTED = { open: "is open", changed: "has changed since it was accep
  *   parts of `use-cases`; the part carries the file as an artifact, its identifier and the key of its format (artifactSchemas);
  * - precondition `rests-on-accepted`: one error finding, under NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED, that names every
  *   requirement of the parameter `requirements` that the SPEC does not hold and every use case of the parameter `useCases` that
- *   no record names the current text of, or that is no use case of the product, and, when the parameter `architecture` is true,
+ *   no record names the current text of, or that is no use case of the product — and so for every requirement and use case that a
+ *   step or item of the parameters `steps` and `items` names under `realises`, read with the item schema —, and, when the parameter `architecture` is true,
  *   by its path every decision and module file that is open or changed; none when all are accepted, or when the job
  *   names no selection.
  */
@@ -165,7 +182,9 @@ export const approvalStrategies = {
     },
     "rests-on-accepted": async (context) => {
       const { snapshot, address } = context.product;
-      const requirements = listOf(context.params.requirements), useCases = listOf(context.params.useCases);
+      const realised = await realisedBy(snapshot, [...listOf(context.params.steps), ...listOf(context.params.items)]);
+      const requirements = [...new Set([...listOf(context.params.requirements), ...realised.requirements])];
+      const useCases = [...new Set([...listOf(context.params.useCases), ...realised.useCases])];
       const spec = parseSpec((await snapshot.read(SPEC_PATH)) ?? "");
       const status = new Map([...statuses(snapshot).values()].filter((each) => each.kind === "use-case")
         .map((each) => [each.id, each.status]));

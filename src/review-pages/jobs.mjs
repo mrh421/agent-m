@@ -12,7 +12,7 @@
 import { readSetting } from "../browser-store/index.mjs";
 import { bridgeAt, settingsOf } from "../bridge-client/index.mjs";
 import { readDocument } from "../documents/index.mjs";
-import { newJobId, listJobs } from "../job-ledger/index.mjs";
+import { newJobId, recordsNewestFirst } from "../job-ledger/index.mjs";
 import { kindOf } from "../job-catalogue/index.mjs";
 import { prepareJob, writeResult } from "../job-runner/index.mjs";
 import { approvalStrategies, statuses } from "../approvals/index.mjs";
@@ -22,8 +22,8 @@ import { queueJob, routesFor, runOnTab } from "../runtimes/index.mjs";
 import { parseSpec } from "../spec-document/index.mjs";
 import { runPanel, explain, readProblem } from "../site-frame/index.mjs";
 import { coverageGaps, latestGraph, storedGraph } from "../trace-graph/index.mjs";
-import { editedResult, flagged, showCurrent, splitCandidate, splitProblem } from "./candidates.mjs";
-import { defaultSnapshot, el, button, link, readJobRecords, refusalText, tokenStep } from "./common.mjs";
+import { editedResult, flagged, passagesLine, shownOnPanel, showCurrent, splitCandidate, splitProblem } from "./candidates.mjs";
+import { defaultSnapshot, el, button, link, reviewLink, refusalText, tokenStep } from "./common.mjs";
 import { dueDiligenceSection, roundsSection, splitDueDiligence } from "./sections.mjs";
 import { sourcesOf } from "./spec-entries.mjs";
 
@@ -55,13 +55,14 @@ export function connectionsOf(participants, store) {
 }
 
 /**
- * loadStage(where, jobKind) -> { definition, participants, instanceSnapshot, product, needs, drafters } — what a page that starts a job of `jobKind` shows before it: the kind, the
- * participants of the instance's register that can do what the kind needs, and what the product allows of a route.
+ * loadStage(where, jobKind, instance?) -> { definition, participants, instanceSnapshot, product, needs, drafters } — what a page that starts a job of `jobKind` shows before it: the kind, the
+ * participants of the instance's register that can do what the kind needs, and what the product allows of a route. `instance`, the instance at its default branch where the page has read it
+ * already, is not read again.
  */
-export async function loadStage(where, jobKind) {
+export async function loadStage(where, jobKind, instance = null) {
   const { snapshot, host, context } = where;
   const definition = await kindOf(jobKind);
-  const instanceSnapshot = context.product ? await defaultSnapshot(context.instance.host) : snapshot;
+  const instanceSnapshot = instance ?? (context.product ? await defaultSnapshot(context.instance.host) : snapshot);
   const register = await instanceSnapshot.read(REGISTER);
   const participants = register === null ? [] : participantsOf(readDocument(participantSchema(), REGISTER, register));
   const info = await host.repositoryInfo();
@@ -104,7 +105,7 @@ export async function showDraft(where, kind) {
   if (kind.whole) return showArchitectureDraft(where, kind);
   if (kind.draft === "derive-requirements") return showRequirementsDraft(where, kind);
   const { target, snapshot, token, host, context } = where;
-  target.append(el("h2", null, `Draft ${kind.plural}`), explain(kind.explain.draft.requirements), link(`#${kind.route}`, "btn", `All ${kind.plural}`));
+  target.append(el("h2", null, `Draft ${kind.plural}`), explain(kind.explain.draft.requirements), reviewLink(context, `#${kind.route}`, "btn", `All ${kind.plural}`));
   let graph, line, names, loaded;
   try {
     ({ graph, line } = await latestGraph(snapshot, snapshot.commit));
@@ -170,27 +171,37 @@ export async function preparedRun(run, snapshot = run.snapshot, params = run.par
   return { ...run, snapshot, params, prepared, jobContext, id, now, agentM, offer };
 }
 
-// The run panel for the chosen participant and selection; Run starts the job.
+// The run panel for the chosen participant and selection; Run starts the job. A failure of the preparation is shown as the route names it (`problemOf`), else as the frame's readProblem.
 export async function panelOf(run) {
   const { stage, token, kind } = run;
   let ready;
   try {
     ready = await preparedRun(run);
   } catch (failure) {
-    stage.append(readProblem(failure, Boolean(token)));
+    stage.append(run.problemOf?.(failure) ?? readProblem(failure, Boolean(token)));
     return;
   }
   const panel = runPanel(ready.prepared, { onRun: () => start(ready) });
+  // What the panel names besides, the view shows with it (MOD-site-frame's runPanel): on the server's runners, that the agent's calls are billed per use (UC-010, Precondition).
+  if (ready.offer?.route.kind === "ci" && ready.offer.route.runner === "hosted") {
+    panel.append(el("p", "route-billing", `The job runs on the route ${recordRoute(ready.offer.route)}, on the server's runners: the calls are billed per use by the agent's provider.`));
+  }
   run.decoratePanel?.(panel, ready.prepared);
   stage.append(explain(kind.explain.draft.panel), panel);
 }
 
-async function execute(run, refine) {
-  const { host, token, snapshot, prepared, id, now, agentM, offer, chosen, params, worksOn } = run;
-  if (!offer || !offer.available) throw Object.assign(new Error(offer ? offer.reason : "the participant has no route of a job"), { name: "RouteUnavailable" });
-  const record = { id, kind: run.jobKind, worksOn, participant: chosen.name, model: chosen.model, route: recordRoute(offer.route), run: null, retries: null,
+/** startRecord(run) -> the start record of the job a run of `preparedRun` prepared, on the route its offer names, for MOD-runtimes' queueJob. */
+export function startRecord(run) {
+  const { token, prepared, id, now, agentM, offer, chosen, params, worksOn } = run;
+  return { id, kind: run.jobKind, worksOn, participant: chosen.name, model: chosen.model, route: recordRoute(offer.route), run: null, retries: null,
     startedBy: token.name, start: now, agentM, inputs: prepared.parts.map((part) => part.name), limit: prepared.limit,
     destinations: prepared.destinations.map((each) => ({ participant: each.participant.name, place: each.place, parts: each.parts })), params };
+}
+
+async function execute(run, refine) {
+  const { host, snapshot, prepared, offer } = run;
+  if (!offer || !offer.available) throw Object.assign(new Error(offer ? offer.reason : "the participant has no route of a job"), { name: "RouteUnavailable" });
+  const record = startRecord(run);
   const { path } = await queueJob(host, record, offer.route, snapshot.commit);
   if (offer.route.kind !== "tab") return { queued: true, record };
   const acting = [prepared.drafter, ...prepared.reviewers].filter(Boolean);
@@ -214,25 +225,53 @@ async function start(run) {
   }
 }
 
-// What a run of the drafting job came to: the rounds, what the loop left, the files written.
+// What a run of the drafting job came to, as the architecture's draft shows it: the rounds, each with its findings, what the loop left, and the files written.
 async function presentDraft(outcome, result, run) {
-  const { kind } = run;
+  const { kind, context } = run;
   result.append(el("p", "rounds", `Correction rounds: ${outcome.rounds.length}`), explain(kind.explain.draft.loop));
-  const left = el("ul", "left");
-  for (const finding of outcome.remaining) left.append(el("li", "left", `${finding.rule}: ${finding.what} — ${finding.fix}`));
+  if (outcome.rounds.length) result.append(roundsSection(outcome.rounds, outcome.stoppedBecause));
   const written = el("ul", "written");
   for (const file of outcome.written?.files ?? []) written.append(el("li", null, file));
-  result.append(left, written, explain(kind.explain.draft.written), link(`#${kind.route}`, null, `All ${kind.plural}`));
+  result.append(findingsList("left", outcome.remaining), written, explain(kind.explain.draft.written), reviewLink(context, `#${kind.route}`, null, `All ${kind.plural}`));
+}
+
+// The job records are asked for through the snapshot's readMany, newest first, a hundred at a time (A PAGE LOAD READS THE REPOSITORY IN BATCHES: "at most 100 files each"), each batch only
+// when the search has read the one before it.
+const BATCH = 100;
+
+/**
+ * newestJobRecords(snapshot) -> AsyncIterable<JobRecord> — MOD-job-ledger's recordsNewestFirst over the snapshot, the records asked for in batches as the search reaches them: a caller that
+ * stops at the record it needs leaves every later batch unasked.
+ */
+export function newestJobRecords(snapshot) {
+  const order = snapshot.paths.filter((path) => /^docs\/jobs\/JOB-/.test(path)).sort().reverse();
+  const asked = new Set();
+  const read = async (path) => {
+    if (!asked.has(path) && typeof snapshot.readMany === "function") {
+      const batch = order.slice(Math.max(0, order.indexOf(path)), order.indexOf(path) + BATCH);
+      for (const each of batch) asked.add(each);
+      try { await snapshot.readMany(batch); } catch { /* each record's own read below meets the failure */ }
+    }
+    return snapshot.read(path);
+  };
+  return recordsNewestFirst({ paths: order, read });
 }
 
 /**
- * jobNotes(snapshot, id) -> Promise<string[]> — the notes of the end records of the jobs that name the file `id` (`note: …` lines of an end's results): what a
- * drafting job did to a use case it wrote — a realised name it removed, a use case that realises none.
+ * jobNotes(snapshot, id, path) -> Promise<string[]> — the notes of the end of the job that wrote the file `id` at `path` (`note: …` lines of its results that name `id`): what a
+ * drafting job did to a use case it wrote — a realised name it removed, a use case that realises none. The records are read newest first, in batches, no further than the batch of the
+ * first whose end lists `file <path>`; for a file no end lists, all records are read, and the notes of every end that name `id` are given.
  */
-export async function jobNotes(snapshot, id) {
-  await readJobRecords(snapshot);
-  const rows = await listJobs([{ address: snapshot.repository?.web ?? "", snapshot }], new Map());
-  return rows.flatMap((row) => row.record.end?.results ?? []).filter((line) => line.startsWith("note: ") && line.includes(id)).map((line) => line.slice("note: ".length));
+export async function jobNotes(snapshot, id, path) {
+  const noteLines = (record) => (record.end?.results ?? []).filter((line) => line.startsWith("note: ") && line.includes(id)).map((line) => line.slice("note: ".length));
+  const found = [];
+  try {
+    for await (const record of newestJobRecords(snapshot)) {
+      if ((record.end?.results ?? []).includes(`file ${path}`)) return noteLines(record);
+      found.push(...noteLines(record));
+    }
+  } catch { /* a record that cannot be read ends the search with what was found */ }
+  return found;
 }
 
 // ---------------------------------------------------------------- deriving requirements from a linked source (UC-005)
@@ -291,7 +330,7 @@ function chosenSource(choices, list) {
 
 async function showRequirementsDraft(where, kind) {
   const { target, token, context } = where;
-  target.append(el("h2", null, "Derive requirements"), sourceExplain(kind.explain.draft.source), link(`#${kind.route}`, null, `All ${kind.plural}`));
+  target.append(el("h2", null, "Derive requirements"), sourceExplain(kind.explain.draft.source), reviewLink(context, `#${kind.route}`, null, `All ${kind.plural}`));
   let loaded, choices;
   try {
     loaded = await loadStage(where, kind.draft);
@@ -330,10 +369,21 @@ async function showRequirementsDraft(where, kind) {
       const count = prepared.parts.find((part_) => part_.recipe === "spec-with-queues")?.artifacts?.length ?? 0;
       panel.append(el("p", "requirements-included", `${count} existing requirements included.`));
     };
+    const problemOf = (failure) => (failure?.name === "HashMismatch" ? changedSource(failure, picked.choice) : null);
     await panelOf({ ...where, definition, kind, jobKind: kind.draft, params, worksOn, present: presentRequirements, chosen, participants,
-      instanceSnapshot, product, needs, stage, decoratePanel });
+      instanceSnapshot, product, needs, stage, decoratePanel, problemOf });
   });
   target.append(prepare, stage);
+}
+
+// UC-005 1a: a file whose bytes no longer match the SHA-256 its version records (MOD-source-register's HashMismatch { file, expected, actual }) is named as changed, with the link to the
+// library's entry of its source, where a new version is registered (UC-016); nothing has been sent. A file the chosen version does not hold names no source, and the link is to the library.
+function changedSource(failure, choice) {
+  const holds = choice.version.files.some((file) => file.name === failure.file);
+  return el("p", "problem changed-source",
+    `The content of ${failure.file}${holds ? ` of ${choice.id} ${choice.version.version}` : ""} changed: its SHA-256 is ${failure.actual}, not the ${failure.expected} its version records. `,
+    "Nothing is sent. A new version must be registered (UC-016): ",
+    link(holds ? `#library/source=${encodeURIComponent(choice.id)}` : "#library", "new-version", holds ? `Register a new version of ${choice.id}` : "Register a new version"));
 }
 
 function classOptions(value) {
@@ -373,7 +423,7 @@ function candidateItem(candidate, decided, linked, { parsed, register, onClass, 
   const refresh = () => showCurrent(current, parsed.requirements.get(of.value.trim()), register);
   of.addEventListener("input", refresh);
   refresh();
-  item.append(of, el("p", "candidate-rule", candidate.rule));
+  item.append(of, el("p", "candidate-rule", candidate.rule), passagesLine(decided));
   if (candidate.constrains === "process") item.append(el("p", "constrains-process", "Constrains the process."));
   if (decided.class === "conflict" && linked?.source?.fields?.authority) {
     item.append(el("p", "normative", `${linked.source.id} is ${linked.source.fields.authority}.`));
@@ -388,7 +438,7 @@ function candidateItem(candidate, decided, linked, { parsed, register, onClass, 
 }
 
 async function presentRequirements(outcome, result, run) {
-  const candidates = Array.isArray(outcome.draft?.candidates) ? outcome.draft.candidates : [];
+  const candidates = (Array.isArray(outcome.draft?.candidates) ? outcome.draft.candidates : []).filter((candidate) => shownOnPanel(candidate, outcome.classes));
   const classes = candidates.map((candidate) => candidateClass(candidate, outcome.classes));
   const linked = await linkedSourceInfo(run);
   const parsed = parseSpec((await run.snapshot.read("SPEC.md")) ?? "");
@@ -473,16 +523,16 @@ async function placesOf(where) {
 }
 
 // What the precondition `architecture-ready` found, with the way on: to an open use case's review, to the SPEC changes to decide first, to UC-023 for an existing architecture.
-function readiness(found, snapshot) {
+function readiness(found, snapshot, context) {
   const box = el("section", "readiness");
   if (!found) return box;
   box.append(el("p", `finding ${found.kind}`, `${found.kind}: ${found.what} — ${found.fix} [${found.rule}]`));
-  if (found.kind === "warning") box.append(link("#spec-entry", "decide-first", "Decide the open SPEC changes first (UC-006)"));
+  if (found.kind === "warning") box.append(reviewLink(context, "#spec-entry", "decide-first", "Decide the open SPEC changes first (UC-006)"));
   else if (found.rule === ONLY_ACCEPTED) {
     for (const { id, kind, status } of statuses(snapshot).values()) {
-      if (kind === "use-case" && status !== "accepted") box.append(" ", link(`#use-case/id=${encodeURIComponent(id)}`, "review-link", `Review ${id}`));
+      if (kind === "use-case" && status !== "accepted") box.append(" ", reviewLink(context, `#use-case/id=${encodeURIComponent(id)}`, "review-link", `Review ${id}`));
     }
-  } else box.append(link("#decision", "change-architecture", "Change the architecture (UC-023)"));
+  } else box.append(reviewLink(context, "#decision", "change-architecture", "Change the architecture (UC-023)"));
   return box;
 }
 
@@ -500,7 +550,7 @@ function noReviewer(drafter, participants, needs, places) {
  */
 async function showArchitectureDraft(where, kind) {
   const { target, snapshot, token, context } = where;
-  target.append(el("h2", null, "Draft the architecture"), explain(kind.explain.draft.whole), link(`#${kind.route}`, null, `All ${kind.plural}`));
+  target.append(el("h2", null, "Draft the architecture"), explain(kind.explain.draft.whole), reviewLink(context, `#${kind.route}`, null, `All ${kind.plural}`));
   let requirements, loaded, places, offeredPlaces, found, reviewing;
   try {
     // What the derivation covers is the head's SPEC: from the head's graph, or, while that is not stored yet, from the head's SPEC itself — no earlier graph is shown here.
@@ -519,7 +569,7 @@ async function showArchitectureDraft(where, kind) {
   const covers = el("section", "covers", el("h3", null, "What the derivation covers"),
     el("p", null, `Every requirement of the SPEC (${requirements.length}) and every use case (${useCases.length}); nothing is selected.`));
   covers.append(el("ul", "covered", ...requirements.map((name) => el("li", "requirement", name)), ...useCases.map((id) => el("li", "use-case", id))));
-  target.append(covers, readiness(found, snapshot));
+  target.append(covers, readiness(found, snapshot, context));
 
   const placed = Object.entries(offeredPlaces.sources).map(([from, allowed]) => ({ from, allowed }));
   const drafters = eligible(participants, { capabilities: definition.needs, places: placed }).eligible;
@@ -565,7 +615,8 @@ async function showArchitectureDraft(where, kind) {
 // What a run of the derivation came to, here: that it ran. The draft that waits for the author is shown by the page that follows.
 async function presentDerivation(outcome, result, run) {
   result.append(el("p", "ran", `Job ${run.id} ran in this tab.`));
-  const shown = el("section", "architecture-result", el("h3", null, "Drafted architecture"));
+  // The step asks the author to review the checked draft — its rounds and the findings left —, to change it and to write it (EVERY STEP EXPLAINS ITSELF), as the use cases' draft names `loop`.
+  const shown = el("section", "architecture-result", el("h3", null, "Drafted architecture"), explain(run.kind.explain.draft.loop));
   const files = el("section", "draft-files");
   const status = el("div", "draft-actions");
   let current = outcome;
@@ -593,6 +644,8 @@ async function presentDerivation(outcome, result, run) {
   if (outcome.rounds?.length) shown.append(roundsSection(outcome.rounds, outcome.stoppedBecause));
   if (outcome.remaining?.length) shown.append(findingsList("left", outcome.remaining));
   if (outcome.stepFindings?.length) shown.append(findingsList("step-findings", outcome.stepFindings));
+  // UC-022 step 6: a finding only the author can decide is not sent back but shown to the author (WHAT A PERSON DECIDES IS NOT SENT BACK).
+  if (outcome.forPerson?.length) shown.append(findingsList("for-person", outcome.forPerson));
   shown.append(files);
 
   const check = button("btn check-edit", "Check this edit");
@@ -645,6 +698,8 @@ function markdownCells(line) {
   return trimmed.slice(1, -1).split("|").map((cell) => cell.trim());
 }
 
+// The candidates of a decision's due-diligence table the author may choose among, by the label of their row. A candidate its registry does not know — its row says `not found` — is
+// not proposed (UC-022 7a); its row in the table is where it is listed, with the address queried.
 function candidateChoices(file) {
   const { section } = splitDueDiligence(file.text);
   if (!section) return [];
@@ -656,9 +711,46 @@ function candidateChoices(file) {
     if (cells.every((cell) => /^:?-{3,}:?$/.test(cell))) continue;
     if (!header) { header = cells; continue; }
     const at = header.findIndex((cell) => cell.toLowerCase() === "candidate");
-    if (at >= 0 && cells[at]) out.push(cells[at]);
+    if (at >= 0 && cells[at] && !cells.some((cell) => cell.startsWith("not found"))) out.push(cells[at]);
   }
   return out;
+}
+
+// The columns that name a candidate in a reuse decision's tables, as MOD-reuse-facts' Candidate holds it: its name, its ecosystem, its repository.
+const IDENTITY = new Set(["candidate", "name", "ecosystem", "repository", "source repository"]);
+const plain = (cell) => cell.replace(/`([^`]+)`/g, "$1").replace(/\s+-\s+(chosen|alternative)$/i, "").trim();
+
+/**
+ * chosenIn(text, label) -> string — the decision's text with the candidate `label` names (`<name> (<ecosystem>)`, as a row of its due-diligence table names it) made the chosen one
+ * (UC-022 step 8): its name, ecosystem and repository change places with those of the chosen candidate of `## Decision` — the first row whose role is `chosen`, or that names none —, so
+ * the step due-diligence, run again when the draft is written, finds it chosen. A text in which the label names no candidate, or the chosen one, is returned unchanged.
+ */
+function chosenIn(text, label) {
+  const [, name, ecosystem] = /^(.*?) \((\w+)\)/.exec(plain(label)) ?? [];
+  const lines = text.split("\n");
+  const rows = [];
+  let heading = null, header = null;
+  for (const [at, line] of lines.entries()) {
+    if (/^## /.test(line)) { heading = line.trim(); header = null; continue; }
+    const cells = markdownCells(line);
+    if (!cells) { header = null; continue; }
+    if (heading !== "## Decision" && heading !== "## Alternatives") continue;
+    if (cells.every((cell) => /^:?-{3,}:?$/.test(cell))) continue;
+    if (!header) { header = cells.map((cell) => cell.toLowerCase()); continue; }
+    const value = (column) => plain(cells[header.indexOf(column)] ?? "");
+    const role = value("role").toLowerCase() || (heading === "## Decision" ? "chosen" : "alternative");
+    rows.push({ at, cells, header, role, name: value("candidate") || value("name"), ecosystem: value("ecosystem").toLowerCase() });
+  }
+  const chosen = rows.find((row) => row.role === "chosen");
+  const picked = rows.find((row) => row.name === name && row.ecosystem === ecosystem?.toLowerCase());
+  if (!chosen || !picked || chosen === picked) return text;
+  const identity = (row) => Object.fromEntries(row.header.map((column, at) => [column, row.cells[at]]).filter(([column]) => IDENTITY.has(column)));
+  const swapped = (row, other) => {
+    const taken = identity(other);
+    return `| ${row.cells.map((cell, at) => (IDENTITY.has(row.header[at]) ? taken[row.header[at]] ?? "" : cell)).join(" | ")} |`;
+  };
+  [lines[chosen.at], lines[picked.at]] = [swapped(chosen, picked), swapped(picked, chosen)];
+  return lines.join("\n");
 }
 
 function draftFileView(file) {
@@ -678,6 +770,8 @@ function draftFileView(file) {
       radio.type = "radio";
       radio.name = `reuse-${file.path}`;
       radio.value = candidate;
+      // The pick is the author's edit of the decision's text, which Write proposals writes (UC-022 step 8).
+      radio.addEventListener("change", () => { if (radio.checked) area.value = chosenIn(area.value, candidate); });
       list.append(el("li", null, el("label", null, radio, ` ${candidate}`)));
     }
     box.append(list);

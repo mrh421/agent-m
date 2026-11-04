@@ -375,26 +375,27 @@ test("move — the passages of a restricted source are read where its content li
 // guards: UC-016; A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the instance's register of two entries (as the repository holds), two products that the browser keeps and that link SRC-ai-act (thesis-tool on v1, other-tool on v2), each with its docs/sources.md; once with a token stored and once with none
 // input: render library/SRC-ai-act; press "Move to the new version" of thesis-tool; (with a token) press Move
-// expect: opening sends, with a token, 13 requests: 5 to the instance (the repository's information 1, its snapshot 2, its two entries in one query of GitHub's GraphQL API 1, the list of the fetch workflow's runs 1), 4 to thesis-tool and 4 to other-tool (information 1, snapshot 2, docs/sources.md 1), and, without one, 14: 6 to the instance (the two entries 2, one request each), 4 and 4; no request to a product asks for its SPEC.md or a source's content; the press of "Move to the new version" sends 6 requests, 1 to thesis-tool (SPEC.md) and 5 to the instance (information 1, snapshot 2, the two versions' files 2); the press of Move sends 8, all to thesis-tool (information 1, snapshot 2, the branch's head 1, its commit 1, the tree 1, the new commit 1, the move of the branch 1); with no token stored the press of Move is refused by the server, writes nothing, and its result begins with ✗
+// expect: opening sends, with a token, 16 requests: 6 to the instance (the repository's information 1 with greenToMerge's GraphQL request beside it 1 (ITM-1170), its snapshot 2, its two entries in one query of GitHub's GraphQL API 1, the list of the fetch workflow's runs 1), 5 to thesis-tool and 5 to other-tool (information 1 with greenToMerge's beside it 1, snapshot 2, docs/sources.md 1), and, without one, 14: 6 to the instance (no greenToMerge request; the two entries 2, one request each), 4 and 4; no request to a product asks for its SPEC.md or a source's content; the press of "Move to the new version" sends 6 requests without a token and 7 with one, 1 to thesis-tool (SPEC.md) and 5 or 6 to the instance (information 1, with a token greenToMerge's beside it 1, snapshot 2, the two versions' files 2); the press of Move sends 9, all to thesis-tool (information 1, greenToMerge's beside it 1, snapshot 2, the branch's head 1, its commit 1, the tree 1, the new commit 1, the move of the branch 1); with no token stored the press of Move is refused by the server, writes nothing, and its result begins with ✗
 test("budget — opening a source reads each kept product's docs/sources.md once; Move reads two versions' files; both counted with a token and without", async (t) => {
   for (const token of [true, false]) {
     const page = await open(t, { token });
     const label = token ? "with a token" : "without a token";
     const by = () => [INSTANCE, repoOf(THESIS), repoOf(OTHER)].map((repository) => requestsTo(page, repository).length);
-    assert.equal(page.world.requests.length, token ? 13 : 14, `${label}: opening`);
-    assert.deepEqual(by(), token ? [5, 4, 4] : [6, 4, 4], `${label}: opening, by repository`);
+    // ITM-1170: with a token, each repository's information has greenToMerge's GraphQL request beside it.
+    assert.equal(page.world.requests.length, token ? 16 : 14, `${label}: opening`);
+    assert.deepEqual(by(), token ? [6, 5, 5] : [6, 4, 4], `${label}: opening, by repository`);
     assert.equal(page.world.requests.some((request) => request.url.pathname.endsWith("/SPEC.md")), false, `${label}: no SPEC.md is read on opening`);
     page.world.requests.length = 0;
     await click(one_(page.target, "library-move-open"));
     await until(() => byClass(page.target, "library-move-confirm").length === 1, `${label}: the move is prepared`);
-    assert.equal(page.world.requests.length, 6, `${label}: Move to the new version`);
-    assert.deepEqual(by(), [5, 1, 0], `${label}: Move to the new version, by repository`);
+    assert.equal(page.world.requests.length, token ? 7 : 6, `${label}: Move to the new version`);
+    assert.deepEqual(by(), token ? [6, 1, 0] : [5, 1, 0], `${label}: Move to the new version, by repository`);
     page.world.requests.length = 0;
     await click(one_(page.target, "library-move-confirm"));
     if (token) {
       await until(() => byClass(page.target, "library-move-done").length === 1, `${label}: Move is committed`);
-      assert.equal(page.world.requests.length, 8, `${label}: Move`);
-      assert.deepEqual(by(), [0, 8, 0], `${label}: Move, by repository`);
+      assert.equal(page.world.requests.length, 9, `${label}: Move`);
+      assert.deepEqual(by(), [0, 9, 0], `${label}: Move, by repository`);
     } else {
       await until(() => text(page.target, "library-move-result").startsWith("✗"), `${label}: Move is refused`);
       assert.deepEqual(commitsOf(page, THESIS), [], `${label}: nothing is written`);

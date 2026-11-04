@@ -20,7 +20,7 @@
 // Run: node --test tests/repository-hosts-history.test.mjs
 //
 // Module: MOD-repository-hosts
-// Guards: UC-007; UC-008; UC-018; A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT; A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE; THE NAME IS THE ID AND IT SURVIVES; A REMOTE INTERFACE NAMES HOW IT FAILS; A USED-UP RATE LIMIT IS NAMED, NOT BLAMED ON THE TOKEN; AN EXPIRED TOKEN IS NAMED AND ITS RENEWAL LINKED; A PAGE LOAD READS THE REPOSITORY IN BATCHES
+// Guards: UC-007; UC-008; UC-018; A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT; A REQUIREMENT SHOWS ITS HISTORY; THE NAME IS THE ID AND IT SURVIVES; A REMOTE INTERFACE NAMES HOW IT FAILS; A USED-UP RATE LIMIT IS NAMED, NOT BLAMED ON THE TOKEN; AN EXPIRED TOKEN IS NAMED AND ITS RENEWAL LINKED; A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // Level: unit
 //
 // One history serves every test: five commits of a repository, oldest first, by Alice, Bob and Carol — Carol's e-mail linked to
@@ -234,7 +234,7 @@ async function onBoth(read, history = HISTORY) {
 // ---------------------------------------------------------------- a file's commits
 
 // TST-472541 · level: unit · module: MOD-repository-hosts
-// guards: A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT; A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE
+// guards: A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT; A REQUIREMENT SHOWS ITS HISTORY
 // given: the history of five commits above; SPEC.md was added in the first, changed in the third and the fifth; the fourth commit was authored a day before it was committed; Carol, the fifth's author, has no account
 // input: readHistory("SPEC.md", {}) on a GitHub repository and on a GitLab project; then readHistory("SPEC.md", { ref }) with the third commit's id as ref
 // expect: the fifth, third and first commit, in that order, each { commit, parents, author: { account, name }, date, message, changes }: the parents the server names (none for the first); the author's name, and on GitHub the account — null for Carol —, on GitLab null; the date it was committed; the whole message; and every file the commit changed, added, modified or deleted, in the order the server lists them. With the third commit as ref: the third and the first only
@@ -295,7 +295,7 @@ test("MOD-repository-hosts readHistory — limit is honoured, across pages too (
 // ---------------------------------------------------------------- the repository, and many files
 
 // TST-472544 · level: unit · module: MOD-repository-hosts
-// guards: A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE; THE NAME IS THE ID AND IT SURVIVES
+// guards: A REQUIREMENT SHOWS ITS HISTORY; THE NAME IS THE ID AND IT SURVIVES
 // given: the history above; and a repository whose only commit adds 250 files
 // input: readHistory(null, {}) on the first; readHistory(null, {}) on the second, on GitHub and on GitLab
 // expect: all five commits, newest first, each as above — the first's three files, the fourth's rename, the fifth's deletion; for the 250 files, the commit's 250 changes, whichever number of files a server gives to a page

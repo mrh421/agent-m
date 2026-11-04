@@ -18,7 +18,7 @@ import { builtins } from "./builtins.mjs";
 import { registerStrategies } from "./registry.mjs";
 import { tools } from "./tools.mjs";
 
-export { registerStrategies } from "./registry.mjs";
+export { registerStrategies, registerLater, registeredAll } from "./registry.mjs";
 export { estimate, prepareJob } from "./prepare.mjs";
 export { failedBecause, runJob, writeResult } from "./loop.mjs";
 export { driverPrompt } from "./driver-prompt.mjs";

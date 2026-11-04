@@ -55,9 +55,9 @@ const LINKS = txt("# Sources", "", "| Source | Version | Hash | Part |", "|---|-
   `| ${SOURCE} | 2026-10-13 | ${"0".repeat(64)} | prompt |`, `| SRC-policy | 2026-10-13 | ${"0".repeat(64)} | lending |`);
 const registerHead = readOriginal("docs/participants.md").split("\n");
 const header = registerHead.slice(0, registerHead.findIndex((line) => line.startsWith("|---")) + 1).join("\n");
+// The bar offers this browser's endpoints and CLI sessions and reads no participant list (UC-049 1); the instance's list stays for the job's preparation and a hand-over's route, which read it.
 const register = (context) => txt(header,
-  `| drafter | model endpoint | fixture-model | ${context} | - | draft text | this machine | endpoint fixture |`,
-  "| observer | model endpoint | observer-model | 200000 | - | read repository | Anthropic, USA | endpoint fixture |",
+  `| drafter | model endpoint | fixture-model | ${context} | - | draft text | this machine | endpoint drafter |`,
   "| ci-drafter | CI agent | ci-model | 200000 | - | draft text | GitHub Actions in the USA | ci hosted secret CI_KEY |");
 
 export const candidate = (fields = {}) => ({ name: CHANGED, rule: "Every loan visibly displays its due date.",
@@ -75,13 +75,16 @@ function emptyStorage(storage) { while (storage.length > 0) storage.removeItem(s
 
 /**
  * scenario({ owner, linked, answers, context, bridge, extraFiles, recording, hash }) -> the open page and its servers. The instance is akmaier/agent-m (its Pages
- * address is the location), the product `<owner>/lending-tool` with the SPEC above, the person's source linked unless `linked` is false, and the participant
- * `drafter` (draft text), `observer` (read the repository) and the CI agent `ci-drafter` (not offered by the bar). `answers` are the drafting endpoint's replies in
+ * address is the location), the product `<owner>/lending-tool` with the SPEC above, the person's source linked unless `linked` is false, and what this browser declares for the bar to offer: the endpoint `drafter` (draft text, at
+ * "this machine", through the Bridge release-bridge where `bridge` is set, naming the CI secret `secret` where one is given, none where `drafting` is false) and the CLI session `release-bridge:observer`
+ * (read the repository only, at "Anthropic, USA"), which the Bridge release-bridge lists ready. `keepBridge` false keeps no Bridge, `agents` are the names the Bridge lists ready, and `settings` are
+ * further settings the store holds (further endpoints, CLI sessions, last tests); `bridgeFetch`, where given, answers the requests to the loopback Bridge in place of the fixture Bridge. The CI agent `ci-drafter` of the instance's list is not offered by the bar. `answers` are the drafting endpoint's replies in
  * turn (a value, or a function of the requests so far); `hash` is the fragment the page opens at, none for the specification browser.
  */
-export async function scenario({ owner = "akmaier", linked = true, answers = [draft()], context = 200000, bridge = false, extraFiles = {}, instanceFiles = {},
+export async function scenario({ owner = "akmaier", linked = true, answers = [draft()], context = 200000, bridge = false, secret = null, drafting = true, keepBridge = true, agents = ["observer"], settings = {}, bridgeFetch = null, extraFiles = {}, instanceFiles = {},
   recording = false, hash = null } = {}) {
-  const repo = `${owner}/lending-tool`, address = `https://github.com/${repo}`, endpointRequests = [], bridgeRequests = [];
+  // `bridgeRequests` are the Bridge's asks and their polls; `testRequests` are the two of testBridge that drawing the bar sends to each Bridge the store keeps.
+  const repo = `${owner}/lending-tool`, address = `https://github.com/${repo}`, endpointRequests = [], bridgeRequests = [], testRequests = [];
   let answerNumber = 0;
   const endpointAnswer = () => {
     const value = answers[Math.min(answerNumber++, answers.length - 1)];
@@ -110,6 +113,8 @@ export async function scenario({ owner = "akmaier", linked = true, answers = [dr
     return { answer: `Handed on to ${kind}.`, handOver: { kind, works_on: [], task } };
   };
   const handler = async (url, init) => {
+    // A controlled Bridge of the test (`bridgeFetch`) answers in place of the fixture below.
+    if (bridgeFetch && url.origin === "http://127.0.0.1:9418") return bridgeFetch(url, init);
     if (url.origin === "https://fixture-endpoint.example.test") {
       const body = JSON.parse(init.body);
       // Every message of the bar is the conversation (MOD-prompt-bar: the one kind `converse`). Where the scenario scripts a change's draft — or a function — for its next
@@ -121,6 +126,14 @@ export async function scenario({ owner = "akmaier", linked = true, answers = [dr
       }
       endpointRequests.push({ url: url.href, body, headers: init.headers });
       return response({ choices: [{ message: { content: answerText() } }], usage: { prompt_tokens: 10, completion_tokens: 5 } });
+    }
+    if (url.origin === "http://127.0.0.1:9418" && init.method === "GET" && url.pathname === "/v1/pair") {
+      testRequests.push({ method: init.method, path: url.pathname });
+      return response({ bridge: { name: "release-bridge", version: "1.0.0", platform: "linux" }, origin: "https://akmaier.github.io" });
+    }
+    if (url.origin === "http://127.0.0.1:9418" && init.method === "GET" && url.pathname === "/v1/agents") {
+      testRequests.push({ method: init.method, path: url.pathname });
+      return response({ agents: agents.map((name) => ({ name, version: "1.0.0", ready: true, loggedIn: true })), missing: [] });
     }
     if (url.origin === "http://127.0.0.1:9418") {
       bridgeRequests.push({ url: url.href, method: init.method, body: init.body && JSON.parse(init.body), headers: init.headers });
@@ -168,11 +181,16 @@ export async function scenario({ owner = "akmaier", linked = true, answers = [dr
   writeSetting(store, "github-token", { value: "github_pat_FIXTURE_INSTANCE_0123456789", name: "github.com/akmaier", expires: "2027-01-01" });
   writeSetting(store, `github-token:${repo}`, { value: "github_pat_FIXTURE0123456789", name: "github.com/akmaier", expires: "2027-01-01" });
   writeSetting(store, "products", [address]);
-  writeSetting(store, "endpoint:fixture", { url: "https://fixture-endpoint.example.test/v1", kind: "openai-compatible", model: "fixture-model", ...(bridge ? { bridge: "release-bridge" } : {}) });
-  if (bridge) writeSetting(store, "bridge:release-bridge", { address: "http://127.0.0.1:9418", token: "fixture-pairing-token" });
+  if (drafting) writeSetting(store, "endpoint:drafter", { url: "https://fixture-endpoint.example.test/v1", kind: "openai-compatible", model: "fixture-model", place: "this machine", context,
+    ...(bridge ? { bridge: "release-bridge" } : {}), ...(secret ? { secret } : {}) });
+  if (keepBridge) {
+    writeSetting(store, "bridge:release-bridge", { address: "http://127.0.0.1:9418", token: "fixture-pairing-token" });
+    writeSetting(store, "session:release-bridge:observer", { place: "Anthropic, USA", context: 200000, model: "observer-model", capabilities: ["read the repository"] });
+  }
+  for (const [key, value] of Object.entries(settings)) writeSetting(store, key, value);
   const named = encodeURIComponent(address);
   fragment = hash ?? `#trace/key=specification/ref=main/product=${named}`;
-  const s = { product, instance, repo, address, store, location, endpointRequests, bridgeRequests, handOnRequests, chapter: readOriginal(`${chapterFolder}08_requirements-engineering.md`) };
+  const s = { product, instance, repo, address, store, location, endpointRequests, bridgeRequests, testRequests, handOnRequests, chapter: readOriginal(`${chapterFolder}08_requirements-engineering.md`) };
   await startPage({ page: "review", views: [tracePages, reviewPages], menuViews: [] });
   await rest(s);
   s.body = document.body;
@@ -271,7 +289,7 @@ export function assertProposal(s) {
 // 2b to one of them, and the page of a use case.
 const useCase = (id, title, realises, alternative = "- **2a. The book is out.** Agent M says so.") => txt("---", `id: ${id}`, `title: ${title}`, "area: lending", "actors:", "  - Author",
   "realises:", ...realises.map((name) => `  - ${name}`), "---", `# ${id} ${title}`, "", `**Goal.** ${title}.`, "", "## Actors", "", "- **Author**", "", "## Precondition", "",
-  "- The product is managed.", "", "## Main flow", "", "1. The author starts.", "2. Agent M answers.", "", "## Alternative flows", "", alternative, "", "## Postcondition", "",
+  "- The product is managed.", "", "## Main flow", "", "1. The author starts.", "2. Agent M answers.", "", "```mermaid", "flowchart LR", "    Author --> AgentM", "```", "", "## Alternative flows", "", alternative, "", "## Postcondition", "",
   "- Nothing is written.");
 export const UC7_PATH = "docs/use-cases/UC-007-derive-use-cases.md", UC8_PATH = "docs/use-cases/UC-008-review-use-cases.md";
 export const UC7 = useCase("UC-007", "Derive use cases", [LOAN]), UC8 = useCase("UC-008", "Review use cases", [SHELF]);

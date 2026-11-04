@@ -25,9 +25,9 @@ origin:
 
 ## Outcome
 
-MOD-implementation-pages.md:157-159: "*Draft the plan* with its run panel, run in this tab and attended, whose result waits
+MOD-implementation-pages.md:169-171: "*Draft the plan* with its run panel, run in this tab and attended, whose result waits
 for the planner; the draft reviewed in order, reordered, split, merged or edited where its dependencies allow; *Save plan*,
-which lets the drafted plan go on as the planner left it". MOD-job-catalogue.md:129-130: for a kind of `review: person` the
+which lets the drafted plan go on as the planner left it". MOD-job-catalogue.md:135: for a kind of `review: person` the
 click is "*Save plan* (UC-045) — ... through MOD-job-runner's `writeResult`". UC-045 steps 2, 4 and 5 (UC-045.md:67-69,
 :80-84).
 

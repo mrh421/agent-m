@@ -35,8 +35,7 @@ const name = (button) => button.childNodes.filter((node) => !(node.nodeType === 
 // guards: UC-046
 // given: a header whose menu has the id "tabs", as the review pages' has
 // input: foldMenu(menu), its button put before the menu as docs/index.html's start does; the button clicked once, then again
-// expect: a <button type="button" class="menu-button btn"> named "Menu", with aria-controls "tabs" and aria-expanded
-//   "false"; after the first click aria-expanded is "true", after the second "false"
+// expect: a <button type="button" class="menu-button btn"> named "Menu", with aria-controls "tabs" and aria-expanded "false"; after the first click aria-expanded is "true", after the second "false"
 test("TST-1191001 foldMenu makes the Menu button that controls the menu and turns aria-expanded with each click", () => {
   const { inner, menu } = header("tabs");
   const button = foldMenu(menu);

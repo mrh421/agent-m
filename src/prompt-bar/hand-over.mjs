@@ -1,22 +1,16 @@
-// MOD-prompt-bar, hand-over.mjs — a hand-over the participant proposed (docs/architecture/MOD-prompt-bar.md: Interfaces, startPromptBar; UC-049 4a): whether it may start,
-// the route it would take, and queuing it. assess reads the product's default branch — its head, its paths, its visibility —, and only for a hand-over that works on an item of the
-// backlog or a step of the plan the product's facts for the scope `work`, to ask MOD-work-plans' startable for each item or step of the product's plan it works on, with the proposed
-// participant as the only participant, so that startable's own check of the implementing role (MOD-product-process' holdsRole) is the check of this participant: this file repeats no
-// rule of the work plans. A hand-over that works on no item or step — an endpoint's own job among them, which works on the repository's web address — reads no facts. queue prepares
-// the job of the kind the participant named and hands it over with MOD-runtimes' handOverJob; the bar calls it once the participant's answer proposes it, the person's Send being the request (UC-049 4a).
+// MOD-prompt-bar, hand-over.mjs — a hand-over the participant proposed (docs/architecture/MOD-prompt-bar.md: Interfaces, startPromptBar; UC-049 4a): the route it would take, and
+// queuing it as a job of the endpoint or CLI session itself (UC-049 4a.2). assess reads the product's default branch — its head, its paths, its visibility — and none of the product's
+// facts: no start rule of the product's process applies to a hand-over, whatever it works on; its job's own preconditions decide when it is prepared — MOD-approvals' rests-on-accepted
+// among them, which refuses an item or step whose requirements or use cases are not all accepted. queue prepares the job of the kind the participant named and hands it over with
+// MOD-runtimes' handOverJob; the bar calls it once the participant's answer proposes it, the person's Send being the request (UC-049 4a).
 //
 // Module: MOD-prompt-bar
 //
-// NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED; A JOB GOES ONLY TO A HOLDER OF ITS ROLE; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK — the click is the Send whose answer proposed the hand-over. assess writes and queues nothing. The task's
+// THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK — the click is the Send whose answer proposed the hand-over. assess writes and queues nothing. The task's
 // words reach no record and no commit through this file: they are the `instruction` of the job prepared in memory and the `task` handOverJob carries to the run.
 // Readings of the module file this file takes (the pull request names them):
-//   - an item or step of the plan is named by its identifier `ITM-<n>`, as the backlog's items and the plan's steps are; a hand-over whose `works_on` names none works on nothing
-//     of the plan, and no start rule applies to it — its job's own preconditions decide when it is prepared.
-//   - startable's context: the role assignment and the sprint are those of the team whose sprint holds the item (`facts.held`, which MOD-work-plans' heldItems derives, naming the sprint
-//     and the team); where no sprint holds it, both are null — except in a model without sprints, where the product's one role assignment is the item's (MOD-work-plans, Data: "the
-//     product's one in a model without sprints"). The work-in-progress limit is the workflow's `model.flow.wip`.
 //   - routesFor is given the repository's visibility from the host's repositoryInfo, whether the product holds Agent M's job workflow (one of the two files below, as the review pages
-//     look for them), and no resource needs: the scope `work` reads none.
+//     look for them), and no resource needs.
 //   - The job's identifier is new against the records the snapshot's paths under docs/jobs/ name (MOD-job-ledger's newJobId); no record is read for it.
 //   - The job's parameters name what the hand-over works on, whatever the kind, by the keys the kinds' strategies read (MOD-approvals, MOD-spec-changes, MOD-run-planner, MOD-runtimes): `requirements`, `useCases`
 //     and, for one use case alone, `useCase` beside it, `items` for backlog items and `steps` for plan steps; the task is no parameter. Nothing else is given: a key that `works_on` does not determine — a
@@ -27,7 +21,6 @@ import { editStrategies } from "../artifact-edits/index.mjs";
 import { newJobId } from "../job-ledger/index.mjs";
 import { issueStrategies } from "../issue-handling/index.mjs";
 import { handOverParams, prepareJob } from "../job-runner/index.mjs";
-import { productFacts } from "../progress-measures/index.mjs";
 import { resourceStrategies } from "../resource-list/index.mjs";
 import { resultStrategies } from "../result-records/index.mjs";
 import { reuseStrategies } from "../reuse-facts/index.mjs";
@@ -36,7 +29,7 @@ import { handOverJob, routeStrategies, routesFor, tabContext } from "../runtimes
 import { sourceStrategies } from "../source-register/index.mjs";
 import { specStrategies } from "../spec-changes/index.mjs";
 import { scheduleStrategies } from "../test-schedule/index.mjs";
-import { startable, workStrategies } from "../work-plans/index.mjs";
+import { workStrategies } from "../work-plans/index.mjs";
 import { readParticipants } from "./offer.mjs";
 import { connectionsOf, defaultSnapshot, personOf, placesOf } from "./send.mjs";
 
@@ -56,50 +49,20 @@ export const recordRoute = (route) => (route.kind === "tab" ? "tab" : route.kind
 /** worksOnOf(handOver: { works_on }) -> string[] — what the hand-over works on, as a list. */
 export const worksOnOf = (handOver) => [handOver.works_on].flat().filter(Boolean).map(String);
 
-// The team's role assignment and sprint that startable is asked with for an item (see the readings above).
-function teamOf(item, facts, workflow) {
-  const held = facts.held.find((each) => each.item === item);
-  if (held) {
-    return { assignment: facts.assignments.find((each) => each.path.endsWith(`/${held.team}.md`)) ?? null,
-      sprint: facts.sprints.find((each) => each.path.endsWith(`/${held.sprint}.md`)) ?? null };
-  }
-  if (workflow?.model?.flow?.sprints !== true && facts.assignments.length === 1) return { assignment: facts.assignments[0], sprint: null };
-  return { assignment: null, sprint: null };
-}
-
-// An item of the backlog or a step of the plan, by its identifier (see the readings above).
-const PLANNED = /^ITM-\d+$/;
 // A job record's path under docs/jobs/, with the job's identifier.
 const JOB_RECORD = /^docs\/jobs\/(JOB-[^/]+)\.md$/;
 
-// The reasons startable gives for each item or step of the product's plan in `planned`, from the product's facts of the scope `work`, which are read here; and the snapshot they were read at.
-async function startReasons(planned, participant, instance, instanceSnapshot, page) {
-  const facts = await productFacts(page.host, instanceSnapshot, (commit) => instance.host.readSnapshot(commit), new Date(), { scope: "work" });
-  const workflow = facts.workflow === "unknown" ? null : facts.workflow;
-  const wip = workflow?.model?.flow?.wip ?? null;
-  const reasons = [];
-  for (const item of planned.filter((id) => facts.plan.states.some((state) => state.item === id))) {
-    const { assignment, sprint } = teamOf(item, facts, workflow);
-    const verdict = startable(item, facts.plan.states, { workflow, assignment, sprint, held: facts.held, wip, participants: [participant] });
-    if (!verdict.startable) reasons.push(...verdict.reasons);
-  }
-  return { reasons, snapshot: facts.snapshot };
-}
-
 /**
- * assess({ handOver, participant, instance, page, instanceSnapshot? }) -> Promise<{ reasons: string[], route: Route | null, routeText: string, needsWorkflow: boolean, snapshot: Snapshot, head: string,
- * instanceSnapshot, participants }> — whether the hand-over { kind, works_on, task } of `participant` may start, now: for each item or step of the product's plan that it works on, the reasons
- * startable gives (none: it may start), read from the product's facts only where it works on an item or step; and the route routesFor gives it, with `routeText` the route as the record writes
- * it, or why none is offered. `page` is { address, host } of the repository the conversation is held on; `snapshot` is its default branch as it was read, `head` that snapshot's commit.
+ * assess({ handOver, participant, instance, page, instanceSnapshot? }) -> Promise<{ route: Route | null, routeText: string, needsWorkflow: boolean, snapshot: Snapshot, head: string,
+ * instanceSnapshot, participants }> — the route routesFor gives the hand-over { kind, works_on, task } of `participant`, now, with `routeText` the route as the record writes
+ * it, or why none is offered; no start rule of the product's process is asked, and none of its facts is read. `page` is { address, host } of the repository the conversation is held on; `snapshot` is its default branch as it was read, `head` that snapshot's commit.
  * `instanceSnapshot` is the instance's default branch where the caller read it already; else it is read here. Reads through the hosts and writes nothing; throws what the hosts throw.
  */
 export async function assess({ handOver, participant, instance, page, instanceSnapshot: given = null }) {
   const instanceSnapshot = given ?? await defaultSnapshot(instance.host);
   const participants = await readParticipants(instanceSnapshot);
-  const planned = worksOnOf(handOver).filter((id) => PLANNED.test(id));
   const { defaultBranch, visibility } = await page.host.repositoryInfo();
-  const { reasons, snapshot } = planned.length > 0 ? await startReasons(planned, participant, instance, instanceSnapshot, page)
-    : { reasons: [], snapshot: await page.host.readSnapshot(defaultBranch) };
+  const snapshot = await page.host.readSnapshot(defaultBranch);
   const jobWorkflow = WORKFLOWS.some((path) => snapshot.paths.includes(path));
   const offers = routesFor(participant, participants, { visibility, jobWorkflow }, []);
   const taken = offers.find((each) => each.route.kind !== "tab" && each.available) ?? null;
@@ -108,7 +71,7 @@ export async function assess({ handOver, participant, instance, page, instanceSn
     : offers.length > 0 ? "this participant's route is this tab, which a hand-over does not take" : "this participant has no route a job takes";
   // UC-049 4c: what is missing is the job workflow, when the product has none and the CI route is therefore unavailable.
   const needsWorkflow = taken === null && !jobWorkflow && offers.some((each) => each.route.kind === "ci" && !each.available);
-  return { reasons, route: taken?.route ?? null, routeText, needsWorkflow, snapshot, head: snapshot.commit, instanceSnapshot, participants };
+  return { route: taken?.route ?? null, routeText, needsWorkflow, snapshot, head: snapshot.commit, instanceSnapshot, participants };
 }
 
 /**
@@ -148,8 +111,7 @@ export async function queue({ handOver, participant, assessment, store, instance
  * spawnEndpointJob({ kind, task, participant, store, instance, page, ofProduct, conversation, source, instanceSnapshot? }) -> Promise<{ id, path, commit, person } | { refused: string,
  * needsWorkflow: boolean }> — the job that is a model endpoint's own (UC-049 4a.1, "for any other kind, the job is the endpoint's own"), spawned on GitHub Actions on a person's click: the job of
  * `kind`, working on the page's repository, by the web address of the snapshot that was read, with `task` travelling in the workflow's inputs, assessed and queued as a proposed hand-over is (assess,
- * queue), on the server's own runners. It works on no item or step of the product's plan, so no start rule applies and none of the product's facts is read: of the product, only its default
- * branch — its head, its paths, its visibility. `instanceSnapshot` is the instance's default branch where the caller read it already. `participant` is the endpoint as the bar offers it (offer.mjs endpointsOffered), its route naming the CI secret of its key. Where
+ * queue), on the server's own runners. None of the product's facts is read: of the product, only its default branch — its head, its paths, its visibility. `instanceSnapshot` is the instance's default branch where the caller read it already. `participant` is the endpoint as the bar offers it (offer.mjs endpointsOffered), its route naming the CI secret of its key. Where
  * no CI route can be taken — the product has no job workflow, or the endpoint names no CI secret — nothing is written and `refused` says why, `needsWorkflow` whether the
  * job workflow is what is missing (UC-049 4c). Throws what queue throws.
  */

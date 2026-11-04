@@ -56,8 +56,7 @@ test("a header may name an optional column or leave it out", () => {
 // guards: A DATA FORMAT IS DEFINED ONCE; A FINDING READS LIKE A COMPILER MESSAGE
 // given: the same schema; headers that lack Kind (not optional), name the optional columns in the other order, and add a column Extra
 // input: documentFindings of each
-// expect: counter-proof — none is the table's header, so no row is read: one finding each, at the header, naming the schema's rule; the one that lacks Kind says "lacks Kind", the one in another order says it puts the
-//   columns out of order, the one that adds Extra says "adds Extra"; a left-out optional column is no lack
+// expect: counter-proof — none is the table's header, so no row is read: one finding each, at the header, naming the schema's rule; the one that lacks Kind says "lacks Kind", the one in another order says it puts the columns out of order, the one that adds Extra says "adds Extra"; a left-out optional column is no lack
 test("a header that lacks a required column, is out of order or adds a column is refused, and a left-out optional column is not a lack", () => {
   const cases = [
     [["Name", "Notes"], ["a", "n"], /lacks Kind/], [["Name", "Kind", "Owner", "Notes"], ["a", "k", "o", "n"], /puts the columns out of order/],
@@ -90,8 +89,7 @@ test("loadSchema — optional is true or false and nothing else", () => {
 // guards: A DATA FORMAT IS DEFINED ONCE
 // given: a list that names Name, Kind and Notes, with a row; a list without a table
 // input: writeDocument of the document read with one row added that fills Name, Kind and Notes; with one that also fills Owner; and of a document with rows and no table yet, one row filling Owner and one not
-// expect: a row added to the existing table is written with the cells of the columns its header names (the row that fills Owner, which the header leaves out, is refused naming Owner); a table written anew has Name and Kind,
-//   and Notes or Owner only where some row fills them
+// expect: a row added to the existing table is written with the cells of the columns its header names (the row that fills Owner, which the header leaves out, is refused naming Owner); a table written anew has Name and Kind, and Notes or Owner only where some row fills them
 test("writeDocument — a row follows the columns the header names, and a new table has the optional columns some row fills", () => {
   const schema = load();
   const text = tableOf(["Name", "Kind", "Notes"], ["a", "k", "n"]);

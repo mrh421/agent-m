@@ -46,7 +46,6 @@ Data; `src/job-ledger/job.schema.md`).
       { "name": "Log", "value": { "type": "text", "required": true } }
     ] } }
   ],
-  "otherSections": "forbidden",
-  "noHistory": true
+  "otherSections": "forbidden"
 }
 ```

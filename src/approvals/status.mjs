@@ -1,6 +1,6 @@
 // status.mjs — statuses: the status of every reviewed file of a snapshot, from one pass over docs/approvals/; and
-// statusOf: the status of one reviewed file; lastAcceptedText: the text that the most recent record of an identifier names
-// (MOD-approvals, Interfaces).
+// statusOf: the status of one reviewed file; removedFiles: the decisions and module files removed since their acceptance, from the same
+// pass; lastAcceptedText: the text that the most recent record of an identifier names (MOD-approvals, Interfaces).
 //
 // Module: MOD-approvals
 //
@@ -29,8 +29,9 @@ const RECORD_KIND = { UC: "use-case", ARC: "architecture-decision", MOD: "module
 // A reviewed file's identifier and kind from its path, by the naming rules ONE USE CASE, ONE FILE
 // (docs/use-cases/UC-<nnn>-<slug>.md), ONE ARCHITECTURE DECISION, ONE FILE (docs/architecture/ARC-<nnn>-<slug>.md) and
 // ONE MODULE, ONE FILE (docs/architecture/MOD-<slug>.md, the whole slug its identifier) — or null for a path that is
-// none of them. The exact digit counts of each kind are MOD-identifiers' (kindOfIdentifier), not repeated here.
-function reviewedFile(path) {
+// none of them. The exact digit counts of each kind are MOD-identifiers' (kindOfIdentifier), not repeated here. accept.mjs reads a shown
+// removal's identifier with it.
+export function reviewedFile(path) {
   const name = path.split("/").pop() ?? "";
   if (!name.endsWith(".md")) return null;
   const stem = name.slice(0, -3);
@@ -54,6 +55,24 @@ function approvalRecord(path) {
   return m ? { id: m[1], blob12: m[2] } : null;
 }
 
+// The blob of the empty text: what the default branch holds of a removed decision or module file, and the blob the record of its removal
+// names — git's blob of "", as MOD-approvals' Data states it (blob). A constant, not `await blobSha("")` at load: a top-level await would make
+// this module, which is in a cycle with index.mjs, evaluate asynchronously, and change the order in which the modules that import it run.
+export const EMPTY_BLOB = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391";
+
+// The one pass over docs/approvals/ that statuses and removedFiles share: for each identifier a record names, the first twelve hex digits
+// of every blob its records' names say they approve. Reads no record's text.
+function recordsById(snapshot) {
+  const byId = new Map();
+  for (const path of snapshot.paths) {
+    const record = approvalRecord(path);
+    if (!record) continue;
+    if (!byId.has(record.id)) byId.set(record.id, []);
+    byId.get(record.id).push(record.blob12);
+  }
+  return byId;
+}
+
 /**
  * statuses(snapshot: Snapshot) -> Map<string, { id: string, kind: string, status: "open" | "accepted" | "changed" }> —
  * the status of every reviewed file of a snapshot, keyed by path; computed in one pass over docs/approvals/.
@@ -61,24 +80,35 @@ function approvalRecord(path) {
  * @returns {Map<string, { id: string, kind: string, status: "open" | "accepted" | "changed" }>}
  */
 export function statuses(snapshot) {
-  const recordsById = new Map();
-  for (const path of snapshot.paths) {
-    const record = approvalRecord(path);
-    if (!record) continue;
-    if (!recordsById.has(record.id)) recordsById.set(record.id, []);
-    recordsById.get(record.id).push(record.blob12);
-  }
+  const records = recordsById(snapshot);
   const out = new Map();
   for (const path of snapshot.paths) {
     const file = reviewedFileOrReport(path);
     if (!file) continue;
-    const blob12s = recordsById.get(file.id) ?? [];
+    const blob12s = records.get(file.id) ?? [];
     const blob = snapshot.blob(path);
     const status = blob12s.some((blob12) => typeof blob === "string" && blob.startsWith(blob12)) ? "accepted"
       : blob12s.length ? "changed" : "open";
     out.set(path, { id: file.id, kind: file.kind, status });
   }
   return out;
+}
+
+/**
+ * removedFiles(snapshot: Snapshot) -> Array<{ id: string, kind: "architecture-decision" | "module" }> — every decision or module file that a
+ * record names and of whose identifier the snapshot holds no file, and whose removal no record accepts: no record of that identifier names the
+ * empty text's blob. Its path and last accepted text are those lastAcceptedText gives for the identifier. Computed in the same pass over
+ * docs/approvals/ as statuses, from the records' names alone, in the order of the identifiers; reads no record's text.
+ * @param {{ paths: string[] }} snapshot
+ * @returns {Array<{ id: string, kind: "architecture-decision" | "module" }>}
+ */
+export function removedFiles(snapshot) {
+  const held = new Set(snapshot.paths.map((path) => reviewedFile(path)?.id).filter(Boolean));
+  const removal = EMPTY_BLOB.slice(0, 12);
+  return [...recordsById(snapshot)]
+    .filter(([id, blob12s]) => ["ARC", "MOD"].includes(kindOfIdentifier(id)) && !held.has(id) && !blob12s.includes(removal))
+    .map(([id]) => ({ id, kind: RECORD_KIND[kindOfIdentifier(id)] }))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 // A release test report's identifier and kind from its path docs/tests/releases/v<YYYY.MINOR.PATCH>.md — the record's
@@ -127,12 +157,13 @@ function namesWhatItsNameSays(path, fields) {
  * was accepted (the record's `file`), also when the file has been renamed since; null when no record names the identifier.
  * The records of an identifier are those of the default branch whose names carry it (docs/approvals/<id>-<blob12>.md); the
  * most recent is the one whose commit, found in the history of the record, was committed last — the date as the server gives
- * it, in its own offset; two records committed at the same instant are not told apart. The text is read in the repository as
- * it stood at the commit that added that record, where the file still has the path the record names. Crosses the network,
- * through the host; fails with its failures, unchanged — TokenRefused, RateLimited, NotFound, Unreachable —, and with
- * NotFound { what: the file } when the file did not hold the text the record names at the commit that added the record, and
- * when the text the host gave for it is not that text — the blob SHA of the text read (MOD-text-tools.blobSha) is not the
- * record's: no other text is given for it. The check hashes the text already read and makes no request. A record whose content
+ * it, in its own offset; two records committed at the same instant are not told apart. The text is the file at the commit that
+ * added that record, where the file still has the path the record names, read with one host.readFileAt(file, [that commit]) —
+ * no snapshot of that commit — except where the record names the empty text's blob, a removal's (EMPTY_BLOB): the empty text is
+ * given then, and no file is read. Crosses the network, through the host; fails with its failures, unchanged — TokenRefused,
+ * RateLimited, NotFound, Unreachable —, and with NotFound { what: the file } when the file did not hold the text the record
+ * names at the commit that added the record: no text there, or a text whose blob SHA (MOD-text-tools.blobSha) is not the
+ * record's; no other text is given for it. The check hashes the text already read and makes no request. A record whose content
  * names another blob than its name, or a file of another identifier, counts as no record: the most recent record that names
  * what its name says is taken, and null returned when none does.
  * @param {string} id
@@ -159,13 +190,11 @@ export async function lastAcceptedText(id, host) {
     break;
   }
   if (last === null) return null;
-  const then = await host.readSnapshot(last.commit);
-  if (then.blob(file) !== blob) {
-    throw new HostError("NotFound", { what: file }, `${file} did not hold the text ${last.path} names when the record was added`);
-  }
-  const text = await then.read(file);
+  // A removal's record names the empty text: that text is known, and where the record was added no file stands to read.
+  if (blob === EMPTY_BLOB) return { text: "", blob, path: file };
+  const text = (await host.readFileAt(file, [last.commit])).get(last.commit);
   if (typeof text !== "string" || await blobSha(text) !== blob) {
-    throw new HostError("NotFound", { what: file }, `${file} did not give the text ${last.path} names when the record was added`);
+    throw new HostError("NotFound", { what: file }, `${file} did not hold the text ${last.path} names when the record was added`);
   }
   return { text, blob, path: file };
 }

@@ -146,7 +146,7 @@ The cases of `tests/test_runtime_levels.py`, for the three requirements whose Ch
   },
   "expected": {
     "findings": [],
-    "files": 1
+    "files": 2
   }
 }
 ```
@@ -171,7 +171,7 @@ The cases of `tests/test_runtime_levels.py`, for the three requirements whose Ch
   },
   "expected": {
     "findings": [],
-    "files": 2
+    "files": 3
   }
 }
 ```
@@ -252,7 +252,7 @@ The cases of `tests/test_runtime_levels.py`, for the three requirements whose Ch
   },
   "expected": {
     "findings": [],
-    "files": 1
+    "files": 2
   }
 }
 ```
@@ -277,7 +277,7 @@ The cases of `tests/test_runtime_levels.py`, for the three requirements whose Ch
   },
   "expected": {
     "findings": [],
-    "files": 2
+    "files": 3
   }
 }
 ```

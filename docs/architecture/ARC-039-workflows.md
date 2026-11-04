@@ -11,7 +11,6 @@ forced_by:
   - A SELF-HOSTED RUNNER SERVES AGENT M ONLY FROM A PRIVATE REPOSITORY
   - A CI AGENT'S DRAFT ENTERS AS OPEN
   - A JOB IS RECORDED IN ITS PRODUCT REPOSITORY
-  - A RUN CONTINUES WITHOUT A CLICK BETWEEN ITS JOBS
   - A JOB STOPS AT EVERY GATE
   - A GATE NAMES WHO DECIDES IT
   - A PULL REQUEST IS MERGED ONLY WHEN THE DEFINITION OF DONE HOLDS
@@ -37,7 +36,7 @@ designs:
 ## Context
 
 Two kinds of work happen when nobody's browser is open. In each product repository, jobs of CI agents run in the
-product's own CI, runs must go on to their next jobs, gates decided by a CI check must be recorded, the Definition of
+product's own CI, gates decided by a CI check must be recorded, the Definition of
 Done must be checked on every pull request, and a sprint an agent closes must start when it ends (UC-010, UC-024,
 UC-034, UC-041, UC-043). In the instance repository, an approval of the instance's own SPEC committed without a token
 must be applied, EU legal texts must be fetched, and the Bridge must be built and signed on a release (UC-004, UC-006,
@@ -54,17 +53,17 @@ file names; it reads the person's token and the participant's key only from the 
 
 ### Responsibility within the system
 
-Running in a product's CI: taking and running the queued jobs of CI routes, resuming them after their gate, advancing
-runs on every change of their records, recording the decision of gates a CI check decides, running a test job's share
+Running in a product's CI: taking and running the queued jobs of CI routes, resuming them after their gate, recording the decision of gates a CI check decides, running a test job's share
 of the product's tests with its own command, recording each test run's outcomes, checking pull requests against the
-Definition of Done, and the events in time — a sprint's end. Running in the instance's CI: applying approved
+Definition of Done, and the events in time — a sprint's end. Running in the CI of a product and of the instance alike: storing,
+for each commit of the default branch, what its pages read. Running in the instance's CI: applying approved
 changes of the instance's own SPEC, fetching legal texts, building and publishing the Bridge.
 
 ### The interface it offers
 
 | Module | Entry points CI runs |
 |---|---|
-| MOD-workflow-entries | in a product: `onRecordsChanged`, `onDoneCheck`, `onPullRequestClosed`, `onCheckCompleted`, `runTests`, `onTestsFinished`, `onSchedule`, `onDispatch`; in the instance: `onApprovalsCommitted`, `onSourcesCommitted`, `onReleaseTagged` |
+| MOD-workflow-entries | in a product: `onRecordsChanged`, `onDoneCheck`, `onPullRequestClosed`, `onCheckCompleted`, `runTests`, `onTestsFinished`, `onSchedule`, `onDispatch`; in the instance: `onApprovalsCommitted`, `onSourcesCommitted`, `onReleaseTagged`; in both: `onMainChanged` |
 
 Every entry reads its event, its secrets and the repository it runs in from the CI's environment, does its work through
 the shared modules and ends with a status CI shows; it keeps nothing between runs.
@@ -73,7 +72,7 @@ the shared modules and ends with a status CI shows; it keeps nothing between run
 
 | Module | Folder | Responsibility |
 |---|---|---|
-| MOD-workflow-entries | `src/workflow-entries/` | the entries of Agent M's job workflow in a product — on a commit to `docs/jobs/` or `docs/gates/`, take and run or resume the queued jobs of the CI route and compute the runs' next actions; on a pull request merged or closed, closing its issues with links, the runs' next actions and, on GitLab, the pipeline schedule; on a completed CI check that decides a gate, its gate record; on a schedule, the events in time; on dispatch, a job started from GitHub's Actions page, or one a conversation of the prompt bar handed over, run with the task its start carries and written to no file —, the entries the generated test configuration calls — a row's share of the tests run with the product's own command, on a machine without the token, the Definition-of-Done check of a pull request, and the result record of a test run —, and the entries of the instance's workflows — applying approval records of the instance's SPEC that the dashboard did not apply; fetching an EU legal text when its register entry asks for it; building the Bridge's release with MOD-bridge-build. It works on the repository it runs in through two of Access's adapters with the same person's token from a CI secret: the local clone of the checkout for files and commits, the server's API for pull requests, issues, checks and releases |
+| MOD-workflow-entries | `src/workflow-entries/` | the entries of Agent M's job workflow in a product — on a commit to `docs/jobs/` or `docs/gates/`, take and run or resume the queued jobs of the CI route; on a pull request merged or closed, closing its issues with links and, on GitLab, the pipeline schedule; on a completed CI check that decides a gate, its gate record; on a schedule, the events in time; on dispatch, a job started from GitHub's Actions page, or one a conversation of the prompt bar handed over, run with the task its start carries and written to no file —, the entries the generated test configuration calls — a row's share of the tests run with the product's own command, on a machine without the token, the Definition-of-Done check of a pull request, and the result record of a test run —, and the entries of the instance's workflows — applying approval records of the instance's SPEC that the dashboard did not apply; fetching an EU legal text when its register entry asks for it; building the Bridge's release with MOD-bridge-build. It works on the repository it runs in through two of Access's adapters with the same person's token from a CI secret: the local clone of the checkout for files and commits, the server's API for pull requests, issues, checks and releases |
 
 ```mermaid
 flowchart LR
@@ -106,7 +105,7 @@ flowchart LR
   dashboard, never asked for.
 - Every append to a job record or a gate record starts a short run of the job workflow, which usually finds nothing to
   do; the test configuration starts none for such a commit (`A JOB RECORD STARTS NO CI RUN`).
-- A run of CI agents advances while nobody is online; scheduled workflows of public repositories may be paused by the
+- Jobs of CI agents run while nobody is online; scheduled workflows of public repositories may be paused by the
   server after inactivity, which the schedule page names (UC-027).
 - Agent M's own development does not change a product's behaviour until the product's workflow is moved to a newer commit
   of the instance.

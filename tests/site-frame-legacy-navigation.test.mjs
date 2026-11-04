@@ -15,6 +15,10 @@ const INSTANCE = "akmaier/agent-m";
 const CHOSEN = "acme/chosen";
 const OTHER = "acme/other";
 const addressOf = (repository) => `https://github.com/${repository}`;
+// A query of GitHub's GraphQL API for the folders' entries of `repository`, which a page reads its snapshot with (ITM-1266), by the owner and name its
+// variables give; a batch of files' texts is left to the instance's server, as before, and its files are then read one by one from the product's.
+const graphqlOf = (repository, url, init) => url.origin === "https://api.github.com" && url.pathname === "/graphql" &&
+  /\be\d+:object\(/.test(JSON.parse(init.body).query) && (({ owner, name } = JSON.parse(init.body).variables ?? {}) => `${owner}/${name}` === repository)();
 
 // The live review entry receives all repository reads through the instance server. Its handler forwards the chosen
 // product's public Host requests to the matching repoServer, as the existing dashboard product cases do.
@@ -36,8 +40,7 @@ async function receiverFixture() {
 // guards: UC-014; THE MAIN PAGE SHOWS WHAT GOES ON IN THE INSTANCE
 // given: the real legacy review entry with the views it normally loads
 // input: open #add, then #get-your-own/step=actions, an unserved address, and #add again
-// expect: #add keeps drawing Add a product; get-your-own draws its Actions step; an address no view answers keeps the existing
-// review fallback; and the old #add alias still draws Add a product after that negative control
+// expect: #add keeps drawing Add a product; get-your-own draws its Actions step; an address no view answers keeps the existing review fallback; and the old #add alias still draws Add a product after that negative control
 test("TST-1165003 the legacy review entry serves get-your-own while keeping its add alias and unknown-route fallback", async () => {
   const page = await openDashboard({ server: await repoServer({ files: { "README.md": "# Agent M\n" } }), hash: "#add" });
   assert.match(page.main(), /Add a product/, "#add is the existing positive alias");
@@ -110,7 +113,7 @@ test("TST-684006 the live review receiver maps the main menu's canonical archite
   };
   const chosen = await repoServer({ repo: CHOSEN, files });
   const productServer = (url, init) => url.origin === "https://api.github.com" &&
-    (url.pathname === `/repos/${CHOSEN}` || url.pathname.startsWith(`/repos/${CHOSEN}/`)) ? chosen.fetch(url.href, init) : undefined;
+    (url.pathname === `/repos/${CHOSEN}` || url.pathname.startsWith(`/repos/${CHOSEN}/`)) || graphqlOf(CHOSEN, url, init) ? chosen.fetch(url.href, init) : undefined;
   const legacy = await repoServer({ files: { "README.md": "# Instance\n" }, handlers: [productServer] });
   const positive = await openDashboard({ server: legacy,
     search: `?repo=${encodeURIComponent(CHOSEN)}`, hash: "#arc" });
@@ -120,7 +123,7 @@ test("TST-684006 the live review receiver maps the main menu's canonical archite
 
   const canonicalChosen = await repoServer({ repo: CHOSEN, files });
   const canonicalServer = (url, init) => url.origin === "https://api.github.com" &&
-    (url.pathname === `/repos/${CHOSEN}` || url.pathname.startsWith(`/repos/${CHOSEN}/`)) ? canonicalChosen.fetch(url.href, init) : undefined;
+    (url.pathname === `/repos/${CHOSEN}` || url.pathname.startsWith(`/repos/${CHOSEN}/`)) || graphqlOf(CHOSEN, url, init) ? canonicalChosen.fetch(url.href, init) : undefined;
   const canonical = await repoServer({ files: { "README.md": "# Instance\n" }, handlers: [canonicalServer] });
   const page = await openDashboard({ server: canonical,
     hash: `#architecture/product=${encodeURIComponent(addressOf(CHOSEN))}` });

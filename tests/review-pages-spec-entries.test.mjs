@@ -167,15 +167,18 @@ const written = (fake) => Object.fromEntries(fake.writes()[0].change.files.map((
 // TST-472660 · level: unit · module: MOD-review-pages
 // guards: UC-006
 // given: the instance whose queue 2026-03-01_sample holds the entries 05, 06 and 07, 06 waiting for the anchor 05 creates, and an older queue with one entry already accepted by its record; a token
-// input: the route spec-entry with no id
-// expect: the queues newest first; a row for each entry with its link to #spec-entry/id=<id>, its anchor and its state — open, waiting for its anchor, in SPEC —; a tick on each entry that is open or waits and none on an accepted one; nothing written
-test("spec-entry — the list: every queue with its entries' states and a tick for an open one", async () => {
+// input: the route spec-entry with no id; the pages of the entries 05, 06 and 07; the list again
+// expect: the queues in the order of their folders' names; a row for each entry with its link to #spec-entry/id=<id>, its anchor and its state — open, waiting for its anchor, in SPEC —; a tick on each entry that is open or waits, before and after its page was shown, and none on an accepted one; nothing written
+test("spec-entry — the list: every queue with its entries' states and a tick for each one not accepted", async () => {
   const OLD = "docs/spec-freigaben/2026-02-01_older", OLD_PROPOSAL = text("**AN OLDER RULE** *(Fixture PO)*", "An older rule.");
   const fake = fakeHost({ ...productFiles(), ...SOURCE_FILES,
     [`${OLD}/index.md`]: text("# SPEC approvals — queue 2026-02-01 · older", "", "| Nr | Datei | Anker (Überschrift, wortgetreu) | bis (exklusiv) | Commits |", "|---|---|---|---|---|", "| 01 | `SPEC.md` | ## 9. Older | — | — |"),
     [`${OLD}/01-older.md`]: OLD_PROPOSAL, [`${OLD}/entscheidungen.md`]: text("# Decisions", "", "| 2026-02-01 10:00 UTC | 1 | uebernommen | approval:spec-2026-02-01_older-01-aaaaaaaaaaaa.md |") });
+  const unread = await show(fake);
+  assert.equal(byClass(unread, "input", "tick").length, 3, "a tick on each entry not accepted before any page was shown");
+  for (const item of [E05, E06, E07]) await show(fake, { id: idOf(item) });
   const target = await show(fake);
-  assert.deepEqual(byClass(target, "section", "queue").map((queue) => queue.getAttribute("data-folder")), ["2026-03-01_sample", "2026-02-01_older"]);
+  assert.deepEqual(byClass(target, "section", "queue").map((queue) => queue.getAttribute("data-folder")), ["2026-02-01_older", "2026-03-01_sample"]);
   assert.deepEqual([E05, E06, E07].map((item) => badgeOf(rowOf(target, item))), ["open", "waiting for its anchor", "open"]);
   for (const item of [E05, E06, E07]) {
     assert.equal(find(rowOf(target, item), (node) => node.localName === "a")[0].getAttribute("href"), `#spec-entry/id=${idOf(item)}`);
@@ -253,11 +256,12 @@ test("spec-entry/<id> — counter-proof: a click a script makes on Accept writes
 
 // TST-472663 · level: unit · module: MOD-review-pages
 // guards: A QUEUE IS ACCEPTED IN ITS ORDER; SEVERAL FILES ARE ACCEPTED IN ONE CLICK; UC-006
-// given: the list with the entries 05 and 07 open; 07 ticked first, then 05
+// given: the pages of the entries 05 and 07 shown, then the list with the entries 05 and 07 open; 07 ticked first, then 05
 // input: a click on Accept ticked
 // expect: one commit with both records; the SPEC with section 1 and section 2 as proposed and the new section "1a"; the decisions with 05's row before 07's — the order of the queue's index, not of the ticks
 test("spec-entry — two ticked entries are accepted in the order of the queue's index", async () => {
   const fake = fakeHost({ ...productFiles(), ...SOURCE_FILES });
+  for (const item of [E05, E07]) await show(fake, { id: idOf(item) });
   const target = await show(fake);
   tick(byClass(rowOf(target, E07), "input", "tick")[0]);
   tick(byClass(rowOf(target, E05), "input", "tick")[0]);
@@ -366,11 +370,12 @@ test("spec-entry/<id> — Accept names the person of the token in the commit", a
 
 // TST-472669 · level: unit · module: MOD-review-pages
 // guards: ONE CLICK PER DECISION; SEVERAL FILES ARE ACCEPTED IN ONE CLICK; UC-006
-// given: the list with a token and no entry ticked
+// given: the page of entry 07 shown, then the list with a token and no entry ticked
 // input: the page as drawn
 // expect: Accept ticked is there and cannot be clicked, saying (0); after a tick it can, saying (1); after the tick is taken back it cannot again
 test("spec-entry — Accept ticked cannot be clicked while nothing is ticked", async () => {
   const fake = fakeHost({ ...productFiles(), ...SOURCE_FILES });
+  await show(fake, { id: idOf(E07) });
   const target = await show(fake);
   const bar = byClass(target, "button", "accept-ticked")[0];
   assert.equal(bar.disabled, true);
@@ -387,16 +392,16 @@ test("spec-entry — Accept ticked cannot be clicked while nothing is ticked", a
 // TST-472670 · level: unit · module: MOD-review-pages
 // guards: A STALE APPROVAL IS NOT APPLIED; UC-006
 // given: the entry 07 with a record of its proposal that names another section than the one the SPEC holds now
-// input: the list and the page of entry 07
-// expect: the state stale, and Accept offered to decide anew
+// input: the page of entry 07; the list
+// expect: the state stale, and Accept offered to decide anew; a tick on the list, as the page was shown
 test("spec-entry/<id> — a stale entry is shown stale and may be accepted anew", async () => {
   const record = text("kind: spec", `queue: ${QUEUE}`, "entry: 07", `proposal: ${proposalPath(E07)}`, `blob: ${blobOf(E07.proposal)}`, "target: SPEC.md",
     `anchor: ${E07.anchor}`, `section: ${blobOf("another section\n")}`);
   const fake = fakeHost({ ...productFiles(), ...SOURCE_FILES, [recordPath(E07)]: record });
+  const target = await show(fake, { id: idOf(E07) });
   const list = await show(fake);
   assert.equal(badgeOf(rowOf(list, E07)), "stale");
   assert.equal(byClass(rowOf(list, E07), "input", "tick").length, 1, "a tick");
-  const target = await show(fake, { id: idOf(E07) });
   assert.equal(badgeOf(target), "stale");
   assert.equal(byClass(target, "button", "accept").length, 1, "Accept is offered");
 });
@@ -498,11 +503,12 @@ test("spec-entry/<id> — the flow's answer to a write the token may not make: t
 
 // TST-472677 · level: unit · module: MOD-review-pages
 // guards: ACCEPTANCE IS A COMMIT BY THE ACCEPTING PERSON; SEVERAL FILES ARE ACCEPTED IN ONE CLICK; UC-006
-// given: the list with a token whose name is "Agent M · thesis-tool", entry 07 ticked
+// given: the page of entry 07 shown, then the list with a token whose name is "Agent M · thesis-tool", entry 07 ticked
 // input: a click on Accept ticked
 // expect: the commit's message names that person; and the list offers Review all, the link ITM-909's Acceptance gives the SPEC changes list (TST-909004)
 test("spec-entry — Accept ticked names the person", async () => {
   const fake = fakeHost({ ...productFiles(), ...SOURCE_FILES });
+  await show(fake, { id: idOf(E07) });
   const target = await show(fake);
   assert.equal(byClass(target, "a", "review-all").length, 1);
   tick(byClass(rowOf(target, E07), "input", "tick")[0]);

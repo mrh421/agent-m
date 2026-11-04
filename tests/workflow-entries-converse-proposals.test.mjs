@@ -1,9 +1,9 @@
 // A hosted job of the prompt bar's kind `converse` writes what its participant proposed (UC-049 4f), as docs/architecture/MOD-workflow-entries.md states it: "A job whose draft holds
-// a hand-over (MOD-job-runner's `hand-over`, UC-049 4f) is followed in the same run, with the same participant and driver, by a job of the kind it names, where that kind's result waits
-// for a person (`review: person`) and the hand-over works on no item of the backlog or step of the plan: its parameters the job's `source`, those MOD-job-runner's `handOverParams` gives for
-// what it works on, and its task as `instruction`; prepared, and run unattended, so that its writer writes at once — a change of requirements as an open entry of a new queue, a use case or an
-// architecture file as open; no job writes an approval record. A hand-over of any other kind, or one whose job does not start, is not run, and the job's end names it with why. The end lists
-// every result of both: their commits, their files and pull requests, and their writers' notes." And MOD-job-runner's built-in writer `proposed-edits`: the edits of a `converse` job nobody attends,
+// a hand-over (MOD-job-runner's `hand-over`, UC-049 4f) is followed in the same run, with the same participant and driver, by a job of the kind it names, where that kind is not the job's
+// own: its parameters the job's `source`, those MOD-job-runner's `handOverParams` gives for what it works on, and its task as `instruction`; prepared with that kind's preconditions and no
+// start rule of the product's process, and run unattended, so that its writer writes at once — a change of requirements as an open entry of a new queue, a use case or an architecture file
+// as open, a change of code as a pull request, which it does not merge; no job writes an approval record. … A hand-over of the job's own kind, of a kind that takes no instruction …, or one
+// whose job does not start, is not run, and the job's end names it with why … The end lists every result of both: their commits, their files and pull requests, and their writers' notes." And MOD-job-runner's built-in writer `proposed-edits`: the edits of a `converse` job nobody attends,
 // in one commit on a new branch `agent-m/<job>` and a pull request of it, never a commit on the default branch.
 // Run: node --test tests/workflow-entries-converse-proposals.test.mjs
 //
@@ -132,7 +132,7 @@ function repository(root, name, files, folder) {
 }
 
 // The workspace of a job workflow: product/ and instance/, the product holding the converse job's record.
-async function withWorkspace(params, run, { extraBin = null } = {}) {
+async function withWorkspace(params, run, { extraBin = null, files = {} } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-m-converse-")));
   const workspace = join(root, "ws");
   try {
@@ -141,7 +141,7 @@ async function withWorkspace(params, run, { extraBin = null } = {}) {
     join(workspace, "instance"));
     const agentM = { version: "2026.10.0", commit: git(join(workspace, "instance"), "rev-parse", "HEAD") };
     const start = typeof params === "function" ? params(agentM) : converseStart(agentM, params);
-    const product = repository(root, "product", { ...PRODUCT_FILES, ...Object.fromEntries([recordFile(start)]) }, join(workspace, "product"));
+    const product = repository(root, "product", { ...PRODUCT_FILES, ...files, ...Object.fromEntries([recordFile(start)]) }, join(workspace, "product"));
     const base = git(product, "rev-parse", "main");
     return await run({ root, workspace, product, instance, agentM, base, head: git(join(workspace, "product"), "rev-parse", "HEAD"), productDir: join(workspace, "product"), extraBin });
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -333,22 +333,35 @@ test("TST-1360106: a hosted converse job's edits are written as a pull request, 
   });
 });
 
+// What changed: UC-049 4f, as accepted, runs a hand-over of any kind other than the conversation itself in the same run, by that kind's definition; the start rules of the product's process bind the process's jobs, not the prompt bar's. This test expected the hand-over that works on an item of the backlog not to run; it now expects it to run, and keeps the one that is not run: the conversation itself handed on.
 // TST-1360107 · level: component · module: MOD-workflow-entries
-// guards: UC-049; NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED; A JOB GOES ONLY TO A HOLDER OF ITS ROLE
-// given: a hosted converse job; the endpoint answers with a hand-over { kind implement, works_on [ITM-004] }; and, in a second run, { kind change-use-case, works_on [ITM-004, UC-001] }
+// guards: UC-049; NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED
+// given: a hosted converse job; the product's backlog holds ITM-004, which realises the accepted UC-001 — no process declaration, no sprint, no role assignment —; the endpoint answers with a hand-over { kind change-use-case, works_on [ITM-004, UC-001] } and the change of the use case with UC-001's new text; and, in a second run, with a hand-over { kind converse, works_on [UC-001] }
 // input: onRecordsChanged for each
-// expect: outcome `done` both times; no request carries another prompt than the conversation's; the end lists `not run: implement — ` and `not run: change-use-case — `, each naming why; nothing but the job's own record is written
-test("TST-1360107: a hand-over of a kind that does not wait for a person, or one that works on an item of the plan, is not run in the hosted job", async () => {
-  for (const handOver of [{ kind: "implement", works_on: ["ITM-004"], task: "build it" }, { kind: "change-use-case", works_on: ["ITM-004", "UC-001"], task: "change it" }]) {
-    await withWorkspace({}, async (w) => {
-      const world = fakeWorld({ converse: answer(handOver) }, w);
-      const status = await run(w); if (process.env.DEBUG_1360) console.log("DEBUG", status, fileAt(w, `docs/jobs/${JOB}.md`), git(w.product, "log", "--all", "--stat", "--format=%H %s %D"));
-      assert.equal(status.outcome, "done", status.summary);
-      assert.equal(world.requests.filter((each) => each.address.startsWith("https://llm.example.test/")).length, 1, "only the conversation was sent");
-      assert.match(endOf(w), new RegExp(`not run: ${handOver.kind} — \\S`));
-      assert.deepEqual(touched(w), [`docs/jobs/${JOB}.md`]);
-    });
-  }
+// expect: outcome `done` both times. The first: the prompt of change-use-case was sent, UC-001's file on main is the drafted text, and the end lists the writer's commit and no `not run`. The second: only the conversation was sent, the end lists `not run: converse — ` naming that it is the conversation itself, and nothing but the job's own record is written
+test("TST-1360107: a hand-over that works on an item of the backlog runs in the hosted job by its kind's definition; the conversation itself handed on does not", async () => {
+  const backlog = { "docs/backlog/ITM-004-due-date.md": text("---", "id: ITM-004", "title: Tell the due date", "realises:", "  - UC-001", "modules:", "  - MOD-reader", "origin:",
+    "  - the fixture", "---", "# ITM-004 Tell the due date", "", "## Outcome", "", "The member is told the date.", "", "## Acceptance", "", "The date is shown.") };
+  await withWorkspace({}, async (w) => {
+    const world = fakeWorld({ converse: answer({ kind: "change-use-case", works_on: ["ITM-004", "UC-001"], task: "tell the due date" }),
+      "change-use-case": { files: [{ path: UC_PATH, text: UC_AFTER, class: "change", of: "UC-001" }] } }, w);
+    const status = await run(w);
+    assert.equal(status.outcome, "done", status.summary);
+    assert.ok(world.prompted("change-use-case") >= 1, `the change of the use case ran, in the same run: ${endOf(w)}`);
+    assert.equal(fileAt(w, UC_PATH), UC_AFTER);
+    const writer = git(w.product, "log", "--format=%H", "--grep=Agent-M-Kind: change-use-case", "main").split("\n").filter(Boolean);
+    assert.equal(writer.length, 1);
+    assert.ok(endOf(w).includes(writer[0]), endOf(w));
+    assert.doesNotMatch(endOf(w), /not run/);
+  }, { files: backlog });
+  await withWorkspace({}, async (w) => {
+    const world = fakeWorld({ converse: answer({ kind: "converse", works_on: ["UC-001"], task: "go on" }) }, w);
+    const status = await run(w);
+    assert.equal(status.outcome, "done", status.summary);
+    assert.equal(world.requests.filter((each) => each.address.startsWith("https://llm.example.test/")).length, 1, "only the conversation was sent");
+    assert.match(endOf(w), /not run: converse — [^\n]*this conversation itself/);
+    assert.deepEqual(touched(w), [`docs/jobs/${JOB}.md`]);
+  }, { files: backlog });
 });
 
 // TST-8048007 · level: component · module: MOD-workflow-entries

@@ -12,6 +12,7 @@ recipes:
   - instruction?
   - whole-spec
   - accepted-use-cases
+  - whole-architecture
   - draft
   - chapters-for-architecture
 checks:

@@ -107,6 +107,8 @@ async function existingTests(snapshot) {
 
 const NEW_TEST = "A NEW TEST IS SHOWN TO FAIL ON A PLANTED FAULT";
 const EXPECTED = "A TEST STATES ITS EXPECTED RESULT BEFORE IT RUNS";
+const IDENTIFIER = "EVERY ARTIFACT HAS AN IDENTIFIER";
+const TEST_ID = /^TST-\d+$/;
 
 // The tests the branch adds: the declarations of every file whose blob differs from the product's, whose identifier the product's file of that path does not declare.
 async function addedTests(branch, snapshot) {
@@ -130,21 +132,29 @@ async function recordsFailure(branch, id) {
   return document.fields.outcome === "failed" && !blank(section("## Fault")) && !blank(section("## Result"));
 }
 
-// The ways a written test differs from the reviewed case it implements: [rule, what].
+// A case's guards hold what a test declares as two fields (EVERY ARTIFACT NAMES ITS ORIGIN): an entry MOD-<slug> is the module it exercises, the others what it guards.
+const isModule = (entry) => /^MOD-/.test(entry);
+
+// The ways a written test differs from the reviewed case it implements: [rule, what]. The case's guards without its modules are compared with the test's guards, and its modules with the
+// test's module, each where the case names it: a case that names only a module leaves the test to name what it guards.
 function differences(declaration, one) {
   if (!one) return [[NEW_TEST, `${declaration.id} implements no reviewed case: no case has its identifier`]];
   const same = [];
   const guarded = (list) => [...new Set(list)].sort().join("\n");
+  const named = Array.isArray(one.guards) ? one.guards : [];
+  const guards = named.filter((entry) => !isModule(entry));
+  const modules = named.filter(isModule);
   if (declaration.level !== one.level) same.push([NEW_TEST, `${declaration.id} has level ${declaration.level}, its case ${one.level}`]);
-  if (guarded(declaration.guards ?? []) !== guarded(Array.isArray(one.guards) ? one.guards : [])) same.push([NEW_TEST, `${declaration.id} guards ${(declaration.guards ?? []).join(", ")}, its case ${(one.guards ?? []).join(", ")}`]);
+  if (guards.length > 0 && guarded(declaration.guards ?? []) !== guarded(guards)) same.push([NEW_TEST, `${declaration.id} guards ${(declaration.guards ?? []).join(", ")}, its case ${guards.join(", ")}`]);
+  if (modules.length > 0 && !modules.includes(declaration.module)) same.push([NEW_TEST, `${declaration.id} exercises ${declaration.module ?? "no module"}, its case ${modules.join(", ")}`]);
   if (normal(declaration.expect) !== normal(one.expected)) same.push([EXPECTED, `${declaration.id} expects "${declaration.expect}", its case "${one.expected}"`]);
   return same;
 }
 
 /**
  * The check test-proposals for the kind `write-tests` (the draft with a `branch`): the branch is read through the product's host; an error for each new test of a level other than `user`
- * without a counter-proof record that records it failing, unless the draft reports it `failed`; and an error for each new test whose identifier, level, guards or expected result
- * differ from the reviewed case in `context.params.draft`. A branch the host does not hold is one finding.
+ * without a counter-proof record that records it failing, unless the draft reports it `failed`; and an error for each new test whose identifier, level, guards, module or expected result
+ * differ from the reviewed case in `context.params.draft` (see differences). A branch the host does not hold is one finding.
  */
 async function writtenTests(draft, context) {
   const { host, snapshot } = context.product;
@@ -173,7 +183,8 @@ async function writtenTests(draft, context) {
 }
 
 /**
- * The check test-proposals(draft, context) -> Finding[], for the kind `propose-tests` (the draft's `cases`): an error for a case without an expected result, a model-dependent
+ * The check test-proposals(draft, context) -> Finding[], for the kind `propose-tests` (the draft's `cases`): an error for a case without an identifier of the scheme TST-<number>, or with
+ * one that an existing test of the product or another case of the proposal carries (EVERY ARTIFACT HAS AN IDENTIFIER); an error for a case without an expected result, a model-dependent
  * case (one with `phrasings`) judged on fewer than two runs, a case that guards nothing, and a case of a level that runs on a commit or pull request that names in `paid` a service the product's resources mark paid (COMMIT TESTS CALL NO PAID SERVICE; the levels from the product's schedule, or the book's default); an error for a case not classed `duplicate` that shares a guarded name, its input
  * and its expected result with an existing test. A draft without `cases` has no finding. It calls no model.
  */
@@ -183,9 +194,17 @@ async function testProposals(draft, context) {
   const existing = cases.length ? await existingTests(context.product.snapshot) : [];
   const paid = cases.some((one) => !blank(one.paid)) ? new Set((await servicesOf(context.product.snapshot)).filter((service) => service.paid).map((service) => service.name)) : new Set();
   const schedule = paid.size > 0 ? await scheduleOf(context.product.snapshot) : null;
+  const declared = new Set(existing.map((test) => test.id));
+  const carried = cases.map((one) => one.identifier);
   const findings = [];
   cases.forEach((one, index) => {
     const at = { artifact: one.identifier ?? `case ${index + 1}`, line: index + 1, kind: "error" };
+    const fix = "give the case an identifier TST-<number> that no existing test and no other case has";
+    if (typeof one.identifier !== "string" || !TEST_ID.test(one.identifier)) findings.push(finding({ ...at, rule: IDENTIFIER,
+      what: `case ${at.artifact} carries no identifier of the scheme TST-<number>`, fix }));
+    else if (declared.has(one.identifier)) findings.push(finding({ ...at, rule: IDENTIFIER, what: `case ${one.identifier} carries the identifier of the existing test ${one.identifier}`, fix }));
+    else if (carried.indexOf(one.identifier) !== carried.lastIndexOf(one.identifier)) findings.push(finding({ ...at, rule: IDENTIFIER,
+      what: `case ${one.identifier} carries the identifier of another case of the proposal`, fix }));
     if (blank(one.expected)) findings.push(finding({ ...at, rule: "A TEST STATES ITS EXPECTED RESULT BEFORE IT RUNS",
       what: `case ${at.artifact} names no expected result`, fix: "state the result the case expects before it runs" }));
     if (Array.isArray(one.phrasings) && one.phrasings.length > 0 && !(one.runs >= 2)) findings.push(finding({ ...at, rule: "A MODEL-DEPENDENT TEST IS MEASURED AS A RATE",
@@ -218,7 +237,7 @@ class RunError extends Error {
 }
 
 // The commit, the occasion and the levels a job runs: the commit of the candidate the job was queued for, else `params.commit`; the occasion `params.occasion`, else the release candidate's for a job with
-// a candidate, else on demand; the levels `params.levels`, else those (not the cross-cutting row `paid`) the schedule ticks for the occasion.
+// a candidate, else on demand; the levels `params.levels`, else for a release candidate every row of the schedule, else those (not the cross-cutting row `paid`) the schedule ticks for the occasion.
 async function runOf(context) {
   const params = context.params ?? {};
   const commit = params.candidate?.commit ?? params.commit;
@@ -227,7 +246,7 @@ async function runOf(context) {
   const schedule = await scheduleOf(context.product.snapshot);
   const levels = Array.isArray(params.levels) ? params.levels
     : (schedule.sections.find((section) => section.heading === "## Levels")?.rows ?? []).map(({ cells }) => cells.Row)
-      .filter((row) => row !== "paid" && occasionsOf(row, schedule).includes(OCCASIONS[occasion]));
+      .filter((row) => occasion === "release-candidate" || (row !== "paid" && occasionsOf(row, schedule).includes(OCCASIONS[occasion])));
   return { commit, occasion, levels, command: schedule.fields.command ?? null };
 }
 
@@ -258,7 +277,7 @@ async function resultRecord(result, context) {
   const participant = result.drafter?.name ?? context.person;
   const { now } = context;
   const path = `runs/${commit}/${stamp(now)}-${clock(now)}-${occasion}-${[...crypto.getRandomValues(new Uint8Array(2))].map((byte) => byte.toString(16).padStart(2, "0")).join("")}.md`;
-  const text = ["---", `commit: ${commit}`, "levels:", ...levels.map((level) => `  - ${level}`), `occasion: ${occasion}`, `participant: ${participant}`,
+  const text = ["---", `commit: ${commit}`, "levels:", ...levels.filter((level) => level !== "paid").map((level) => `  - ${level}`), `occasion: ${occasion}`, `participant: ${participant}`,
     `date: ${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())} UTC`, "---",
     "## Outcomes", "", "| Test | Level | Outcome | Runs |", "|---|---|---|---|", ...outcomes.map((one) => `| ${one.test} | ${one.level} | ${one.outcome} |  |`), ""].join("\n");
   const { commit: committed } = await appendResult(context.product.host, readDocument(resultSchema.run, path, text));

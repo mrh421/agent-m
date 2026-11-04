@@ -10,7 +10,6 @@ modules:
   - MOD-main-page
   - MOD-workflow-entries
 builds_on:
-  - ITM-787
   - ITM-789
   - ITM-734
   - ITM-791

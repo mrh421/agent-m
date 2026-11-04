@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync, mkdtempSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 
@@ -67,6 +67,9 @@ async function acquireLock() {
 }
 
 function runtime() {
+  // Where Agent M's schedule `setup` (tests/test-schedule-setup.sh) installs Electron, a path the schedule's `cache` names: first.
+  const setUp = join(homedir(), "agent-m-electron-44/node_modules/electron");
+  if (existsSync(executableOf(setUp))) return executableOf(setUp);
   const bundled = "/private/tmp/agent-m-electron-44/node_modules/electron";
   if (existsSync(executableOf(bundled))) return executableOf(bundled);
   const installed = join(electronCache, "node_modules/electron");

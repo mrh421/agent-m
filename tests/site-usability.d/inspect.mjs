@@ -29,14 +29,24 @@ export function styleSheetFindings() {
 //   Inline — the link or button is in a sentence: it is displayed inline and the text block around it holds text that is no target's;
 //   Spacing — a circle of `minimum` px diameter centred on the target's box meets no other target and no circle of another undersized
 //   target.
-// The exceptions "equivalent", "user agent control" and "essential" are not applied.
+// The exceptions "equivalent", "user agent control" and "essential" are not applied. A button or link is a target only where the page
+// displays it: one that is hidden, or that stands in a closed <details> outside its <summary>, is none, and takes no part in another
+// target's spacing.
 export function targetFindings(minimum) {
   const selector = "a[href], button, [role=button], [role=link], input[type=button], input[type=submit], input[type=reset], input[type=image]";
+  // A closed <details> displays its <summary> only; the browser skips the layout of the rest, and the box it still reports for an element
+  // there lies over whatever follows the <details>.
+  const closedAway = (element) => {
+    for (let box = element.closest("details"); box; box = box.parentElement?.closest("details")) {
+      if (!box.open && ![...box.children].some((child) => child.localName === "summary" && child.contains(element))) return true;
+    }
+    return false;
+  };
   const shown = (element) => {
     const rect = element.getBoundingClientRect();
     if (!rect.width || !rect.height) return false;
     const style = getComputedStyle(element);
-    return style.visibility !== "hidden" && style.display !== "none";
+    return style.visibility !== "hidden" && style.display !== "none" && !closedAway(element);
   };
   const targets = [...document.querySelectorAll(selector)].filter(shown).map((element) => ({ element, rect: element.getBoundingClientRect() }));
   const small = targets.filter(({ rect }) => rect.width < minimum || rect.height < minimum);

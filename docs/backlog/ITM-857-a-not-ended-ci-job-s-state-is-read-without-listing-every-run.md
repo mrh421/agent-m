@@ -20,28 +20,33 @@ origin:
 
 ## Outcome
 
-For each job taken by CI that has not ended, `liveState` lists the whole workflow's runs (`src/runtimes/ci.mjs:241`, through
-`github.mjs:319`). A re-read of the main page then costs one listing, of one or more pages, per such job. This lead is
-from the code. At the start, it is counted with several not-ended CI jobs. Where one listing serves them all, they share
-it.
+The listing is done: MOD-runtimes' `liveStates` lists a repository's runs of the job workflow once for all its records
+(MOD-runtimes.md:299-301, ITM-1280), and MOD-main-page asks it once per repository (`src/main-page/jobs.mjs:76-88`).
+
+What is left is the note of ITM-847's gate (sprint team1/79): when the run listing meets a used-up limit, the route `jobs`
+names it as a used-up limit, through `notice("rate-limit")`, which MOD-main-page's Uses name for "a used-up rate limit"
+(MOD-main-page.md:168), and not as an unreachable runtime.
+
+Measured on `main` at `91f10cb22`: with a host whose `listCiRuns` fails with `RateLimited`, `liveStates` gives each CI
+record `reachable: false` with MOD-repository-hosts' text as its reason, "github.com's request limit for the account these
+requests are made with is used up; it resets at …". The row shows it after "not reachable:". Known positive: an
+`Unreachable` host gives the same state with its own text.
+
+## Not ready: what the accepted text does not give
+
+The route `jobs` meets the limit only inside a `LiveState`, and cannot tell it from an unreachable runtime there.
+- MOD-runtimes.md:292: "A runtime that cannot be reached gives `reachable: false` and its reason, never an error".
+- MOD-job-ledger.md:156: `LiveState` holds `reason: string | null`, a text and no kind.
+- `AN INTERFACE STATES ITS TYPES` (SPEC.md:1327-1329) asks for "the errors its caller must handle", so `liveStates`
+  cannot let `RateLimited` through unstated, and choosing the notice from the reason's words would read a kind out of a
+  message.
+
+No reading of these sentences gives the route the limit's kind. The row already names the limit and the time it resets,
+and blames no token (`A USED-UP RATE LIMIT IS NAMED, NOT BLAMED ON THE TOKEN`); what a sentence would add is the notice in
+place of "not reachable:".
 
 ## Acceptance
 
-- The requests for N not-ended CI jobs do not grow with N beyond one listing, and a test counts it.
+- With the run listing at a used-up limit, the route `jobs` shows `notice("rate-limit")` with MOD-repository-hosts'
+  text, and no row says "not reachable" for it. Counter-proof: an unreachable runtime is still shown as not reachable.
 - The first commit holds only the tests, and CI is red on it. No stub is committed.
-
-**Noted at ITM-847's gate (sprint team1/79, 2026-10-17, po-opus).** When the run listing meets a used-up limit,
-MOD-main-page's `liveStatesOf` shows the job as not reachable. A used-up limit is named as such (`A USED-UP RATE LIMIT IS
-NAMED`), not as an unreachable runtime. This item names it so, with a test.
-
-**Stopped at its record's stop clause (sprint team1/83, 2026-10-18, po-opus): it waits for a draft of MOD-runtimes.**
-- **Measured on the base:** 1, 3 and 6 not-ended CI jobs cost 1, 3 and 6 run listings.
-- **Sharing one listing needs an interface no module states.**
-  - MOD-runtimes' Data reads: "It keeps, in memory, the jobs running in this tab; nothing else".
-  - A wrapper in MOD-main-page would call `MOD-repository-hosts.listCiRuns`, which its Uses do not name.
-- **The draft for akmaier:** MOD-runtimes gives one call that reads the live states of many jobs with one listing per
-  workflow, and names a used-up limit. That keeps reading a CI run in the module that owns it (`DEVELOP AGAINST
-  INTERFACES`). The developer's draft patch is kept (`scratchpad/ITM-857-draft.patch`).
-- **The tests, read again after the stop:**
-  - TST-847010 (`main-page-home.test.mjs:543`) expects one listing per job, so it changes.
-  - The case of a used-up limit belongs with the route `jobs` (`main-page-jobs.test.mjs`), where `live.reachable` is shown.

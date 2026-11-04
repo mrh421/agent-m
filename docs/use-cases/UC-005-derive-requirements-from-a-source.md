@@ -84,8 +84,8 @@ four-field form, for the author to approve or reject one by one.
 7. The review panel shows the candidates grouped by class, each beside the existing requirement it
    refers to. The author can move a candidate to another class — for example, from *new* to
    *duplicate of X* — and choose how each conflict is resolved.
-8. The author presses **Write proposals** — one click. Agent M writes a new queue under
-   `docs/spec-freigaben/`, where the entries are open until accepted:
+8. The author presses **Write proposals** — one click. Agent M writes the entries, each in its section's queue under
+   `docs/spec-freigaben/`, where they are open until accepted:
    - **new:** an entry adding the requirement to its section;
    - **change:** an entry for the section holding the existing requirement, changing it **under its
      name**, with the current text beside it and its impact list;

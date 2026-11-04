@@ -35,6 +35,7 @@ import { queueJob, runOnTab } from "../runtimes/index.mjs";
 import { confirmDecision, runPanel } from "../site-frame/index.mjs";
 import { peopleIn } from "../personal-data/index.mjs";
 import { connectionsOf, mailboxOf, mailSubject, productsOf } from "./mail.mjs";
+import { heads } from "./routes.mjs";
 
 const REGISTER = "docs/participants.md";
 const JOB_FILE = /^docs\/jobs\/(JOB-[^/]+)\.md$/;
@@ -56,10 +57,9 @@ function el(name, className, ...children) {
   return node;
 }
 const fold = (text) => el("details", "explain", el("summary", null, "What is this?"), el("p", null, text));
-const link = (href, className, text) => { const anchor = el("a", className, text); anchor.setAttribute("href", href); return anchor; };
 // A listener that answers only a click the browser marks as a person's (THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK).
 function button(className, text, listener) {
-  const node = el("button", className, text);
+  const node = el("button", `${className} btn`, text);
   node.setAttribute("type", "button");
   node.addEventListener("click", (event) => { if (event?.isTrusted === true && !node.disabled) listener(event); });
   return node;
@@ -215,10 +215,10 @@ function mailItem(entry, due, box, host, extra) {
   return item;
 }
 
-// What the notes of an issue say of its mails: those added after the last question (new), and those added after the issue was closed (arrived).
+// What the notes of an issue say of its mails: those added after the last question (new), and those added after the issue was closed (arrived). The issue is read by its number with its comments (readIssue).
 async function arrivalsOf(host, due) {
-  const found = (await host.listIssues({ state: "all" })).find((each) => each.number === due.issue);
-  const notes = found ? notesOf({ number: found.number, body: found.body, comments: found.comments.map((comment) => ({ body: comment.body, createdAt: comment.date })) }) : [];
+  const found = await host.readIssue(due.issue);
+  const notes = notesOf({ number: found.number, body: found.body, comments: found.comments.map((comment) => ({ body: comment.body, createdAt: comment.date })) });
   const after = (kind) => notes.slice(notes.findLastIndex((note) => note.kind === kind) + 1).filter((note) => note.kind === "mail-added").map((note) => note.subject);
   const closed = notes.findLastIndex((note) => note.kind === "closed-with");
   return { fresh: new Set(notes.findLastIndex((note) => note.kind === "question-sent") < 0 ? [] : after("question-sent")),
@@ -303,10 +303,11 @@ async function draftingSection(due, ctx, redraw, opts = {}) {
 function groupsOf(out, ctx) {
   const sections = GROUPS.map(([key, field, title]) => {
     const list = el("ul", "reply-issues", ...ctx.due[field].map((each) => {
-      const item = el("li", "reply-issue", `#${each.issue} of ${ctx.products.get(each.product)?.name ?? each.product} · ${each.mails.length} mail${each.mails.length === 1 ? "" : "s"} · `,
-        link(`#replies/issue=${each.issue}/product=${encodeURIComponent(each.product)}`, "issue-link", "Open"));
+      const open = el("button", "issue-link btn small", "Open");
+      open.setAttribute("type", "button");
+      open.addEventListener("click", () => ctx.context.go("replies", { issue: String(each.issue), product: each.product }));
+      const item = el("li", "reply-issue", `#${each.issue} of ${ctx.products.get(each.product)?.name ?? each.product} · ${each.mails.length} mail${each.mails.length === 1 ? "" : "s"} · `, open);
       item.setAttribute("data-issue", String(each.issue));
-      item.querySelector?.("a")?.addEventListener("click", (event) => { event?.preventDefault?.(); ctx.context.go("replies", { issue: String(each.issue), product: each.product }); });
       return item;
     }));
     const section = el("section", "replies-group", el("h3", null, title), list);
@@ -375,4 +376,4 @@ const shownMails = () => (last ? GROUPS.flatMap(([, field]) => last.due[field]).
   people: peopleIn({ addresses: [mail.from, ...(mail.replyTo ?? []), ...(mail.to ?? []), ...(mail.cc ?? [])], text: mail.text }) })) : []);
 const subject = (params, context) => mailSubject({ key: "replies", title: "Replies", entries: shownMails, store: context.store });
 
-export const route = { name: "replies", entry: "maintenance", title: "Replies", render, subject };
+export const route = { ...heads.replies, render, subject };

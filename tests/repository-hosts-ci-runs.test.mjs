@@ -91,9 +91,7 @@ const glLists = (pipelines) => (r) => {
 // guards: UC-049; ONE DASHBOARD SHOWS EVERY JOB; A TOKEN GOES ONLY TO THE SERVER THAT ISSUED IT; A CREDENTIAL IS NEVER PLACED IN A URL
 // given: a GitHub repository with the person's token; the server lists two runs of the repository — a completed successful run of agent-m-jobs.yml started by workflow_dispatch, and an in_progress run of tests.yml started by push
 // input: listCiRuns({})
-// expect: one request, GET the repository's actions/runs with per_page 100 and page 1 and no other query, the token as a Bearer header and in no address; the two runs as CiRuns —
-//   run 9001: id "9001", workflow "agent-m-jobs.yml", commit SHA, event "workflow_dispatch", state "success", url its html_url, started "2026-10-16T08:00:00Z", ended "2026-10-16T08:05:00Z";
-//   run 9002: id "9002", workflow "tests.yml", event "push", state "running", started "2026-10-16T08:10:00Z", ended null (it has not completed)
+// expect: one request, GET the repository's actions/runs with per_page 100 and page 1 and no other query, the token as a Bearer header and in no address; the two runs as CiRuns — run 9001: id "9001", workflow "agent-m-jobs.yml", commit SHA, event "workflow_dispatch", state "success", url its html_url, started "2026-10-16T08:00:00Z", ended "2026-10-16T08:05:00Z"; run 9002: id "9002", workflow "tests.yml", event "push", state "running", started "2026-10-16T08:10:00Z", ended null (it has not completed)
 test("listCiRuns on GitHub — the repository's runs as CiRuns, with the id as a text, the file name of the workflow, and no end for a run that has not completed", async () => {
   const { result, requests } = await serving(ghLists(() => [ghRun(9001),
     ghRun(9002, { path: ".github/workflows/tests.yml", event: "push", status: "in_progress", conclusion: null, run_started_at: "2026-10-16T08:10:00Z", updated_at: "2026-10-16T08:11:00Z" })]),
@@ -132,8 +130,7 @@ test("listCiRuns reads the list page by page, on each server", async () => {
 // guards: UC-049; ONE DASHBOARD SHOWS EVERY JOB
 // given: a GitHub repository with a token; the server answers any list of runs with one run of agent-m-jobs.yml
 // input: listCiRuns with { workflow: "agent-m-jobs.yml", branch: "main", commit: SHA }; with { branch: "main" } alone; with { commit: SHA } alone; with { workflow: "agent-m-jobs.yml" } alone
-// expect: with a workflow, the one request goes to …/actions/workflows/agent-m-jobs.yml/runs, otherwise to …/actions/runs; the branch is sent as `branch` and the commit as `head_sha`, each only where given
-//   (query keys: branch, head_sha, page, per_page — and only those named by the filter); every run keeps its workflow "agent-m-jobs.yml"
+// expect: with a workflow, the one request goes to …/actions/workflows/agent-m-jobs.yml/runs, otherwise to …/actions/runs; the branch is sent as `branch` and the commit as `head_sha`, each only where given (query keys: branch, head_sha, page, per_page — and only those named by the filter); every run keeps its workflow "agent-m-jobs.yml"
 test("listCiRuns on GitHub — a workflow chooses the workflow's own list; the branch is sent as branch and the commit as head_sha", async () => {
   const ask = async (filter) => serving(ghLists(() => [ghRun(9001)]), () => connect(GITHUB, { token: GH_TOKEN }).listCiRuns(filter));
   const shape = ({ requests, result }) => [requests.map((r) => [r.path, [...r.query.keys()].sort(), r.query.get("branch"), r.query.get("head_sha")]), result.map((run) => run.workflow)];
@@ -149,8 +146,7 @@ test("listCiRuns on GitHub — a workflow chooses the workflow's own list; the b
 // guards: UC-049; ONE DASHBOARD SHOWS EVERY JOB
 // given: GitHub runs in each status and conclusion: waiting; in_progress; queued; requested; pending; completed with success, cancelled, skipped, failure, timed_out, neutral, action_required, stale, startup_failure
 // input: listCiRuns({}) on a host whose server lists them
-// expect: state waiting for waiting; running for in_progress; queued for queued, requested and pending; success, cancelled and skipped for the completed runs with those conclusions; failure for the completed runs
-//   with failure, timed_out, neutral, action_required, stale and startup_failure; ended is the run's updated_at for each completed run and null for each other
+// expect: state waiting for waiting; running for in_progress; queued for queued, requested and pending; success, cancelled and skipped for the completed runs with those conclusions; failure for the completed runs with failure, timed_out, neutral, action_required, stale and startup_failure; ended is the run's updated_at for each completed run and null for each other
 test("listCiRuns on GitHub — a run's status is its state, a completed run's conclusion is its state, and only a completed run has an end", async () => {
   const table = [["waiting", null, "waiting"], ["in_progress", null, "running"], ["queued", null, "queued"], ["requested", null, "queued"], ["pending", null, "queued"],
     ["completed", "success", "success"], ["completed", "cancelled", "cancelled"], ["completed", "skipped", "skipped"], ["completed", "failure", "failure"],
@@ -166,9 +162,7 @@ test("listCiRuns on GitHub — a run's status is its state, a completed run's co
 // guards: UC-049; ONE DASHBOARD SHOWS EVERY JOB; A TOKEN GOES ONLY TO THE SERVER THAT ISSUED IT; A CREDENTIAL IS NEVER PLACED IN A URL
 // given: a GitLab project with its access token; the server lists two pipelines — 61, successful, source push; 62, running, with no source, started 2026-10-16T08:10:00Z and finished 2026-10-16T08:12:00Z as the pipeline object states them
 // input: listCiRuns({}); listCiRuns({ workflow: "agent-m-jobs.yml", branch: "main", commit: SHA })
-// expect: the first call is one request, GET the project's pipelines with per_page 100 and page 1 and no other query, the token as PRIVATE-TOKEN and in no address, giving the runs with workflow "" —
-//   61: id "61", commit SHA, event "push", state "success", url its web_url, started null, ended null; 62: id "62", event "api", state "running", started "2026-10-16T08:10:00Z", ended "2026-10-16T08:12:00Z";
-//   the second call sends ref=main and sha=SHA and no workflow, no other query than page and per_page, and gives the same runs with workflow "agent-m-jobs.yml"
+// expect: the first call is one request, GET the project's pipelines with per_page 100 and page 1 and no other query, the token as PRIVATE-TOKEN and in no address, giving the runs with workflow "" — 61: id "61", commit SHA, event "push", state "success", url its web_url, started null, ended null; 62: id "62", event "api", state "running", started "2026-10-16T08:10:00Z", ended "2026-10-16T08:12:00Z"; the second call sends ref=main and sha=SHA and no workflow, no other query than page and per_page, and gives the same runs with workflow "agent-m-jobs.yml"
 test("listCiRuns on GitLab — the project's pipelines as CiRuns; the branch is sent as ref and the commit as sha, and the workflow narrows nothing", async () => {
   const pipelines = () => [glPipeline(61), glPipeline(62, { status: "running", source: undefined, started_at: "2026-10-16T08:10:00Z", finished_at: "2026-10-16T08:12:00Z" })];
   const host = () => connect(GITLAB, { token: GL_TOKEN });
@@ -258,8 +252,7 @@ const glJobs = (jobs, traces) => (r) => {
 // guards: UC-049; ONE DASHBOARD SHOWS EVERY JOB; A TOKEN GOES ONLY TO THE SERVER THAT ISSUED IT; A CREDENTIAL IS NEVER PLACED IN A URL
 // given: a GitHub run 9002 whose jobs the server lists as 702 "test" and then 701 "build" — in that order, not in the order of their ids or names —, with the texts "test line 1\ntest line 2\n" and "build line\n"
 // input: ciRunLog("9002")
-// expect: the string "test\ntest line 1\ntest line 2\nbuild\nbuild line\n"; the requests, in order: GET …/actions/runs/9002/jobs (per_page 100, page 1), GET …/actions/jobs/702/logs, GET …/actions/jobs/701/logs;
-//   the token as a Bearer header on each and in no address
+// expect: the string "test\ntest line 1\ntest line 2\nbuild\nbuild line\n"; the requests, in order: GET …/actions/runs/9002/jobs (per_page 100, page 1), GET …/actions/jobs/702/logs, GET …/actions/jobs/701/logs; the token as a Bearer header on each and in no address
 test("ciRunLog on GitHub — the jobs' texts in the order the server lists them, each preceded by a line with the job's name", async () => {
   const { result, requests } = await serving(ghJobs([[702, "test"], [701, "build"]], { 702: "test line 1\ntest line 2\n", 701: "build line\n" }), () => connect(GITHUB, { token: GH_TOKEN }).ciRunLog("9002"));
   assert.equal(result, "test\ntest line 1\ntest line 2\nbuild\nbuild line\n");
@@ -272,8 +265,7 @@ test("ciRunLog on GitHub — the jobs' texts in the order the server lists them,
 // guards: UC-049; ONE DASHBOARD SHOWS EVERY JOB; A TOKEN GOES ONLY TO THE SERVER THAT ISSUED IT; A CREDENTIAL IS NEVER PLACED IN A URL
 // given: a GitLab pipeline 62 whose jobs the server lists as 802 "test" and then 801 "build", with the traces "test line\n" and "build line without a line break at its end"
 // input: ciRunLog("62")
-// expect: the string "test\ntest line\nbuild\nbuild line without a line break at its end\n" (each name on a line of its own); the requests, in order: GET …/pipelines/62/jobs (per_page 100, page 1), GET …/jobs/802/trace, GET …/jobs/801/trace;
-//   the token as PRIVATE-TOKEN on each and in no address
+// expect: the string "test\ntest line\nbuild\nbuild line without a line break at its end\n" (each name on a line of its own); the requests, in order: GET …/pipelines/62/jobs (per_page 100, page 1), GET …/jobs/802/trace, GET …/jobs/801/trace; the token as PRIVATE-TOKEN on each and in no address
 test("ciRunLog on GitLab — the jobs' traces in the order the server lists them, each preceded by a line with the job's name", async () => {
   const { result, requests } = await serving(glJobs([[802, "test"], [801, "build"]], { 802: "test line\n", 801: "build line without a line break at its end" }), () => connect(GITLAB, { token: GL_TOKEN }).ciRunLog("62"));
   assert.equal(result, "test\ntest line\nbuild\nbuild line without a line break at its end\n");
@@ -323,8 +315,7 @@ const glServer = (r) => (r.method === "POST" ? json(200, glPipeline(62)) : /\/jo
 // guards: A REMOTE INTERFACE NAMES HOW IT FAILS; A USED-UP RATE LIMIT IS NAMED, NOT BLAMED ON THE TOKEN; AN EXPIRED TOKEN IS NAMED AND ITS RENEWAL LINKED
 // given: a host of each server whose server answers each of the three calls first as it documents (a known positive), then 401; 403; 403 with X-RateLimit-Remaining 0 and X-RateLimit-Limit 5000 (GitHub) / 429 (GitLab); 500; and a network that throws
 // input: listCiRuns({}), cancelCiRun(id) and ciRunLog(id) on each, for each of these answers
-// expect: the known positive gives its value (an array of one run; no failure; the text "build\nbuild line\n"); TokenRefused for 401 (naming the token "Carol's token" and the renewal page the host links); PermissionMissing for 403;
-//   RateLimited for the used-up limit (limit "account"); Unreachable for 500 and for the network failure; never a value
+// expect: the known positive gives its value (an array of one run; no failure; the text "build\nbuild line\n"); TokenRefused for 401 (naming the token "Carol's token" and the renewal page the host links); PermissionMissing for 403; RateLimited for the used-up limit (limit "account"); Unreachable for 500 and for the network failure; never a value
 test("listCiRuns, cancelCiRun and ciRunLog name how they fail, on each server", async () => {
   const limited = { github: () => json(403, { message: "rate limit" }, { "x-ratelimit-remaining": "0", "x-ratelimit-limit": "5000", "x-ratelimit-reset": "1790000000" }), gitlab: () => json(429, { message: "Retry later" }) };
   const servers = {
@@ -356,8 +347,7 @@ test("listCiRuns, cancelCiRun and ciRunLog name how they fail, on each server", 
 // guards: A REMOTE INTERFACE NAMES HOW IT FAILS
 // given: a run of two jobs "build" and "test"; the server lists the jobs and answers the log of "build" (a known positive), then answers the log of "test" with 401; 403; the used-up limit; 500; a network that throws; and, in another round, answers the first log 500 and the second one 200
 // input: ciRunLog on each server for each of these answers
-// expect: the known positive gives "build\nbuild line\ntest\ntest line\n"; a failing request for a log fails the whole call with its failure — TokenRefused, PermissionMissing, RateLimited, Unreachable, Unreachable — and is never read as "no log"
-//   and never as null; a log answered 500 with another answered 200 fails Unreachable too
+// expect: the known positive gives "build\nbuild line\ntest\ntest line\n"; a failing request for a log fails the whole call with its failure — TokenRefused, PermissionMissing, RateLimited, Unreachable, Unreachable — and is never read as "no log" and never as null; a log answered 500 with another answered 200 fails Unreachable too
 test("ciRunLog — a failing request for a job's log fails the call; only 404 and 410 mean that no log is kept", async () => {
   const wrong = [["TokenRefused", () => json(401, { message: "Bad credentials" })], ["PermissionMissing", () => json(403, { message: "Forbidden" })],
     ["RateLimited", { github: () => json(403, { message: "rate limit" }, { "x-ratelimit-remaining": "0", "x-ratelimit-limit": "5000" }), gitlab: () => json(429, { message: "Retry later" }) }],
@@ -387,8 +377,7 @@ test("ciRunLog — a failing request for a job's log fails the call; only 404 an
 // guards: A REMOTE INTERFACE NAMES HOW IT FAILS
 // given: a host of each server connected through a clone ("/tmp/a-clone") without a token, and one connected through a clone with the person's token whose server answers as it documents
 // input: listCiRuns({}), cancelCiRun("9002") / ("62"), ciRunLog("9002") / ("62") on each
-// expect: through the clone with a token, the REST adapter answers — one run listed (GitHub id "9002", GitLab "62"), the cancel resolving with no value, the log "build\nbuild line\n" — with the requests the server's API
-//   expects; through the clone without a token, each of the three fails NotSupported, with no request
+// expect: through the clone with a token, the REST adapter answers — one run listed (GitHub id "9002", GitLab "62"), the cancel resolving with no value, the log "build\nbuild line\n" — with the requests the server's API expects; through the clone without a token, each of the three fails NotSupported, with no request
 test("listCiRuns, cancelCiRun and ciRunLog through a clone use the REST adapter with a token and are NotSupported without one", async () => {
   for (const [address, token, id, answer] of [[GITHUB, GH_TOKEN, "9002", ghServer], [GITLAB, GL_TOKEN, "62", glServer]]) {
     const listed = await serving(answer, () => connect(address, { token, clone: "/tmp/a-clone" }).listCiRuns({}));

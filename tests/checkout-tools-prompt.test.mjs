@@ -19,9 +19,7 @@ const NAMES = ["read", "write", "edit", "bash", "grep", "glob", "webfetch"];
 // guards: UC-049
 // given: a git checkout on the branch work-1240060; the date 2026-10-26
 // input: checkoutPrompt({ folder: the checkout, now: 2026-10-26T12:00:00Z })
-// expect: the prompt names the working folder, the platform (process.platform), the date 2026-10-26 and "git: yes, on the branch work-1240060"; it tells the
-//   model to use read, edit, write, grep and glob rather than cat, sed or grep in bash, to give bash a workdir rather than cd, never to put the "N: " prefix of
-//   read into an edit, to verify with the project's own tests, and Agent M's git rule; it is at most 60 lines and holds no unfilled "{" placeholder "}"
+// expect: the prompt names the working folder, the platform (process.platform), the date 2026-10-26 and "git: yes, on the branch work-1240060"; it tells the model to use read, edit, write, grep and glob rather than cat, sed or grep in bash, to give bash a workdir rather than cd, never to put the "N: " prefix of read into an edit, to verify with the project's own tests, and Agent M's git rule; it is at most 60 lines and holds no unfilled "{" placeholder "}"
 test("TST-1240060: the prompt names the environment and how the tools are used", async (t) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "agent-m-prompt-")));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -40,8 +38,7 @@ test("TST-1240060: the prompt names the environment and how the tools are used",
 // guards: ONE DEFINITION, THREE DRIVERS
 // given: the catalogue's tools.md and the strategies of this module
 // input: toolsOf the seven names read, write, edit, bash, grep, glob, webfetch; the names of checkoutStrategies' tools
-// expect: seven definitions, each with a description and an input schema of type object; read, grep and glob need "read the repository", write and edit
-//   "write to the repository", bash "run code and tests", webfetch "reach the web"; the strategies' names are exactly the seven
+// expect: seven definitions, each with a description and an input schema of type object; read, grep and glob need "read the repository", write and edit "write to the repository", bash "run code and tests", webfetch "reach the web"; the strategies' names are exactly the seven
 test("TST-1240061: the seven tools are data in the catalogue, each with a strategy of its name", async () => {
   const definitions = await toolsOf(NAMES);
   assert.deepEqual(definitions.map((each) => each.name), NAMES);

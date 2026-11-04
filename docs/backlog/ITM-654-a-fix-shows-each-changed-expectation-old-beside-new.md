@@ -27,15 +27,22 @@ whether its path reads the repository per test, are read at its start (sprint 66
 
 **Read at its start** (team 2's sprint 97, 2026-10-20):
 - The page reaches a fix's pull request only through the route `issues`, which ITM-582 builds (`confirmClass`), and the
-  fix only through ITM-583 (`fix-inputs`' pull request, `closeWithLinks`). Neither is built: `src/issue-handling` does not
-  exist on `main` or on `sprint/team2/97`. So it builds on both.
-- It reads the fix's pull request, its changed files on both sides, and the declarations of the tests among them. Its
-  module's Uses name none of the interfaces that give them. The draft `9d5ea17c` added them, and its revision after review
-  finds the fix's pull request through the job: `MOD-job-ledger.recordsNewestFirst` gives the `fix-bug` job whose
-  `works_on` names the issue, and `MOD-runtimes.jobTrail` gives its branch's pull request. Then come
-  `MOD-repository-hosts.pullRequestFacts`, `MOD-test-document.isTestFile` and `testDeclarations`. It waits for akmaier.
+  fix only through ITM-583 (`fix-inputs`' pull request, `closeWithLinks`). ITM-582 is merged (#1255;
+  `src/issue-handling/classes.mjs`); ITM-583 is not built — no file under `src/` defines `fix-inputs` or `closeWithLinks`.
+  So it waits for ITM-583.
+- It reads the fix's pull request, its changed files on both sides, and the declarations of the tests among them.
+  MOD-maintenance-pages' Uses name the interfaces that give them (`docs/architecture/MOD-maintenance-pages.md:29-80`,
+  `:175-180`): `MOD-job-ledger.recordsNewestFirst` gives the `fix-bug` job whose `works_on` names the issue,
+  `MOD-runtimes.jobTrail` its branch's pull request, then `MOD-repository-hosts.pullRequestFacts`,
+  `MOD-test-document.isTestFile` and `testDeclarations`. No file under `src/maintenance-pages/` shows an old and a new
+  expectation yet.
 
 ## Acceptance
 
 - Before a fix's pull request is merged, each existing test whose expected result it changes is shown with its requirement, the old and the new expectation side by side.
 - The first commit holds only the tests, and CI is red on it. No stub is committed.
+- Tests of other modules this Outcome changes: none. Every test that draws the issue route names MOD-maintenance-pages
+  in its header: the `maintenance-pages-*` tests, `system-uc-012-fix-a-bug`, `test_issue_to_spec.py`, and the release
+  tests `release-itm-1254-issue-move` and `release-itm-1257-move-form-lists`. A release test among them is changed only
+  by a participant who implemented none of this item.
+- Only `src/maintenance-pages/` and the tests that name MOD-maintenance-pages change.

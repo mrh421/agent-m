@@ -22,12 +22,14 @@ origin:
 ## Outcome
 
 Three places compute which of `context.places.contents`' sources a file carries:
-- MOD-job-runner's tools (`src/job-runner/tools.mjs:69`);
-- MOD-run-planner's `implementation-inputs` (`src/run-planner/inputs.mjs:63`);
-- MOD-work-plans' `architecture-and-model` (`src/work-plans/strategies.mjs:47`).
+- MOD-job-runner's `sourcesOf(context, path)` (`src/job-runner/tools.mjs:79`, exported at `src/job-runner/index.mjs:25`),
+  built by `b4d8b472`, which its tools' `withheld` calls (`tools.mjs:90`); `JobContext`'s JSDoc names `contents`
+  (`index.mjs:50`);
+- MOD-run-planner's `implementation-inputs` (`src/run-planner/inputs.mjs:64`), its own copy;
+- MOD-work-plans' `architecture-and-model` (`src/work-plans/strategies.mjs:37`, `sourcesFor`), its own copy.
 
-The rule is the same in each: the sources of every entry that names the path or a folder above it. MOD-job-runner's
-`sourcesOf(context, path)` gives it once, and all three call it (nothing twice).
+The rule is the same in each: the sources of every entry that names the path or a folder above it. What is left: the two
+copies call MOD-job-runner's `sourcesOf` instead (nothing twice), and `sourcesOf`'s cases have their tests.
 
 It waits for akmaier's acceptance of the draft committed with ITM-610's gate. That draft gives MOD-job-runner
 `sourcesOf`, and the Uses of MOD-run-planner and MOD-work-plans name it.
@@ -37,10 +39,9 @@ the sources of a part, and listed.
 
 **Settled at sprint team1/67's start, added as its third item. Selectable.**
 - **The modules whose files it changes** (sprint 65's agreement):
-  - MOD-job-runner: the new `sourcesOf(context, path)` in the part that holds the product's files (`tools.mjs`), and
-    its export from `index.mjs`; `barred` (`tools.mjs:66-75`) calls it;
-  - MOD-run-planner: `inputs.mjs:63`;
-  - MOD-work-plans: `strategies.mjs:47`.
+  - MOD-job-runner: none for the code — `sourcesOf` stands in `tools.mjs:79`; its tests are added;
+  - MOD-run-planner: `inputs.mjs:64`;
+  - MOD-work-plans: `strategies.mjs:37`.
   - No topic is added.
 - **The grep, full output read:** `grep -rn "sourcesOf\|places.contents\|places?.contents" src tests` finds:
   - the three computations above;
@@ -64,11 +65,6 @@ the sources of a part, and listed.
 - The first commit holds only the tests, and CI is red on it. No stub is committed.
 
 **The draft it waited for is accepted** (akmaier, `b43da779`): MOD-job-runner's `sourcesOf` (accepted blob 7a7c5c8918aa). It is free of drafts; its readings are read at its start.
-
-**Folded in at the developer's preparation (2026-10-17, po-opus).** The JSDoc of `JobContext` in
-`src/job-runner/index.mjs:46` gives `places: { sources, mailbox }`. It omits `contents`, which MOD-job-runner's file
-gives `JobContext` (`MOD-job-runner.md:204`) and which `sourcesOf` reads. This item adds `contents` to the JSDoc, in the
-module it already changes. It is a comment, so no test changes for it.
 
 **Held (2026-10-17).** The auto-mode classifier denied the developer's first command, creating the item's branch, as
 "[Modify Shared Resources]". The developer stopped, as sprint 66's agreement asks. The item holds until akmaier answers

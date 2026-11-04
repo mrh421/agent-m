@@ -6,7 +6,7 @@
 //
 // PROGRESS AND JOB STATE ARE DERIVED, NOT STORED; THE BUILD IS SHOWN AS IT HAPPENS; A USED-UP RATE LIMIT IS NAMED, NOT BLAMED ON THE TOKEN. A reading asks, for each card that was drawn, its host for the default
 // branch's snapshot again (the commit and its tree: two requests, the branch named by that card's own snapshot), has MOD-job-ledger's listJobs derive the rows of the jobs the card was drawn with from it
-// — the host holds every record it has read, so only a record that changed since is fetched —, asks MOD-runtimes' liveState once for each job whose record has no end, as the route `jobs` does (jobs.mjs), and derives the rows again. It
+// — the host holds every record it has read, so only a record that changed since is fetched —, asks MOD-runtimes' liveStates once for the jobs whose record has no end, as the route `jobs` does (jobs.mjs), and derives the rows again. It
 // reads nothing else: the stages, the shares, the plan, the pull requests and what waits for a person stay as they were drawn, and only the build's rows move. It stores nothing but the rows of the last
 // reading, for the cards to be drawn again.
 //
@@ -23,7 +23,7 @@
 
 import { listJobs } from "../job-ledger/index.mjs";
 import { buildInProgress } from "../progress-measures/index.mjs";
-import { bridgesOf, liveStatesOf } from "./jobs.mjs";
+import { bridgesOf, liveStatesOf } from "./sources.mjs";
 import { el, productCard } from "./cards.mjs";
 
 /** EVERY — the time between two readings, in milliseconds. */
@@ -50,7 +50,8 @@ async function jobsAgain({ source, facts, jobState = null }, store) {
   const changed = paths.filter((path) => snapshot.blob(path) !== prior.blobs.get(path));
   await snapshot.readMany(changed);
   const texts = new Map(await Promise.all(paths.map(async (path) => [path, changed.includes(path) ? await snapshot.read(path) : prior.texts.get(path)])));
-  const serving = { ...snapshot, paths, read: (path) => Promise.resolve(texts.get(path) ?? null) };
+  // The texts are held already: its readMany, which listJobs names the records to, reads nothing ahead.
+  const serving = { ...snapshot, paths, read: (path) => Promise.resolve(texts.get(path) ?? null), readMany: () => Promise.resolve() };
   const products = [{ address: facts.address, snapshot: serving }];
   const first = await listJobs(products, new Map());
   const lives = await liveStatesOf(first, new Map([[facts.address, source.host]]), bridgesOf(first, store));

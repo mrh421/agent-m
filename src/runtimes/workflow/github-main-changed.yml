@@ -1,0 +1,68 @@
+# The file beside Agent M's job workflow for this product, written by Agent M (docs/architecture/MOD-runtimes.md): on every push to the default branch, on the
+# schedule and on a start from this server's page, it stores what the pages read — the trace graph of the commit on the branch trace-cache, its overview and views
+# on the branch overview-cache —, running Agent M's entry onMainChanged from a checkout of the instance at the commit named below. Each branch's first commit is
+# made here, once, as an orphan commit. It runs no agent, calls no model and reads no key: it writes with the workflow's own token, whose pushes start no run.
+name: main changed
+
+on:
+  # A push to another branch starts the run, whose one job is skipped: the file does not know the default branch's name, the event does.
+  push:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-m-main-changed
+  cancel-in-progress: false
+
+jobs:
+  agent-m-main-changed:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AGENT_M_PRODUCT_DIR: ${{ github.workspace }}/product
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: product
+      - uses: actions/checkout@v4
+        with:
+          repository: @@repository@@
+          ref: @@commit@@
+          path: instance
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Make the branches trace-cache and overview-cache, once, and fetch them
+        working-directory: product
+        run: |
+          git config user.name "agent-m main-changed"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for branch in trace-cache overview-cache; do
+            if ! git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+              git checkout --orphan "$branch-first"
+              git rm -rf --quiet .
+              echo "The files of the commits of the default branch, one each." > README.md
+              git add README.md
+              git commit --quiet -m "$branch: the branch of the stored files"
+              git push origin "$branch-first:refs/heads/$branch"
+              git checkout --quiet --detach "$GITHUB_SHA"
+            fi
+            git fetch origin +$branch:$branch
+          done
+          if git ls-remote --exit-code --heads origin "test-results" > /dev/null; then
+            git fetch origin +test-results:test-results
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then exit "$status"; fi
+          fi
+      - name: Store the records of this commit
+        working-directory: instance
+        run: node src/workflow-entries/main.mjs onMainChanged
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

@@ -72,8 +72,7 @@ test("startPage serves #get-your-own/step=actions as the Actions step of the per
 // guards: UC-014; EVERY STEP EXPLAINS ITSELF
 // given: the original dashboard akmaier/agent-m, served from https://akmaier.github.io/agent-m/docs/index.html; the address #get-your-own/owner=acme, which names a GitHub name and no step
 // input: startPage with the fragment #get-your-own/owner=acme
-// expect: Step 1 is the one current step; every step holds one folded explanation; the field holds acme; the links are those of acme as above; the frame requested nothing for the route
-//   that was not a read of the instance (no request went to a GitHub page of acme, whose pages are only linked)
+// expect: Step 1 is the one current step; every step holds one folded explanation; the field holds acme; the links are those of acme as above; the frame requested nothing for the route that was not a read of the instance (no request went to a GitHub page of acme, whose pages are only linked)
 test("startPage serves #get-your-own/owner=acme as the first step with the links of acme, every step explained", async () => {
   const { main } = await start({ hostname: "akmaier.github.io", pathname: "/agent-m/docs/index.html", hash: "#get-your-own/owner=acme" });
   assert.deepEqual(current(main), [STEPS[0]]);

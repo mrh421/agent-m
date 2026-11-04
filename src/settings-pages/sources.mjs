@@ -28,6 +28,7 @@ import { saveFile } from "../artifact-edits/index.mjs";
 import { affectedRequirements, permittedPlaces, sourceSchemas } from "../source-register/index.mjs";
 import { explain } from "../site-frame/index.mjs";
 import { readRegisterOf, unquoted, versionHashOf, versionsOf } from "./library.mjs";
+import { heads } from "./routes.mjs";
 
 const { links: LINKS } = sourceSchemas();
 const PATH = "docs/sources.md";
@@ -86,13 +87,11 @@ export const linksText = (document_, rows) => writeDocument(LINKS, { ...document
 export const saveLinks = (host, opened, text, trailers = []) => saveFile(host, { path: PATH, text, openedBlob: opened.blob, trailers });
 
 export const route = {
-  name: "sources",
-  entry: "settings",
-  title: "Requirement sources",
+  ...heads.sources,
   async render(target, context) {
     const product = context.product;
     if (!product) {
-      target.replaceChildren(el("h2", null, "Requirement sources"),
+      target.replaceChildren(el("section", "head", el("h2", null, "Requirement sources")),
         el("p", "sources-no-product", "Choose a product: the sources a product must meet are linked in the product's own repository, so this page is drawn for one."));
       return;
     }
@@ -101,13 +100,13 @@ export const route = {
     try {
       ({ entries } = await readRegisterOf(context.instance.host));
     } catch (error) {
-      target.replaceChildren(el("h2", null, "Requirement sources"), el("p", "sources-unreadable", `The library could not be read: ${error?.message ?? error}.`));
+      target.replaceChildren(el("section", "head", el("h2", null, "Requirement sources")), el("p", "sources-unreadable", `The library could not be read: ${error?.message ?? error}.`));
       return;
     }
     try {
       files = await readProduct(product.host);
     } catch (error) {
-      target.replaceChildren(el("h2", null, "Requirement sources"), el("p", "sources-unreadable", `The product's repository could not be read: ${error?.message ?? error}.`));
+      target.replaceChildren(el("section", "head", el("h2", null, "Requirement sources")), el("p", "sources-unreadable", `The product's repository could not be read: ${error?.message ?? error}.`));
       return;
     }
     const name = parseAddress(product.address).path.split("/").pop();
@@ -210,7 +209,7 @@ export const route = {
     const open = el("button", "sources-library btn", "Open the library");
     open.addEventListener("click", () => context.go("library", {}));
     target.replaceChildren(
-      el("h2", null, "Requirement sources"),
+      el("section", "head", el("h2", null, "Requirement sources")),
       el("p", "muted", `Product: ${product.address}`),
       el("p", "sources-where", `Save writes ${PATH} in ${product.address} as your own commit, and writes nothing else.`),
       explain("requirement-sources"),

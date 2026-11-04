@@ -78,7 +78,9 @@ spec:
       when: always
       variables:
         AGENT_M_ENTRY: writeResult
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    # GitLab starts no pipeline for the merge of a merge request on the merge request: it starts the push pipeline of the target branch, whichever it is, whose commit the
+    # entry finds the merged merge request by. A push to the default branch that changes the records takes the rule above, and its script runs this entry after writeResult.
+    - if: '$CI_PIPELINE_SOURCE == "push"'
       variables:
         AGENT_M_ENTRY: onPullRequestClosed
     - if: '$CI_PIPELINE_SOURCE == "pipeline"'
@@ -103,6 +105,8 @@ spec:
     - git config credential.helper '!f() { echo username=agent-m; echo "password=$AGENT_M_TOKEN"; }; f'
     - cd ../instance
     - AGENT_M_STATUS=0; AGENT_M_PRODUCT_DIR="$CI_PROJECT_DIR" AGENT_M_RESULT_DIR="$CI_PROJECT_DIR/agent-m-result" node src/workflow-entries/main.mjs "$AGENT_M_ENTRY" || AGENT_M_STATUS=$?
+    # A push that changes the records may also be the merge of a merge request.
+    - if [ "$CI_PIPELINE_SOURCE" = "push" ] && [ "$AGENT_M_ENTRY" = "writeResult" ]; then AGENT_M_PRODUCT_DIR="$CI_PROJECT_DIR" node src/workflow-entries/main.mjs onPullRequestClosed || AGENT_M_STATUS=$?; fi
     # The result is deleted from the server once it is written, or refused: GitLab keeps the newest pipeline's artifacts past their expiry.
     - |
       node --input-type=module -e '

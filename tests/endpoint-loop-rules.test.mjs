@@ -60,8 +60,7 @@ const toolTurns = (body) => body.messages.filter((message) => message.role === "
 // guards: UC-049
 // given: an OpenAI-compatible endpoint whose first answer calls read_file with the arguments text {"path": — not JSON —, then answers "done"
 // input: send with tools
-// expect: no failure is thrown; read_file is not carried out; request 2 holds the call with arguments "{}" and its tool turn "The arguments provided to the tool
-//   are invalid: Invalid input for tool read_file: JSON parsing failed: Text: {"path": .\nError message: " followed by the parser's message; the answer is "done"
+// expect: no failure is thrown; read_file is not carried out; request 2 holds the call with arguments "{}" and its tool turn "The arguments provided to the tool are invalid: Invalid input for tool read_file: JSON parsing failed: Text: {"path": .\nError message: " followed by the parser's message; the answer is "done"
 test("TST-1241001: unreadable tool arguments are answered in opencode's words, never thrown", async (t) => {
   const log = [];
   const bodies = provider(t, [openai({ calls: [{ id: "c1", raw: "{\"path\": " }] }), openai({ text: "done" })]);
@@ -140,8 +139,7 @@ test("TST-1241005: an answer cut off at the output limit is continued", async (t
 // guards: UC-049
 // given: an OpenAI-compatible and an Anthropic endpoint that each answer "done"; a participant without a declared context and one with a context of 20000 tokens
 // input: send with tools; the prompt "Inspect the fixture." is 20 characters, 7 tokens as estimated
-// expect: without a context, max_tokens is 32000 for both kinds; with the context of 20000 it is 19993, the room the prompt leaves; known positive: an
-//   Anthropic send without tools keeps max_tokens 1024
+// expect: without a context, max_tokens is 32000 for both kinds; with the context of 20000 it is 19993, the room the prompt leaves; known positive: an Anthropic send without tools keeps max_tokens 1024
 test("TST-1241006: a tool loop sets max_tokens to 32000, or to the room the context leaves", async (t) => {
   const bodies = provider(t, [openai({ text: "done" }), anthropic({ text: "done" }), openai({ text: "done" }), anthropic({ text: "done" })]);
   await endpointDriver(OPENAI, PARTICIPANT).send(input(toolUse()));
@@ -263,8 +261,7 @@ test("TST-1241012: nothing is cleared when clearing would free too little", asyn
 // guards: UC-049
 // given: an OpenAI-compatible and an Anthropic endpoint that each answer "done"
 // input: endpointDriver(config, participant, endpointExchange's default, { system: "You work in a checkout." }).send with tools
-// expect: the OpenAI request's first message is { role: "system", content: "You work in a checkout." }, followed by the user prompt; the Anthropic request's
-//   system is "You work in a checkout." and its first message the user prompt
+// expect: the OpenAI request's first message is { role: "system", content: "You work in a checkout." }, followed by the user prompt; the Anthropic request's system is "You work in a checkout." and its first message the user prompt
 test("TST-1241013: a system text is sent as the endpoint's system prompt", async (t) => {
   const bodies = provider(t, [openai({ text: "done" }), anthropic({ text: "done" })]);
   await endpointDriver(OPENAI, PARTICIPANT, undefined, { system: "You work in a checkout." }).send(input(toolUse()));

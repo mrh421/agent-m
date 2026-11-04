@@ -77,7 +77,9 @@ and the drafter's answer to every finding of the last round.
 
 **The kinds.** Each strategy a definition names is offered by the module that owns its knowledge, as its subsystem's
 decision says (ARC-041 to ARC-046); `instruction`, `draft` and `return-draft`, and the checks on the artifact model, are
-built into MOD-job-runner.
+built into MOD-job-runner. The recipe `gate-inputs` and the writer `gate-record` that `decide-gate` names are offered
+by no module: an agent decides a gate in a session of its own and writes the gate record itself (UC-034 step 7), and
+Agent M prepares no job of the kind.
 
 | Kind | Serves | Participant needs | Preconditions | Recipes | Checks | Reviewers | Steps | Review · writer | Draft it expects |
 |---|---|---|---|---|---|---|---|---|---|
@@ -87,10 +89,11 @@ built into MOD-job-runner.
 | `change-use-case` | UC-019, UC-049 | draft text | | `instruction`, `conversation`, `draft?`, `use-case-with-neighbours`, `chapters-for-requirements` | `document-schema`, `graph-checks`, `identifier-kept` | | | `person` · `open-files` | files |
 | `derive-architecture` | UC-022 | draft text | `architecture-ready` | `instruction?`, `whole-spec`, `accepted-use-cases`, `chapters-for-architecture` | `document-schema`, `graph-checks`, `candidate-classes` | `review-architecture` × 1 | `due-diligence` | `person` · `open-files` | files |
 | `change-architecture` | UC-023, UC-049 | draft text | `rests-on-accepted` | `instruction`, `conversation`, `draft?`, `whole-spec`, `use-cases`, `whole-architecture`, `chapters-for-architecture` | `document-schema`, `graph-checks`, `identifier-kept`, `candidate-classes` | `review-architecture` × 1 | `due-diligence` | `person` · `open-files` | files |
-| `review-architecture` | UC-022, UC-023 | draft text | | `instruction?`, `whole-spec`, `accepted-use-cases`, `draft`, `chapters-for-architecture` | | | | `none` · `return-draft` | findings, each a warning |
+| `review-architecture` | UC-022, UC-023 | draft text | | `instruction?`, `whole-spec`, `accepted-use-cases`, `whole-architecture`, `draft`, `chapters-for-architecture` | | | | `none` · `return-draft` | findings, each a warning |
 | `propose-groups` | UC-021 | draft text | | `items-of-kind` | `group-rules` | | | `none` · `return-draft` | moves, each a `GroupMove` of MOD-group-document |
 | `draft-plan` | UC-045 | draft text | `rests-on-accepted` | `architecture-and-model` | `plan-checks` | | | `person` · `plan-steps` | steps |
 | `propose-items` | UC-032 | draft text | `rests-on-accepted` | `backlog-inputs` | `backlog-checks`, `candidate-classes` | | | `person` · `backlog-items` | items |
+| `check-affected-modules` | UC-008 | draft text | `rests-on-accepted` | `use-case-with-neighbours`, `whole-architecture` | `backlog-checks` | | `leave-out-named-modules` | `none` · `backlog-items` | items, one for each module whose implementation the accepted use case's text changes, each realising the use case and naming that module |
 | `close-sprint` | UC-041 | draft text, read the repository, write to the repository | | `sprint-facts` | `sprint-record-checks` | | | `none` · `sprint-record` | the review, the retrospective, the proposed changes |
 | `implement` | UC-024, UC-034, UC-043 | write to the repository, run code and tests | `rests-on-accepted` | `instruction?`, `implementation-inputs`, `chapters-for-implementation`, `resource-pins` | | | | `none` · `branch-and-pull-request` | the agent's report: branch, commits, pull request |
 | `refactor` | UC-024 | write to the repository, run code and tests | `rests-on-accepted` | `instruction?`, `implementation-inputs`, `resource-pins` | | | | `none` · `branch-and-pull-request` | the same |

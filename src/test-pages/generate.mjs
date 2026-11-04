@@ -11,7 +11,8 @@
 //   - a combination is a name and a level that fits its kind (UC-026's table): a requirement is checked at `release` and `user`, a use case at `system`, a module at `unit` and `component`; a combination is
 //     uncovered when no test of that level guards the name (a test guards a module it names in its `Module:` line too, as the recipe test-selection counts it);
 //   - a name is preselected when one of its combinations is uncovered, a level when one of the preselected names has it uncovered;
-//   - the implementer of what a selection checks is the participant of a job of kind `implement` whose `worksOn` names a selected name, or an item or use case that names a selected requirement;
+//   - the implementer of what a selection checks is the participant of a job of kind `implement` whose `worksOn` names a selected name, or an item or use case that names a selected name — an
+//     item that realises a selected requirement or use case, or changes a selected module (ITM-1424);
 //   - the page asks for the person's own name, as the release panel does, since no setting holds an identity;
 //   - the run is queued on the first route routesFor offers the participant, and nothing is run in the tab;
 //   - the proposal is read from the end record's `draft` of the job queued from this page, else of the newest job of kind `propose-tests` that has one; the flags the rounds left are the findings of the last
@@ -31,6 +32,7 @@
 // Module: MOD-test-pages
 
 import { readDocument } from "../documents/index.mjs";
+import { statuses } from "../approvals/index.mjs";
 import { isTestFile, testDeclarations } from "../test-document/index.mjs";
 import { storedGraph, tracesTo } from "../trace-graph/index.mjs";
 import { eligible, participantSchema, participantsOf } from "../participant-list/index.mjs";
@@ -41,7 +43,8 @@ import { queueJob, routesFor } from "../runtimes/index.mjs";
 import { explain, runPanel, readProblem } from "../site-frame/index.mjs";
 import { reachableBy, resourceSchema } from "../resource-list/index.mjs";
 import { readRegister } from "../documents/index.mjs";
-import { testsHead, readsAt, column, listTable, LEVEL_TOPIC } from "./look.mjs";
+import { testsHead, readsAt, column, listTable, button, LEVEL_TOPIC } from "./look.mjs";
+import { heads } from "./routes.mjs";
 
 const REGISTER = "docs/participants.md";
 const WORKFLOWS = [".github/workflows/agent-m-jobs.yml", ".gitlab/agent-m-jobs.yml"];
@@ -51,20 +54,12 @@ const LEVELS = ["unit", "component", "system", "release", "user"];
 const FITTING = { requirement: ["release", "user"], UC: ["system"], MOD: ["unit", "component"] };
 const PARAMETER = { requirement: "requirements", UC: "useCases", MOD: "modules" };
 
-const TITLE = "Generate tests";
+const TITLE = heads.generate.title;
 
 function el(name, className, ...children) {
   const node = document.createElement(name);
   if (className) node.className = className;
   node.append(...children);
-  return node;
-}
-
-// A button that answers a person's click only (THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK).
-function button(className, text, listener) {
-  const node = el("button", className, text);
-  node.type = "button";
-  node.addEventListener("click", (event) => (event?.isTrusted === true ? listener(event) : undefined));
   return node;
 }
 
@@ -81,10 +76,25 @@ function guardingTests(graph, name) {
 async function loadProduct(host) {
   const info = await host.repositoryInfo();
   const snapshot = await host.readSnapshot(info.defaultBranch);
-  const declarations = (await Promise.all(snapshot.paths.filter(isTestFile).map(async (path) => testDeclarations(path, (await snapshot.read(path)) ?? "")))).flat();
   const graph = await storedGraph(snapshot, snapshot.commit);
-  const levelOf = new Map(declarations.map((declaration) => [declaration.id, declaration.level]));
-  const names = [...graph.nodes.values()].filter((node) => FITTING[node.kind]).sort((a, b) => a.id.localeCompare(b.id))
+  // The tests' declarations, read once, in batches, where they are needed: for a proposal's existing tests, and for the levels where the graph holds none.
+  let read = null;
+  const declarations = () => (read ??= (async () => {
+    const paths = snapshot.paths.filter(isTestFile);
+    await snapshot.readMany?.(paths);
+    return (await Promise.all(paths.map(async (path) => testDeclarations(path, (await snapshot.read(path)) ?? "")))).flat();
+  })());
+  // Each test's level as the graph holds it — a test that declares none has none —; a graph stored before its tests held their levels, which holds
+  // none at all, gives them from the declarations.
+  const tests = [...graph.nodes.values()].filter((node) => node.kind === "TST");
+  const levelOf = tests.some((node) => typeof node.level === "string")
+    ? new Map(tests.map((node) => [node.id, node.level]))
+    : new Map((await declarations()).map((declaration) => [declaration.id, declaration.level]));
+  // What can be tested is what is accepted (UC-026 step 1): a requirement of the graph is one SPEC.md holds; a use case or a module is offered when
+  // MOD-approvals' statuses gives its file as accepted — the function its precondition rests-on-accepted reads, so that the page offers what the run lets through.
+  const reviewed = statuses(snapshot);
+  const accepted = (node) => node.kind === "requirement" || reviewed.get(node.path)?.status === "accepted";
+  const names = [...graph.nodes.values()].filter((node) => FITTING[node.kind] && accepted(node)).sort((a, b) => a.id.localeCompare(b.id))
     .map((node) => {
       const covered = new Set(guardingTests(graph, node.id).map((id) => levelOf.get(id)).filter(Boolean));
       return { id: node.id, kind: node.kind, covered: LEVELS.filter((level) => covered.has(level)), uncovered: FITTING[node.kind].filter((level) => !covered.has(level)) };
@@ -102,11 +112,11 @@ async function loadParticipants(context, definition) {
   return { participants, instanceSnapshot: snapshot, writers: eligible(participants, { capabilities: definition.needs }).eligible };
 }
 
-// The participants of the jobs of kind `implement` that worked on what the selection checks.
+// The participants of the jobs of kind `implement` that worked on what the selection checks: a selected name, or an item or use case that names one — an item
+// by its `realises` or its `modules`.
 async function implementersOf(product, host, selected) {
   const behaviour = new Set(selected.map((each) => each.id));
   for (const each of selected) {
-    if (each.kind !== "requirement") continue;
     const traces = tracesTo(product.graph, each.id);
     for (const name of [...traces.items, ...traces.useCases]) behaviour.add(name);
   }
@@ -262,6 +272,7 @@ async function render(target, context, params = {}) {
 
   // ---------------------------------------------------------------- the proposal (UC-026 steps 5 to 8)
 
+  let declared = [];
   async function loadProposal() {
     proposalBox.replaceChildren();
     let rows, snapshot;
@@ -279,6 +290,12 @@ async function render(target, context, params = {}) {
       return;
     }
     const unwritten = rows.filter((each) => each.record.kind === "write-tests" && Array.isArray(each.record.end?.draft?.notWritten)).flatMap((each) => each.record.end.draft.notWritten);
+    try {
+      declared = await product.declarations();
+    } catch (failure) {
+      proposalBox.append(readProblem(failure, Boolean(context.product.tokenStored)));
+      return;
+    }
     paintCases(row.record, unwritten, snapshot);
   }
 
@@ -317,7 +334,7 @@ async function render(target, context, params = {}) {
   }
 
   function caseItem(one, reasons) {
-    const existing = product.declarations.filter((declaration) => declaration.id === one.identifier);
+    const existing = declared.filter((declaration) => declaration.id === one.identifier);
     const beside = existing.length
       ? existing.map((declaration) => el("div", "existing", `Existing ${declaration.id} (${declaration.level}), expects: ${declaration.expect ?? ""}`))
       : [el("div", "existing", "No existing test has this identifier.")];
@@ -390,4 +407,4 @@ async function render(target, context, params = {}) {
   stage.replaceChildren();
 }
 
-export const route = { name: "generate", entry: "tests", title: TITLE, render };
+export const route = { ...heads.generate, render };

@@ -1,6 +1,6 @@
 // edit.mjs — editing a requirement on the dashboard (MOD-review-pages, Parts; Interfaces: `requirement/<name>/edit`, `requirements/new`): the editor of MOD-markdown-render on the
 // requirement's SPEC section, with the marks of the SPEC's requirements, a Why field and the impact list; Save goes through MOD-spec-changes' proposeSection as an entry of the
-// person's open queue of the day. The flow reaches it through the descriptor's `edit` (UC-018 for a requirement).
+// section's queue. The flow reaches it through the descriptor's `edit` (UC-018 for a requirement).
 //
 // Module: MOD-review-pages
 //
@@ -10,11 +10,12 @@
 
 import { renderArtifact } from "../markdown-render/index.mjs";
 import { parseSpec, renamedRequirements, requirementFindings, sectionText } from "../spec-document/index.mjs";
-import { proposeSection, queues } from "../spec-changes/index.mjs";
+import { proposeSection } from "../spec-changes/index.mjs";
+import { waitingQueues } from "../progress-measures/index.mjs";
 import { blobSha } from "../text-tools/index.mjs";
 import { requirementImpact, storedGraph } from "../trace-graph/index.mjs";
 import { explain, readProblem } from "../site-frame/index.mjs";
-import { el, link, openEditor, parseServer, tokenStep } from "./common.mjs";
+import { arrangeLink, asOfLine, el, link, reviewLink, openEditor, parseServer, tokenStep } from "./common.mjs";
 import { fallbackPages } from "./file-edit.mjs";
 import { entryId } from "./spec-entries.mjs";
 
@@ -51,15 +52,17 @@ export async function showEdit(where, kind, params) {
     target.append(renderArtifact(section), el("p", "problem", "A GitLab product is written with the project's own token. ", tokenStep(context)));
     return;
   }
-  let graph, all;
+  // The other open proposals on the section come from the waiting queues (MOD-progress-measures' waitingQueues), with the line As of while they are of an earlier commit.
+  let graph, all, asOf;
   try {
     graph = await storedGraph(snapshot, snapshot.commit);
-    all = await queues(snapshot);
+    ({ queues: all, asOf } = await waitingQueues(snapshot));
   } catch (failure) {
     target.append(readProblem(failure, Boolean(token)));
     return;
   }
-  const openedBlob = await blobSha(section);
+  // The blob the next save is compared with: the section's as opened, and after a refusal the newer one shown beside the edit (UC-018 5a).
+  let openedBlob = await blobSha(section);
   const initial = kind.fresh ? `${section.replace(/\n*$/, "\n\n")}${EMPTY_FIELDS}` : section;
 
   const others = el("ul", "others");
@@ -67,7 +70,7 @@ export async function showEdit(where, kind, params) {
     for (const entry of queue.entries) {
       if (entry.file !== SPEC || entry.anchor !== heading || entry.state === "in SPEC") continue;
       const id = entryId(queue.folder, entry.number);
-      others.append(el("li", null, link(`#spec-entry/id=${encodeURIComponent(id)}`, null, id), ` — ${entry.state}`));
+      others.append(el("li", null, reviewLink(context, `#spec-entry/id=${encodeURIComponent(id)}`, null, id), ` — ${entry.state}`));
     }
   }
   const impact = el("ul", "impact");
@@ -92,7 +95,10 @@ export async function showEdit(where, kind, params) {
     try {
       const outcome = await proposeSection(host, { target: SPEC, anchor: heading, until: null, text, why: reason, origin: "the dashboard",
         person: token?.name ?? "anonymous", openedBlob, openedHead: snapshot.commit });
-      if (outcome.refused) return { kind: "refused", newer: outcome.current ?? "" };
+      if (outcome.refused) {
+        openedBlob = typeof outcome.current === "string" ? await blobSha(outcome.current) : null;
+        return { kind: "refused", newer: outcome.current ?? "" };
+      }
       if (outcome.fallback) {
         return fallbackPages(saved, outcome.fallback) ? { kind: "failed", reason: "there is no token, so nothing was committed from here." }
           : { kind: "failed", reason: "a GitLab product is written with the project's own token." };
@@ -101,13 +107,15 @@ export async function showEdit(where, kind, params) {
       const commit = `${snapshot.repository.web}/commit/${outcome.commit}`;
       const also = el("ul", "also");
       for (const replaced of outcome.alsoReplacing) also.append(el("li", null, entryId(replaced.queue, replaced.entry)));
-      saved.replaceChildren(el("p", "entry", "Saved as ", link(`#spec-entry/id=${encodeURIComponent(id)}`, null, id), " in ", link(commit, null, "this commit"), "."), also);
+      saved.replaceChildren(el("p", "entry", "Saved as ", reviewLink(context, `#spec-entry/id=${encodeURIComponent(id)}`, null, id), " in ", link(commit, null, "this commit"), "."), also);
       return { kind: "saved", link: commit };
     } catch (failure) {
       return { kind: "failed", reason: `${failure.name}: ${failure.message}` };
     }
   }
 
-  target.append(el("h3", null, "Other open proposals on this section"), others, editorBox, el("h3", null, "Why"), why, el("h3", null, "Impact list"), rename, impact, saved);
+  // The editor changes text only, never a group: moving the requirement to another group is the arrangement's (UC-018 3e).
+  target.append(el("h3", null, "Other open proposals on this section"), ...[asOfLine(asOf)].filter(Boolean), others, editorBox, el("h3", null, "Why"), why, el("h3", null, "Impact list"), rename, impact, saved,
+    arrangeLink(context, kind));
   return openEditor(editorBox, initial, { marks, save });
 }

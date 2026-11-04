@@ -76,8 +76,10 @@ PRODUCT = {
     UC1_RECORD: text("kind: use-case", f"file: {UC1_PATH}", f"blob: {blob(UC1)}"),
 }
 
-# What the stand-in driver answers: UC-002 changed as the instruction says, and one changed requirement.
-UC2_CHANGED = UC2.replace("extends a loan once.", "extends a loan once, and sees the due date.")
+# What the stand-in driver answers: UC-002 changed as the instruction says, holding the Mermaid diagram a use case's schema
+# requires, and one changed requirement.
+UC2_CHANGED = UC2.replace("extends a loan once.", "extends a loan once, and sees the due date.").replace(
+    "2. The system answers.\n", "2. The system answers.\n\n```mermaid\nsequenceDiagram\n    Member->>System: extend\n    System-->>Member: due date\n```\n")
 USE_CASE_DRAFT = {"files": [{"path": UC2_PATH, "text": UC2_CHANGED, "class": "change", "of": "UC-002"}]}
 REQUIREMENT_DRAFT = {"candidates": [{
     "name": RULE, "rule": CHANGED_RULE_TEXT, "check": "`tests/loan.test.mjs`", "constrains": "product",
@@ -247,8 +249,7 @@ class PromptedChangeContext(unittest.TestCase):
     # guards: A PROMPTED USE-CASE CHANGE SEES ITS NEIGHBOURS
     # given: the fixture product (UC-001 to UC-004; UC-002 realises A LOAN HAS A DUE DATE) and a drafter whose context holds them
     # input: prepareJob of change-use-case with the parameter useCase UC-002
-    # expect: the job fits; the part of its recipe use-case-with-neighbours are, in order, the file UC-002, the requirement A LOAN
-    #         HAS A DUE DATE as the SPEC states it, and the files UC-001, UC-003 and UC-004, each as the repository holds it
+    # expect: the job fits; the part of its recipe use-case-with-neighbours are, in order, the file UC-002, the requirement A LOAN HAS A DUE DATE as the SPEC states it, and the files UC-001, UC-003 and UC-004, each as the repository holds it
     def test_a_change_use_case_job_holds_the_use_case_its_requirement_and_every_other_use_case(self):
         prepared = prepare("CI")
         self.assertTrue(prepared["fits"])
@@ -267,8 +268,7 @@ class PromptedChangeContext(unittest.TestCase):
     # guards: A PROMPTED USE-CASE CHANGE SEES ITS NEIGHBOURS
     # given: the fixture product with a fifth use case UC-005 added, and a drafter whose context holds them
     # input: prepareJob of change-use-case with the parameter useCase UC-002, then the same on the product without UC-005
-    # expect: the neighbours include UC-005's file when it stands in the product and do not when it does not (the neighbours are
-    #         read from the product, not fixed)
+    # expect: the neighbours include UC-005's file when it stands in the product and do not when it does not (the neighbours are read from the product, not fixed)
     def test_the_neighbours_follow_the_product(self):
         path = "docs/use-cases/UC-005-pay-a-fine.md"
         uc5 = use_case("UC-005", "Pay a fine", "The member pays a fine.")
@@ -282,9 +282,7 @@ class PromptedChangeContext(unittest.TestCase):
     # guards: NO USE CASE IS LEFT OUT OF A PROMPT SILENTLY
     # given: the fixture product and a drafter whose context is 10 tokens; the same job for a drafter of 200000 tokens as the control
     # input: prepareJob and runJob (unattended) of change-use-case for UC-002 with a stand-in driver that counts what it is sent
-    # expect: the 10-token job does not fit, runJob throws NotStartable, the driver is called 0 times; the refusal names
-    #         small-drafter, its context 10 and a size above 10, and the destination lists the five parts it would have received,
-    #         use case, requirement and every other use case; the 200000-token job fits
+    # expect: the 10-token job does not fit, runJob throws NotStartable, the driver is called 0 times; the refusal names small-drafter, its context 10 and a size above 10, and the destination lists the five parts it would have received, use case, requirement and every other use case; the 200000-token job fits
     def test_a_drafter_too_small_for_the_neighbours_is_refused_before_anything_is_sent(self):
         small = prepare("SMALL", run=True)
         self.assertFalse(small["fits"])
@@ -305,9 +303,7 @@ class PromptedChangeContext(unittest.TestCase):
     # guards: A CI AGENT'S DRAFT ENTERS AS OPEN
     # given: the fixture product and the fixture CI agent, whose stand-in driver answers UC-002 changed as the instruction says
     # input: prepareJob and runJob (unattended, as a CI agent's job is) of change-use-case for UC-002
-    # expect: one commit on the default branch that writes only docs/use-cases/UC-002-extend-a-loan.md, with the changed text;
-    #         SPEC.md is byte-identical; no file is removed; the use case is open (not accepted) and no approval record names it,
-    #         while UC-001 stays accepted
+    # expect: one commit on the default branch that writes only docs/use-cases/UC-002-extend-a-loan.md, with the changed text; SPEC.md is byte-identical; no file is removed; the use case is open (not accepted) and no approval record names it, while UC-001 stays accepted
     def test_a_ci_agents_changed_use_case_enters_as_open_and_the_spec_is_untouched(self):
         run = ci_use_case_change()
         self.assertIsNone(run["error"], run["remaining"])
@@ -324,8 +320,7 @@ class PromptedChangeContext(unittest.TestCase):
     # guards: A CI AGENT'S DRAFT ENTERS AS OPEN
     # given: the run of the CI agent's change-use-case job, and the fixture product with an approval record planted for UC-002's text
     # input: the approval-record detector over the paths after the run, and the same over the planted product
-    # expect: the detector names no record for UC-002 after the run, and does name the planted one (so that "no record" is
-    #         the finding of a detector that finds a record where one stands); the planted product shows UC-002 as accepted
+    # expect: the detector names no record for UC-002 after the run, and does name the planted one (so that "no record" is the finding of a detector that finds a record where one stands); the planted product shows UC-002 as accepted
     def test_counter_proof_no_approval_record_names_the_ci_agents_use_case(self):
         run = ci_use_case_change()
         paths = [p for p in PRODUCT if p not in run["removed"]] + [p for p in run["changed"] if p not in PRODUCT]
@@ -338,9 +333,7 @@ class PromptedChangeContext(unittest.TestCase):
     # guards: A CI AGENT'S DRAFT ENTERS AS OPEN
     # given: the fixture product and the fixture CI agent, whose stand-in driver answers a changed rule for A LOAN HAS A DUE DATE
     # input: prepareJob and runJob (unattended) of change-requirements for that requirement, source SRC-author, with an instruction
-    # expect: one commit on the default branch that writes only files below docs/spec-freigaben/ (an index, one entry with its
-    #         rationale, entscheidungen.md); SPEC.md is byte-identical and is no file of the commit; the queue has one entry whose
-    #         state is "open"; no record under docs/approvals/ is added
+    # expect: one commit on the default branch that writes only files below docs/spec-freigaben/ (an index, one entry with its rationale, entscheidungen.md); SPEC.md is byte-identical and is no file of the commit; the queue has one entry whose state is "open"; no record under docs/approvals/ is added
     def test_a_ci_agents_changed_requirement_enters_as_a_queue_entry_and_the_spec_is_untouched(self):
         run = ci_requirement_change()
         self.assertIsNone(run["error"], run["remaining"])

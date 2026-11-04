@@ -517,7 +517,7 @@ async function typeSection(target, heading, text) {
 }
 // The author presses Save, once; the page's requests run to their end.
 async function pressSave(page) {
-  saveOf(page.target).dispatchEvent(new Event("click"));
+  saveOf(page.target).dispatchEvent(Object.defineProperty(new Event("click"), "isTrusted", { value: true }));
   await settle(page.product);
 }
 
@@ -741,7 +741,7 @@ test("UC-002 main flow, step 8: the Definition of Done, preset to the job rules,
 // guards: UC-002
 // given: a product without a declaration; the instance's participants, one of each type
 // input: the author chooses Scrum; gives the sprint the branch sprint/<nn>; adds the practice devops; adds the condition "review: 1 by participants other than the implementer"; then presses Save, once
-// expect: (steps 3–9) nothing is committed before Save; the one click commits docs/process.md to the product repository, once, with the author's token, and nothing to the instance — declaring exactly one model, Scrum, the practice, the branch and the added condition, and naming no participant: who fills the roles is the product's role assignment (UC-048)
+// expect: (steps 3–9) nothing is committed before Save; the one click commits docs/process.md to the product repository, once, with the author's token, and nothing to the instance; besides the writes, the page's only POSTs are the three read-only GraphQL requests of greenToMerge (ITM-1170) — declaring exactly one model, Scrum, the practice, the branch and the added condition, and naming no participant: who fills the roles is the product's role assignment (UC-048)
 test("UC-002 main flow, steps 3–9: the author's choices, then one click on Save commits the declaration to the product repository", async (t) => {
   const page = await openPage(t);
   const { target } = page;
@@ -763,7 +763,10 @@ test("UC-002 main flow, steps 3–9: the author's choices, then one click on Sav
   assert.match(text, /^- devops$/m);
   assert.match(text, /^\|\s*Sprint\s*\|\s*sprint\/<nn>\s*\|$/m);
   assert.match(text, /^review: 1 by participants other than the implementer$/m);
-  assert.ok(page.sent.length > 0 && page.sent.every((request) => request.path.startsWith(`/repos/${PRODUCT}/`)), "every write goes to the product repository");
+  // ITM-1170: the POSTs to /graphql are no writes — the read-only GraphQL request of greenToMerge beside each of the page's three reads of the product's information.
+  assert.deepEqual(page.sent.filter((request) => request.path === "/graphql").map((request) => request.method), ["POST", "POST", "POST"], "greenToMerge's GraphQL requests");
+  const writes = page.sent.filter((request) => request.path !== "/graphql");
+  assert.ok(writes.length > 0 && writes.every((request) => request.path.startsWith(`/repos/${PRODUCT}/`)), "every write goes to the product repository");
   assert.ok(page.sent.every((request) => String(request.authorization).includes(TOKEN)), "with the author's token");
   assert.equal(page.instance.writes.length, 0, "nothing is committed to the instance");
 });

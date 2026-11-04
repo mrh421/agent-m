@@ -1,113 +1,239 @@
-// stored.mjs — the facts of a commit that its files alone give, as a text and back (docs/architecture/MOD-progress-measures.md, Data: `<commit>.facts.json` on the branch
-// `overview-cache`; Interfaces: storedFacts, publishOverview). `factsText` makes the text publishOverview adds beside the commit's overview; `storedFacts` reads it back with the
-// snapshot's readOn, in one request.
+// stored.mjs — what MOD-progress-measures reads back from the branch `overview-cache` and derives from Facts without another module: the overview and the views stored for a
+// commit (storedOverview, latestOverview, waitingQueues, storedView), the stage a product is in, its build in progress and what waits for a person (currentStage,
+// buildInProgress, waitingForAPerson). A page that shows what is stored loads this file alone, not the derivation of the facts and the views (stages.mjs, views.mjs, facts.mjs).
+// MOD-spec-changes is imported only where no overview is stored.
 //
 // Module: MOD-progress-measures
-//
-// Where the module file leaves a reading open, this file takes the one it names:
-//   - The file is JSON with a line end: `format` (the number 1), `commit`, and the facts `declaration`, `order`, `items`, `sprints`, `assignments`, `gates`, `modules`, `queues`, `requirements`, `tests`, `jobs` and,
-//     where one was read, `model`.
-//   - A document and a job record stand in it as the file it was read from — { path, text } —, and are read again with the schemas, so that the facts are the same whether they come from the store or from the files.
-//     The queues, the requirements, the test declarations and the model stand as data.
-//   - A model that could not be read (Facts.model "unknown") is left out; no model that was read as none (null) is left out.
-//   - A reader of another format's number, or of a commit other than the snapshot's, gets null.
 
-import { artifactSchemas, readDocument } from "../documents/index.mjs";
-import { declarationSchema, gateSchema, roleAssignmentSchema } from "../product-process/index.mjs";
-import { listJobs } from "../job-ledger/index.mjs";
-import { planSchemas } from "../work-plans/index.mjs";
+/** The branch that holds the overviews and the views (Data). */
+export const OVERVIEW_BRANCH = "overview-cache";
+/** The file of that branch that names the commit stored last (Data). */
+export const LATEST = "latest.json";
+/** The file of a page's view of a commit (Data). */
+export const viewFile = (commit, page) => `${commit}.${page}.json.gz`;
+// The rows of the ScheduleView's counts: the five levels and the tests that call a paid service.
+export const COUNTED = ["unit", "component", "system", "release", "user", "paid"];
+// What each page's view holds, by which a view of another format is told apart: a list of the progress's teams or the backlog's rows, the schedule's count of every row.
+const FORMAT = { progress: (view) => Array.isArray(view.teams), backlog: (view) => Array.isArray(view.rows),
+  schedule: (view) => COUNTED.every((row) => Number.isInteger(view.counts?.[row])) };
 
-export const FACTS_BRANCH = "overview-cache";
-const FORMAT = 1;
+// The statuses MOD-approvals derives that still wait for the person's acceptance — not accepted.
+const WAITING_STATUSES = new Set(["open", "changed"]);
 
-/** The module files of an architecture: the files a Facts does not hold, which the held items are told by (MOD-work-plans). */
-export const MODULE_FILE = /^docs\/architecture\/MOD-[^/]+\.md$/;
+// Every queue's folder, docs/spec-freigaben/<slug>/ (MOD-spec-changes, Data), stripped to build an entry's
+// identifier, spec-<slug>-<NN> (MOD-approvals, Data: the approval record's path for an entry of a change queue).
+const QUEUE_FOLDER_PREFIX = "docs/spec-freigaben/";
 
-/** The path of the facts file of a commit on the branch `overview-cache`. */
-export const factsPath = (commit) => `${commit}.facts.json`;
-
-// A document as the file it was read from.
-const fileOf = async (snapshot, document) => ({ path: document.path, text: (await snapshot.read(document.path)) ?? "" });
-const filesOf = (snapshot, documents) => Promise.all(documents.map((document) => fileOf(snapshot, document)));
-
-/**
- * factsText(snapshot, facts) -> Promise<string> — the facts file of the snapshot's commit: the facts the commit's files alone give, from `facts` read with the scope `all`. The texts of the files are those the
- * snapshot read already.
- * @param {object} snapshot the product's snapshot @param {object} facts
- */
-export async function factsText(snapshot, facts) {
-  const stored = {
-    format: FORMAT,
-    commit: snapshot.commit,
-    declaration: facts.declaration === null ? null : await fileOf(snapshot, facts.declaration),
-    order: facts.plan.order === null ? null : await fileOf(snapshot, facts.plan.order),
-    items: await filesOf(snapshot, facts.plan.items),
-    sprints: await filesOf(snapshot, facts.sprints),
-    assignments: await filesOf(snapshot, facts.assignments),
-    gates: await filesOf(snapshot, facts.gates),
-    modules: await filesOf(snapshot, snapshot.paths.filter((path) => MODULE_FILE.test(path)).sort().map((path) => ({ path }))),
-    queues: facts.queues,
-    requirements: facts.requirements,
-    tests: facts.tests,
-    jobs: await Promise.all(facts.jobs.map((row) => fileOf(snapshot, { path: row.record.path }))),
-    ...(facts.model === "unknown" ? {} : { model: facts.model }),
-  };
-  return `${JSON.stringify(stored)}\n`;
+// The entries of the queues that are open — the SPEC changes that wait for a person: { kind, id, path, blob }.
+export function openSpecChanges(queueList) {
+  return queueList.flatMap((queue) => {
+    const slug = queue.folder.slice(QUEUE_FOLDER_PREFIX.length);
+    return queue.entries
+      .filter((entry) => entry.state === "open")
+      .map((entry) => ({
+        kind: "SPEC change",
+        id: `spec-${slug}-${String(entry.number).padStart(2, "0")}`,
+        path: entry.proposal.path,
+        blob: entry.proposal.blob,
+      }));
+  });
 }
 
-const isFile = (value) => value !== null && typeof value === "object" && typeof value.path === "string" && typeof value.text === "string";
-const isFiles = (value) => Array.isArray(value) && value.every(isFile);
+// The reviewed files of the kinds given whose status is open or changed: { kind, id, path }.
+export function waitingReviewed(statusMap, kinds) {
+  return [...statusMap]
+    .filter(([, status]) => Object.hasOwn(kinds, status.kind) && WAITING_STATUSES.has(status.status))
+    .map(([path, status]) => ({ kind: kinds[status.kind], id: status.id, path }));
+}
 
-// The stored facts of the snapshot's commit, and a stand-in for the snapshot that holds only the job records, for listJobs; null where there are none (see storedFacts).
-async function readStored(snapshot) {
+/**
+ * currentStage(shares) -> string | null — the first stage that is not full: a share below 1, or none. Null when every stage is full.
+ * @param {Array<{ stage: string, share: number | null }>} shares
+ */
+export function currentStage(shares) {
+  return shares.find(({ share }) => share === null || share < 1)?.stage ?? null;
+}
+
+// ---------------------------------------------------------------- the build
+
+// The states of the plan's steps or items in progress that a job of `rows` (the job rows by identifier) works on, in the plan's order.
+export const buildStates = (facts, rows) => facts.plan.states.filter((state) => state.state === "in progress" && rows.has(state.job));
+
+/**
+ * buildInProgress(facts) -> Array<{ item, job, participant, state, elapsed, reachable }> — the steps or items in progress that a job
+ * works on, in the plan's order: the job's participant, its state as its record and the live state give it, its elapsed time in
+ * seconds, and whether its runtime answers. An item whose pull request is merged is done and is not listed.
+ * @param {object} facts MOD-progress-measures' Facts
+ */
+export function buildInProgress(facts) {
+  const rows = new Map(facts.jobs.map((row) => [row.record.id, row]));
+  return buildStates(facts, rows).map((state) => {
+    const row = rows.get(state.job);
+    return { item: state.item, job: state.job, participant: row.record.participant, state: row.state, elapsed: row.elapsed,
+      reachable: row.source.reachable };
+  });
+}
+
+// ---------------------------------------------------------------- what waits for a person
+
+// The participants that hold each role, by role, in the role assignments of the facts.
+function holdersByRole(assignments) {
+  const holders = new Map();
+  for (const row of assignments.flatMap((assignment) => assignment.sections.flatMap((section) => section.rows ?? []))) {
+    holders.set(row.cells.Role, [...(holders.get(row.cells.Role) ?? []), ...row.cells.Participants]);
+  }
+  return holders;
+}
+
+// The pending gates a person decides: { kind: "gate", id, path }.
+function gatesOfAPerson(facts) {
+  if (!facts.workflow || facts.workflow === "unknown") return [];
+  const people = new Set(facts.participants.filter((participant) => participant.type === "person").map((participant) => participant.name));
+  const holders = holdersByRole(facts.assignments);
+  const pending = new Set(facts.gateStates.filter((state) => state.state === "pending").map((state) => state.gate));
+  return facts.workflow.gates
+    .filter((gate) => pending.has(gate.name) && (holders.get(gate.decider) ?? []).some((holder) => people.has(holder)))
+    .map((gate) => {
+      const waiting = facts.jobs.find((row) => row.state === "waiting at a gate"
+        && row.record.gates.some((reached) => reached.gate === gate.name && reached.resumedBy === null));
+      return { kind: "gate", id: gate.name, path: waiting ? waiting.record.path : facts.declaration.path };
+    });
+}
+
+/**
+ * waitingForAPerson(facts) -> Array<{ kind: "use case" | "SPEC change" | "gate" | "failed job", id, path }> — what waits for a
+ * person in the product: its open or changed use cases, its open SPEC change entries, its pending gates whose deciding role a person
+ * holds, and its failed jobs; `path` is the file or record each concerns.
+ * @param {object} facts MOD-progress-measures' Facts
+ */
+export function waitingForAPerson(facts) {
+  const changes = openSpecChanges(facts.queues).map(({ kind, id, path }) => ({ kind, id, path }));
+  const failed = facts.jobs.filter((row) => row.state === "failed").map((row) => ({ kind: "failed job", id: row.record.id, path: row.record.path }));
+  return [...waitingReviewed(facts.statuses, { "use-case": "use case" }), ...changes, ...gatesOfAPerson(facts), ...failed];
+}
+
+// ---------------------------------------------------------------- stored
+
+const through = (bytes, stream) => new Response(new Blob([bytes]).stream().pipeThrough(stream));
+/** A text gzipped: the platform's CompressionStream, the same in a browser and in Node. */
+export const gzipped = async (value) => new Uint8Array(await through(new TextEncoder().encode(value), new CompressionStream("gzip")).arrayBuffer());
+const gunzipped = (bytes) => through(bytes, new DecompressionStream("gzip")).text();
+
+// A readOn that answers null for a missing branch or file (NotFound).
+async function readOrNull(readOn, path, options) {
+  try {
+    return await readOn(OVERVIEW_BRANCH, path, options);
+  } catch (error) {
+    if (error?.name === "NotFound") return null;
+    throw error;
+  }
+}
+
+/**
+ * The commit `latest.json` names, read with one readOn; null where the branch or the file is missing or holds no commit.
+ * @param {(branch: string, path: string, options?: object) => Promise<string | Uint8Array | null>} readOn
+ */
+export async function latestCommit(readOn) {
+  const named = await readOrNull(readOn, LATEST);
+  let commit = "";
+  try { commit = typeof named === "string" ? String(JSON.parse(named)?.commit ?? "") : ""; } catch { return null; }
+  return /^[0-9a-f]{40}$/.test(commit) ? commit : null;
+}
+
+// The view of `page` stored for `commit`, or null where it is missing or of another format.
+async function readView(readOn, commit, page) {
+  const bytes = await readOrNull(readOn, viewFile(commit, page), { bytes: true });
+  if (!(bytes instanceof Uint8Array)) return null;
+  let held;
+  try { held = JSON.parse(await gunzipped(bytes)); } catch { return null; }
+  return held !== null && typeof held === "object" && held.commit === commit && FORMAT[page](held) ? held : null;
+}
+
+/**
+ * storedView(snapshot: Snapshot, page: "progress" | "backlog" | "schedule") -> Promise<{ view, asOf: string | null } | null> — the page's view of the snapshot's commit, in one request,
+ * and asOf null; while that is not stored yet, the view of the commit latest.json names, in two requests more, and asOf that commit; null without readOn, or where neither is
+ * stored or one holds another format. Fails with the host's errors but NotFound.
+ * @param {object} snapshot @param {"progress" | "backlog" | "schedule"} page
+ */
+export async function storedView(snapshot, page) {
+  if (!Object.hasOwn(FORMAT, page)) throw new TypeError(`a stored view is the progress's, the backlog's or the schedule's: ${String(page)}`);
+  if (typeof snapshot?.readOn !== "function" || typeof snapshot.commit !== "string") return null;
+  const own = await readView(snapshot.readOn, snapshot.commit, page);
+  if (own) return { view: own, asOf: null };
+  const commit = await latestCommit(snapshot.readOn);
+  if (commit === null || commit === snapshot.commit) return null;
+  const last = await readView(snapshot.readOn, commit, page);
+  return last ? { view: last, asOf: commit } : null;
+}
+
+// The overviews read in this page, by repository and commit: a commit's overview does not change once it is stored, so it is read once however many snapshots of the commit
+// (of one repository, as the host gives them) ask; a snapshot with no object as its repository is kept by itself. One that is missing or failed is not kept, and is read again at the next call.
+const OVERVIEWS = new WeakMap();
+
+const isFile = (value) => value !== null && typeof value === "object" && typeof value.path === "string" && typeof value.text === "string";
+
+/**
+ * storedOverview(snapshot) -> Promise<{ shares, waiting, model, build: { states, records }, queues } | null> — the overview stored for the snapshot's commit, read with the
+ * snapshot's readOn in one request, once for each commit of a repository in a page; null where the branch or the file is missing or holds another format (not JSON, another shape, another commit, or an
+ * overview without the model, the build and the queues).
+ * @param {object} snapshot
+ */
+export function storedOverview(snapshot) {
+  if (snapshot === null || typeof snapshot !== "object") return Promise.resolve(null);
+  const scope = snapshot.repository !== null && typeof snapshot.repository === "object" ? snapshot.repository : snapshot;
+  if (!OVERVIEWS.has(scope)) OVERVIEWS.set(scope, new Map());
+  const kept = OVERVIEWS.get(scope);
+  const commit = snapshot.commit;
+  if (!kept.has(commit)) {
+    const reading = readOverview(snapshot);
+    kept.set(commit, reading);
+    reading.then((held) => { if (held === null) kept.delete(commit); }, () => kept.delete(commit));
+  }
+  return kept.get(commit);
+}
+
+/**
+ * latestOverview(snapshot) -> Promise<{ commit, shares, waiting, model, build, queues } | null> — the overview stored last on the branch, whichever commit it is of, as the file
+ * latest.json names it: what a page shows while the overview of its head is not stored yet, never deriving one itself. Null where the branch, `latest` or that overview is missing.
+ * @param {object} snapshot
+ */
+export async function latestOverview(snapshot) {
   if (typeof snapshot?.readOn !== "function") return null;
+  const commit = await latestCommit(snapshot.readOn);
+  if (commit === null) return null;
+  const held = await readOverview({ readOn: snapshot.readOn, commit });
+  return held && { commit, ...held };
+}
+
+/**
+ * waitingQueues(snapshot) -> Promise<{ queues, asOf: string | null }> — the change queues with an entry not in the SPEC yet: those of the overview stored for the snapshot's commit, and asOf
+ * null; while that is not stored yet, those of the overview stored last, and asOf its commit; where the repository stores no overview, those MOD-spec-changes' queues derives from every queue
+ * of the snapshot, and asOf null. Fails with the host's errors but NotFound.
+ * @param {object} snapshot
+ */
+export async function waitingQueues(snapshot) {
+  const own = await storedOverview(snapshot);
+  if (own) return { queues: own.queues, asOf: null };
+  const last = await latestOverview(snapshot);
+  if (last) return { queues: last.queues, asOf: last.commit };
+  return { queues: await (await import("../spec-changes/index.mjs")).queues(snapshot), asOf: null };
+}
+
+async function readOverview(snapshot) {
+  if (typeof snapshot.readOn !== "function" || typeof snapshot.commit !== "string") return null;
   let text;
   try {
-    text = await snapshot.readOn(FACTS_BRANCH, factsPath(snapshot.commit));
+    text = await snapshot.readOn(OVERVIEW_BRANCH, `${snapshot.commit}.json`);
   } catch (error) {
-    // No stored facts is no failure: a branch or a file that is missing, and a clone that cannot show a file of a branch it does not hold (`Unreachable`, as local-git names it). A host that is really out of reach fails
-    // the reads of the files that follow with the same error.
-    if (error?.name === "NotFound" || error?.name === "Unreachable") return null;
+    if (error?.name === "NotFound") return null;
     throw error;
   }
   if (typeof text !== "string") return null;
   let held;
   try { held = JSON.parse(text); } catch { return null; }
-  if (held === null || typeof held !== "object" || held.format !== FORMAT || held.commit !== snapshot.commit) return null;
-  const single = (value) => value === null || isFile(value);
-  if (!single(held.declaration) || !single(held.order) || !isFiles(held.items) || !isFiles(held.sprints) || !isFiles(held.assignments) || !isFiles(held.gates)
-    || !isFiles(held.modules) || !isFiles(held.jobs) || !Array.isArray(held.queues) || !Array.isArray(held.requirements) || !Array.isArray(held.tests)) return null;
-  const read = (schema) => (file) => readDocument(schema, file.path, file.text);
-  const texts = new Map(held.jobs.map((file) => [file.path, file.text]));
-  const jobsSnapshot = { paths: held.jobs.map((file) => file.path), read: async (path) => texts.get(path) ?? null, blob: () => null };
-  const jobs = (await listJobs([{ address: "", snapshot: jobsSnapshot }], new Map())).map((row) => row.record);
-  const facts = {
-    declaration: held.declaration === null ? null : read(declarationSchema)(held.declaration),
-    order: held.order === null ? null : read(planSchemas.planOrder)(held.order),
-    items: held.items.map(read(artifactSchemas().item)),
-    sprints: held.sprints.map(read(planSchemas.sprint)),
-    assignments: held.assignments.map(read(roleAssignmentSchema)),
-    gates: held.gates.map(read(gateSchema)),
-    modules: held.modules.map(read(artifactSchemas().module)),
-    queues: held.queues,
-    requirements: held.requirements,
-    tests: held.tests,
-    jobs,
-    model: Object.hasOwn(held, "model") ? held.model : undefined,
-  };
-  // The snapshot Facts holds, for a caller that derives the job rows again (listJobs over it): it answers the read of a job record from the stored text, so that no record file is read again.
-  const serving = (own) => ({ ...own, read: async (path) => (texts.has(path) ? texts.get(path) : own.read(path)) });
-  return { facts, jobsSnapshot, serving };
+  if (held === null || typeof held !== "object" || held.commit !== snapshot.commit || !Array.isArray(held.shares) || !Array.isArray(held.waiting)) return null;
+  const { build } = held;
+  if (!(held.model === null || typeof held.model === "string") || !Array.isArray(build?.states) || !Array.isArray(build?.records) || !build.records.every(isFile)
+    || !Array.isArray(held.queues)) return null;
+  return { shares: held.shares, waiting: held.waiting, model: held.model, build: { states: build.states, records: build.records }, queues: held.queues };
 }
-
-/**
- * storedFacts(snapshot) -> Promise<{ declaration, order, items, sprints, assignments, gates, modules, queues, requirements, tests, jobs, model } | null> — the facts stored for the snapshot's commit, read with the
- * snapshot's readOn in one request; `model` is undefined where none is stored. null without readOn, or when the branch or the file is missing, carries another format's number, or names another commit.
- * @param {object} snapshot
- */
-export async function storedFacts(snapshot) {
-  return (await readStored(snapshot))?.facts ?? null;
-}
-
-/** The stored facts with the stand-in snapshot of the job records, for productFacts to derive the rows of the jobs with listJobs; null as storedFacts. */
-export const storedFactsWithJobs = readStored;

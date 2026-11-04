@@ -102,6 +102,8 @@ function hostOf(files, pullRequests, commits) {
     read: async (path) => (tree.has(path) ? tree.get(path) : null) });
   return {
     async repositoryInfo() { return { defaultBranch: "main", visibility: "public", canWrite: true, archived: false, description: "" }; },
+    // The file at each commit, as the one tree holds it (MOD-repository-hosts' readFileAt), for the declared model and practices the route reads (ITM-1264).
+    async readFileAt(path, commits) { return new Map(commits.map((commit) => [commit, tree.has(path) ? tree.get(path) : null])); },
     async readSnapshot() { return snapshot(); },
     async listPullRequests() { return pullRequests; },
     async commitFiles(change) {
@@ -225,4 +227,46 @@ test("Start sprint work lists the items of the sprint's selection", async () => 
   assert.deepEqual(found(target, "[data-item]").map((each) => each.getAttribute("data-item")), ["ITM-004", "ITM-005", "ITM-006"]);
   const all = await render(productFiles());
   assert.ok(row(all.target, "ITM-003"), "counter-proof: without the parameter the list holds every item not done");
+});
+
+// ---------------------------------------------------------------- a ready item that a rejected gate returned (ITM-1421)
+const { endedJob, REJECTED, JOB_ID } = await import("./implementation-pages-ended-job.mjs");
+
+// TST-1421001 · level: unit · module: MOD-implementation-pages
+// guards: UC-034; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED
+// given: the one-team fixture whose sprint selects ITM-003 and ITM-005; ITM-005's only job ended failed at a rejected gate, its End reason "the gate Building → Checking was rejected by docs/gates/20261102-0900-building-checking-1421.md: The review found no test."; ITM-003 has no job
+// input: the route implement's render
+// expect: ITM-005 is ready and startable, its row offers dev-a as before and carries that reason in <p data-returned>; ITM-003 is ready and startable and its row has no <p data-returned>; nothing is committed
+test("TST-1421001: UC-034 7a a ready item that a rejected gate returned shows the reason in its row, beside what a startable item shows; an item with no reason shows none", async () => {
+  const { target, commits } = await render({ ...productFiles({ selection: ["ITM-003", "ITM-005"] }), ...endedJob("ITM-005", REJECTED) });
+  assert.deepEqual([row(target, "ITM-005").getAttribute("data-state"), row(target, "ITM-005").getAttribute("data-startable")], ["ready", "true"], "known positive: the item a rejected gate returned is ready and startable");
+  assert.deepEqual(found(row(target, "ITM-005"), "[data-returned]").map(text), [REJECTED]);
+  assert.match(text(found(row(target, "ITM-005"), `[data-participant-of="ITM-005"]`)[0]), /dev-a/, "the participant is offered as for any startable item");
+  assert.deepEqual([row(target, "ITM-003").getAttribute("data-state"), row(target, "ITM-003").getAttribute("data-startable")], ["ready", "true"]);
+  assert.deepEqual(found(row(target, "ITM-003"), "[data-returned]").map(text), [], "an item with no reason shows none");
+  assert.equal(commits.length, 0, "a render writes nothing");
+});
+
+// TST-1421002 · level: unit · module: MOD-implementation-pages
+// guards: UC-034; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED
+// given: the fixture of TST-1421001, but ITM-005's job ended failed otherwise ("CI stayed red after the retry limit")
+// input: the route implement's render
+// expect: ITM-005 is blocked and not startable, its reasons name the job as before (UC-034 6a) and its row has no <p data-returned>: only a ready item carries the reason of its return
+test("TST-1421002: UC-034 6a an item whose job failed otherwise stays blocked and shows no returned reason", async () => {
+  const { target } = await render({ ...productFiles({ selection: ["ITM-003", "ITM-005"] }), ...endedJob("ITM-005", "CI stayed red after the retry limit") });
+  assert.deepEqual([row(target, "ITM-005").getAttribute("data-state"), row(target, "ITM-005").getAttribute("data-startable")], ["blocked", "false"]);
+  assert.match(reasons(target, "ITM-005"), new RegExp(`ITM-005 is blocked: job ${JOB_ID} is failed`));
+  assert.deepEqual(found(row(target, "ITM-005"), "[data-returned]").map(text), []);
+});
+
+// TST-1421005 · level: unit · module: MOD-implementation-pages
+// guards: UC-034; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED
+// given: the product of TST-789001, whose sprint does not select ITM-003; ITM-003's only job ended failed at a rejected gate, its End reason "the gate Building → Checking was rejected by docs/gates/20261102-0900-building-checking-1421.md: The review found no test."
+// input: the route implement's render
+// expect: ITM-003 is ready and not startable, its reasons name that it is not selected for the sprint, and its row carries the reason of its return in <p data-returned>: a ready item shows why it returned whether or not it can start
+test("TST-1421005: UC-034 7a a ready item that cannot start yet shows the reason it returned beside the reasons it cannot start", async () => {
+  const { target } = await render({ ...productFiles(), ...endedJob("ITM-003", REJECTED) });
+  assert.deepEqual([row(target, "ITM-003").getAttribute("data-state"), row(target, "ITM-003").getAttribute("data-startable")], ["ready", "false"], "known positive: ready, and not selected for the sprint");
+  assert.match(reasons(target, "ITM-003"), /not selected/);
+  assert.deepEqual(found(row(target, "ITM-003"), "[data-returned]").map(text), [REJECTED]);
 });

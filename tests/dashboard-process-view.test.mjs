@@ -292,12 +292,12 @@ The job rules hold; no condition is added.
 
 // ---------------------------------------------------------------- the render check (UC-002)
 
-// given: a fixture repository holding docs/process.md, reached as both instance and product (fakeApp above) behind
-//        MOD-repository-hosts' real connect()/parseAddress(), over a fake HTTP host (repoServer) — no network
+// TST-1429016 · level: component · module: MOD-implementation-pages
+// guards: UC-002
+// given: a fixture repository holding docs/process.md, reached as both instance and product (fakeApp above) behind MOD-repository-hosts' real connect()/parseAddress(), over a fake HTTP host (repoServer) — no network
 // input: routes.process(fakeApp(target)), called directly — not through the dashboard shell
-// expect: the route's own page renders into target, titled "How this product is developed" (the head the app puts above
-//         the route's page, showing route.title)
-test("routes.process(app) renders MOD-implementation-pages' route, titled \"How this product is developed\"", async () => {
+// expect: the route's own page renders into target, titled "How this product is developed" (the head the app puts above the route's page, showing route.title)
+test("TST-1429016: routes.process(app) renders MOD-implementation-pages' route, titled \"How this product is developed\"", async () => {
   const server = await repoServer({ files: { "docs/process.md": PROCESS_MD } });
   globalThis.fetch = server.fetch;
   const target = connectedTarget();

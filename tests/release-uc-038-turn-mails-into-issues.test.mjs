@@ -47,7 +47,7 @@ function specChecks() {
 }
 
 // The files the SPEC names as the check of a requirement of UC-038 and that this repository does not hold.
-const MISSING_CHECKS = { "tests/test_issue_to_spec.py": ["EVOLUTION ENTERS THROUGH THE SPECIFICATION"] };
+const MISSING_CHECKS = {};
 const REVIEW_ONLY = ["ONE CLICK PER DECISION"];
 
 // TST-965201 · level: release · module: MOD-maintenance-pages
@@ -76,7 +76,7 @@ test("TST-965201: UC-038 release coverage names every automatic requirement and 
       assert.match(read(file), /Level: (unit|component|system|release)|level: (unit|component|system|release)/i, `${file} declares its level`);
     }
   }
-  assert.deepEqual(missing, ["EVOLUTION ENTERS THROUGH THE SPECIFICATION"], "known positive: one requirement of UC-038 names a check that does not exist");
+  assert.deepEqual(missing, [], "no requirement of UC-038 names a check that is listed as missing");
   const declarations = [GRAPH_SYSTEM, BRIDGE_SYSTEM].flatMap((file) => testDeclarations(file, read(file)));
   assert.ok(declarations.length >= 12, "known positive: the declarations of the system tests are found");
   const declared = declarations.map((one) => `${one.guards.join("; ")} ${one.given ?? ""} ${one.input ?? ""} ${one.expect ?? ""}`).join("\n");
@@ -90,9 +90,8 @@ test("TST-965201: UC-038 release coverage names every automatic requirement and 
 // guards: UC-038
 // given: the SPEC's Check lines of the requirements UC-038 realises
 // input: look for each file they name
-// expect: every file exists; FINDING UC038-checks — `tests/test_issue_to_spec.py`, the check of EVOLUTION ENTERS THROUGH THE SPECIFICATION, does not exist
-test("TST-965202: the checks the SPEC names for the requirements of UC-038 exist",
-  { todo: "FINDING UC038-checks — tests/test_issue_to_spec.py, the check the SPEC names for EVOLUTION ENTERS THROUGH THE SPECIFICATION, is not in the repository — the item is registered by the Product Owner" }, () => {
+// expect: every file exists
+test("TST-965202: the checks the SPEC names for the requirements of UC-038 exist", () => {
   const checks = specChecks();
   const files = new Set(ucRealises().flatMap((name) => (checks.get(name) ?? "").match(/tests\/[A-Za-z0-9_.-]+/g) ?? []));
   assert.ok(files.size > 10, "known positive: the use case names checks");

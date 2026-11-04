@@ -16,25 +16,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { INSTRUCTION, LOAN, UC7, UC7_PATH, UC8, UC8_PATH, all, barOf, changed, conversationRecords, draft, goTo, keptDraft, namedButton, one, onRequirementPage, onUseCase, press, proposalWrites, recordTexts, rest, review, run, save, scenario, send, statusOf, useCases } from "./uc-019-prompt-bar-harness.mjs";
-import { AGENT, CI_AGENT, DRAFTER, HANDY, RUN_URL, SUBAGENT, TOOLER, answer, barText, calls, conversationOf, followClock, free, registerOf, sendNow, textOfSent, watch, withWorkflow } from "./uc-049-world.mjs";
+import { AGENT, DRAFTER, HANDY, LISTED_CI_AGENT, LISTED_SUBAGENT, RUN_URL, TOOLER, answer, barText, calls, conversationOf, declared, endpointOf, followClock, free, registerOf, sendNow, textOfSent, watch, withWorkflow } from "./uc-049-world.mjs";
 import { appendToRecord } from "../src/job-ledger/index.mjs";
 import { byClass, until } from "./review-pages-draft-world.mjs";
 
 // A person's click is made trusted by the document of the harness; a script's click is marked `scripted` (tests/review-pages-harness.mjs).
 globalThis.reviewPagesScriptedWithin = [];
 const scripted = (node) => node.dispatchEvent(Object.assign(new Event("click"), { scripted: true }));
-const register = (...rows) => ({ "docs/participants.md": registerOf(...rows) });
-const UNREACHED_ENDPOINT = "| nowhere | model endpoint | nowhere-model | 200000 | - | draft text | this machine | endpoint missing |";
-const UNREACHED_AGENT = "| far-agent | CLI agent | far-model | 200000 | - | draft text | this machine | bridge nobridge agent claude |";
+// What this browser declares for the bar to offer (UC-049 1); the bar reads no participant list. The instance's list is `listed(...)`, which the bar must not offer.
+const register = (...declarations) => declared(...declarations);
+const listed = (...rows) => ({ "docs/participants.md": registerOf(...rows) });
+// An endpoint that declares no place, and a CLI session of a Bridge this browser has not paired.
+const PLACELESS_ENDPOINT = { settings: { "endpoint:nowhere": endpointOf("nowhere", "") } };
+const UNPAIRED_SESSION = { settings: { "session:nobridge:claude": { place: "this machine", context: 200000, model: "far-model", capabilities: ["draft text"] } } };
 const select = (s, name) => { const selector = all(barOf(s), "select", "participant")[0]; assert.ok(selector, `known positive: the bar offers a choice (${barText(s).slice(-200)})`); selector.value = name; };
 
 // TST-513001 · level: system · module: MOD-prompt-bar · MOD-site-frame · MOD-job-runner
 // guards: UC-049; THE PAGE NAMES WHERE IT SENDS; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; EVERY STEP EXPLAINS ITSELF
-// given: the specification browser of the product at its default branch; the register offers drafter (a model endpoint at "this machine") and tooler (a model endpoint at "Anthropic, USA"); both endpoints are configured in this browser; recording is off
+// given: the specification browser of the product at its default branch; this browser's configuration declares the endpoints drafter (at "this machine") and tooler (at "Anthropic, USA"); recording is off
 // input: the page opened; tooler chosen in the selector; the message "Which rules does this page list?" written, and then Send pressed; then the answer, a second message "And the second one?" and Send
-// expect: above the input the bar names each participant with its place ("drafter — this machine", "tooler — Anthropic, USA") and a folded "What is this?" explains the bar; writing sends nothing; Send sends exactly one request, to tooler's endpoint, naming the destination before it is made ("Sent to: tooler — Anthropic, USA"); the message holds the person's words, the page as the author sees it (the view, the product, the version and the requirements listed) and the chapters of the book for requirements; the answer appears in the conversation under tooler's name; the second message carries the conversation so far (the first message and its answer) (flow: UC-049 main flow (1, 2, 3, 5, 6))
+// expect: above the input the bar names each participant with its place ("drafter — this machine", "tooler — Anthropic, USA") and a folded "What is this?" explains the bar; writing sends nothing; Send sends exactly one request, to tooler's endpoint, naming the destination before it is made ("Sent to: tooler — Anthropic, USA"); the message holds the person's words, the page as the author sees it (the view, the product, the version and the requirements listed) and the chapters of the book for requirements; the answer appears in the conversation under tooler's name; the second message carries the conversation so far (the first message and its answer); nothing is written: the only requests that are no GET are greenToMerge's read-only GraphQL requests, two for each message (ITM-1170) (flow: UC-049 main flow (1, 2, 3, 5, 6))
 test("main flow: the bar names the participant with its place, Send is the decision, the participant is given the page, and the conversation goes on", async () => {
-  const s = await scenario({ instanceFiles: register(DRAFTER, TOOLER), answers: [{ answer: "It lists A LOAN HAS A DUE DATE and A BOOK IS SHELVED." }] });
+  const s = await scenario({ ...register(DRAFTER, TOOLER), answers: [{ answer: "It lists A LOAN HAS A DUE DATE and A BOOK IS SHELVED." }] });
   const w = watch(s, { script: [answer("It lists A LOAN HAS A DUE DATE and A BOOK IS SHELVED."), answer("The second one is A BOOK IS SHELVED.")] });
   assert.ok(barText(s).includes("drafter — this machine") && barText(s).includes("tooler — Anthropic, USA"), barText(s));
   assert.equal(all(barOf(s), "details").some((node) => node.textContent.includes("What is this?")), true, "a folded What is this? explains the bar");
@@ -56,17 +59,19 @@ test("main flow: the bar names the participant with its place, Send is the decis
   const second = textOfSent(w.endpoint()[1]);
   assert.ok(second.includes("Which rules does this page list?") && second.includes("It lists A LOAN HAS A DUE DATE"), "the second message carries the conversation so far");
   assert.ok(second.includes("And the second one?"));
-  assert.deepEqual(w.github().filter((request) => request.method !== "GET"), [], "no message of the conversation is written anywhere");
+  // ITM-1170: the requests that are no GET are the read-only GraphQL requests of greenToMerge, beside each read of the repository's information — two for each message sent.
+  assert.deepEqual(w.github().filter((request) => request.method !== "GET").map((request) => `${request.method} ${request.path}`), Array(4).fill("POST /graphql"), "no message of the conversation is written anywhere");
+  assert.ok(w.github().filter((request) => request.method !== "GET").every((request) => String(request.body).includes("refUpdateRule")), "each is greenToMerge's query");
   w.stop();
 });
 
 // TST-513002 · level: system · module: MOD-prompt-bar · MOD-job-catalogue
 // guards: UC-049; ONE DEFINITION, THREE DRIVERS
-// given: the page of TST-513001
+// given: the page of TST-513001, with the endpoint drafter declared
 // input: a message sent to drafter
 // expect: UC-049 step 3 says the system prompt holds "Agent M's rules for what the participant drafts — everything is a proposal; a change of the SPEC is saved as a queue entry": the message the participant receives says that what it drafts is a proposal and that a change of the SPEC becomes a queue entry. FINDING: the message of the kind `converse` holds neither (it says only to change nothing the person did not ask for), so this case is red on main until the prompt carries the rules (flow: UC-049 main flow (3))
 test("main flow (3): the system prompt carries the rules for what the participant drafts", async () => {
-  const s = await scenario({ instanceFiles: register(DRAFTER), answers: [{ answer: "x" }] });
+  const s = await scenario({ ...register(DRAFTER), answers: [{ answer: "x" }] });
   const w = watch(s, { script: [answer("Understood.")] });
   await sendNow(s, INSTRUCTION);
   await free(s);
@@ -78,11 +83,11 @@ test("main flow (3): the system prompt carries the rules for what the participan
 
 // TST-513003 · level: system · module: MOD-prompt-bar · MOD-runtimes · MOD-repository-hosts
 // guards: UC-049; A TOKEN GOES ONLY TO THE SERVER THAT ISSUED IT; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; NO SERVER
-// given: tooler declares "use tools" and "read the repository"; its endpoint first asks for list-files and read-file of SPEC.md, then answers
+// given: tooler is an endpoint of this browser whose last test found that it uses tools, so that it declares "use tools" and "read the repository"; its endpoint first asks for list-files and read-file of SPEC.md, then answers
 // input: a message sent to tooler
-// expect: the request offers the kind's tools (list-files, read-file, search-files, propose-edit, hand-over); the loop runs in this tab: the tab reads the product through the repository server's API with the author's token of that product — every request the message makes to the product's server carries that token and no other — and returns the results to the endpoint in a second request (two tool results); the answer appears; nothing is written to any repository (flow: UC-049 main flow (4, endpoint that can use tools))
+// expect: the request offers the kind's tools (list-files, read-file, search-files, propose-edit, hand-over); the loop runs in this tab: the tab reads the product through the repository server's API with the author's token of that product — every request the message makes to the product's server carries that token and no other — and returns the results to the endpoint in a second request (two tool results); the answer appears; nothing is written to any repository — the two requests that are no GET are greenToMerge's read-only GraphQL requests (ITM-1170) (flow: UC-049 main flow (4, endpoint that can use tools))
 test("main flow (4): a model endpoint that can use tools works in a loop in the tab, reading the product with the author's token and writing nothing", async () => {
-  const s = await scenario({ instanceFiles: register(TOOLER), answers: [{ answer: "x" }] });
+  const s = await scenario({ ...register(TOOLER), answers: [{ answer: "x" }] });
   const w = watch(s, { script: [calls({ id: "c1", name: "list-files", args: { folder: "" } }, { id: "c2", name: "read-file", args: { path: "SPEC.md" } }), answer("There are two rules: A LOAN HAS A DUE DATE and A BOOK IS SHELVED.")] });
   await sendNow(s, "What rules are there?");
   await free(s);
@@ -96,17 +101,18 @@ test("main flow (4): a model endpoint that can use tools works in a loop in the 
   for (const request of product) assert.equal(request.headers.Authorization, "Bearer github_pat_FIXTURE0123456789", "with the author's token of that product, and no other");
   assert.ok(w.endpoint().every((request) => !JSON.stringify(request.headers).includes("github_pat_")), "the token went to the repository server only, never to the endpoint");
   assert.ok(conversationOf(s).some((line) => line.includes("There are two rules")));
-  assert.deepEqual(w.github().filter((request) => request.method !== "GET"), [], "the loop writes nothing");
+  assert.deepEqual(w.github().filter((request) => request.method !== "GET").map((request) => `${request.method} ${request.path}`), Array(2).fill("POST /graphql"), "the loop writes nothing: the POSTs are greenToMerge's reads (ITM-1170)");
+  assert.ok(w.github().filter((request) => request.method !== "GET").every((request) => String(request.body).includes("refUpdateRule")), "each is greenToMerge's query");
   w.stop();
 });
 
 // TST-513004 · level: system · module: MOD-prompt-bar · MOD-runtimes
 // guards: UC-049; A PARTICIPANT DECLARES ITS CAPABILITIES
-// given: drafter declares "draft text" only
+// given: drafter is an endpoint of this browser whose last test found no use of tools, so that it declares "draft text" and "read the repository" only
 // input: a message sent to drafter
 // expect: exactly one request to the endpoint, which offers no tools; the answer is text and appears in the conversation (flow: UC-049 main flow (4, endpoint without use tools))
 test("main flow (4): a model endpoint without the capability use tools answers once", async () => {
-  const s = await scenario({ instanceFiles: register(DRAFTER), answers: [{ answer: "x" }] });
+  const s = await scenario({ ...register(DRAFTER), answers: [{ answer: "x" }] });
   const w = watch(s, { script: [answer("It is the specification browser.")] });
   await sendNow(s, "What is this page?");
   await free(s);
@@ -118,19 +124,20 @@ test("main flow (4): a model endpoint without the capability use tools answers o
 
 // TST-513005 · level: system · module: MOD-prompt-bar · MOD-runtimes · MOD-bridge-client
 // guards: UC-049; THE PAGE NAMES WHERE IT SENDS; A PARTICIPANT DECLARES WHERE IT PROCESSES DATA
-// given: agent-cli, a CLI agent on the paired Bridge release-bridge at "this machine", and drafter, whose endpoint is reached directly
-// input: a message sent to agent-cli
+// given: release-bridge:claude, a CLI session of the paired Bridge release-bridge at "this machine", which the Bridge lists ready, declared in this browser
+// input: a message sent to release-bridge:claude
 // expect: the Bridge receives the message as one ask of the agent claude, with the pairing token, whose input holds the person's words and the page; no request goes to a model endpoint; the answer appears in the conversation (flow: UC-049 main flow (4, CLI agent))
 test("main flow (4): a CLI agent receives the message through its Bridge", async () => {
-  const s = await scenario({ bridge: true, instanceFiles: register(AGENT), answers: [{ answer: "x" }] });
+  const s = await scenario({ ...register(AGENT), answers: [{ answer: "x" }] });
   const w = watch(s, { script: [answer("The Bridge's agent answers.")] });
-  assert.ok(barText(s).includes("agent-cli — this machine"), barText(s));
+  assert.ok(barText(s).includes("release-bridge:claude — this machine"), barText(s));
   await sendNow(s, "Look at this page.");
   await free(s);
   assert.equal(w.asks.length, 1);
   assert.equal(w.asks[0].agent, "claude");
   assert.ok(w.asks[0].input.includes("Look at this page.") && w.asks[0].input.includes("A LOAN HAS A DUE DATE"), "the ask holds the person's words and the page");
   assert.deepEqual(w.endpoint(), [], "no model endpoint is asked");
+  assert.deepEqual(s.testRequests.map((request) => request.path), ["/v1/pair", "/v1/agents"], "drawing the bar tested the Bridge with its two requests, before this message");
   assert.ok(w.bridge().every((request) => request.headers["x-agent-m-bridge-token"] === "fixture-pairing-token"), "every call to the Bridge carries the pairing token");
   assert.ok(conversationOf(s).some((line) => line.includes("The Bridge's agent answers.")));
   w.stop();
@@ -138,27 +145,32 @@ test("main flow (4): a CLI agent receives the message through its Bridge", async
 
 // TST-513006 · level: system · module: MOD-prompt-bar · MOD-participant-list
 // guards: UC-049
-// given: the register lists a model endpoint whose endpoint is configured nowhere in this browser, and a CLI agent on a Bridge this browser has not paired
+// given: this browser's configuration holds no endpoint that declares a place and no Bridge that offers a CLI session — an endpoint without a place, and a CLI session declared for a Bridge this browser has not paired —, and the instance's list holds a model endpoint that could draft text
 // input: the page opened
-// expect: the prompt bar is not shown — the footer holds no bar — and nothing was asked of any model; with the same register and the endpoint `fixture` configured (a known positive) the bar is shown (flow: UC-049 alternative 1a)
-test("alternative 1a: with no participant offered the prompt bar is not shown", async () => {
-  await scenario({ instanceFiles: register(UNREACHED_ENDPOINT, UNREACHED_AGENT) }).catch((failure) => { if (!/the prompt bar is drawn/.test(failure.message)) throw failure; });
+// expect: the prompt bar is not shown — the footer holds no bar — and nothing was asked of any model; with the same configuration and the endpoint drafter declared (a known positive) the bar is shown (flow: UC-049 alternative 1a)
+const ROW_LISTED = "| listed | model endpoint | listed-model | 200000 | - | draft text | this machine | endpoint drafter |";
+test("alternative 1a: with nothing offered the prompt bar is not shown", async () => {
+  await scenario({ ...register(PLACELESS_ENDPOINT, UNPAIRED_SESSION), keepBridge: false, instanceFiles: listed(ROW_LISTED) }).catch((failure) => { if (!/the prompt bar is drawn/.test(failure.message)) throw failure; });
   assert.deepEqual(byClass(document.body, "section", "prompt-bar"), [], "no bar is drawn");
   assert.deepEqual(byClass(document.body, "footer", "site-frame-prompt-bar").flatMap((footer) => footer.children ?? []), [], "the footer holds nothing");
-  const reached = await scenario({ instanceFiles: register(UNREACHED_ENDPOINT, UNREACHED_AGENT, DRAFTER) });
-  assert.equal(all(reached.footer, "section", "prompt-bar").length, 1, "known positive: with a participant that is reached the bar is shown");
+  const reached = await scenario({ ...register(PLACELESS_ENDPOINT, UNPAIRED_SESSION, DRAFTER), keepBridge: false });
+  assert.equal(all(reached.footer, "section", "prompt-bar").length, 1, "known positive: with an endpoint that declares its place the bar is shown");
 });
 
 // TST-513007 · level: system · module: MOD-prompt-bar · MOD-participant-list
 // guards: UC-049; A PARTICIPANT DECLARES WHERE IT PROCESSES DATA
-// given: the register lists drafter, sub-cli (a subagent that agent-cli starts), agent-cli (a CLI agent on the paired Bridge) and ci-agent (a CI agent)
+// given: this browser declares the endpoint drafter and the CLI session release-bridge:claude, an endpoint with no place, a CLI session with no model and a CLI session with no context; the instance's list holds sub-cli (a subagent that agent-cli starts) and ci-agent (a CI agent)
 // input: the page opened
-// expect: the bar offers drafter and agent-cli, each with its place, and neither the subagent nor the CI agent (flow: UC-049 alternative 1b)
-test("alternative 1b: a participant reached only through another one is not offered", async () => {
-  const s = await scenario({ bridge: true, instanceFiles: register(DRAFTER, SUBAGENT, AGENT, CI_AGENT) });
+// expect: the bar offers drafter and release-bridge:claude, each with its place, and neither the endpoint nor the sessions that lack a place, a model or a context, nor the subagent nor the CI agent of the instance's list, which the bar does not read (flow: UC-049 alternative 1b)
+test("alternative 1b: an endpoint or CLI session that lacks a place, a context or a model is not offered, and the instance's list is not", async () => {
+  const lacking = { agents: ["modelless", "contextless"], settings: { ...PLACELESS_ENDPOINT.settings,
+    "session:release-bridge:modelless": { place: "this machine", context: 200000, capabilities: ["draft text"] },
+    "session:release-bridge:contextless": { place: "this machine", model: "contextless-model", capabilities: ["draft text"] } } };
+  const s = await scenario({ ...register(DRAFTER, AGENT, lacking), instanceFiles: listed(LISTED_SUBAGENT, LISTED_CI_AGENT) });
   const text = barText(s);
-  assert.ok(text.includes("drafter — this machine") && text.includes("agent-cli — this machine"), text);
-  assert.ok(!text.includes("sub-cli") && !text.includes("ci-agent"), "the subagent and the CI agent are not offered");
+  assert.ok(text.includes("drafter — this machine") && text.includes("release-bridge:claude — this machine"), text);
+  assert.ok(!text.includes("nowhere") && !text.includes("modelless") && !text.includes("contextless"), "what lacks a place, a model or a context is not offered");
+  assert.ok(!text.includes("sub-cli") && !text.includes("ci-agent"), "the subagent and the CI agent of the instance's list are not offered");
   assert.equal(all(barOf(s), "option").length, 2);
 });
 
@@ -168,7 +180,7 @@ test("alternative 1b: a participant reached only through another one is not offe
 // input: the message "Make the due date visible." sent to drafter
 // expect: the participant is given the version as the page shows it ("Version: v1.0.0") and the requirement as it reads there; the message is of the kind that answers about the page, not of the kind that drafts a change of requirements (no "The requirements to change" part), and the bar offers no Review the draft: a change is drafted only against the current text (flow: UC-049 alternative 2a)
 test("alternative 2a: at a released version the participant is given that version and nothing is drafted against it", async () => {
-  const s = await scenario({ instanceFiles: register(DRAFTER) });
+  const s = await scenario({ ...register(DRAFTER) });
   const w = watch(s, { script: [answer("At v1.0.0 the rule reads: every loan states its due date.")] });
   await goTo(s, `#trace/key=specification/ref=v1.0.0/product=${encodeURIComponent(s.address)}`);
   await press(s, one(s.target, "button", "spec-group-toggle"));
@@ -185,12 +197,12 @@ test("alternative 2a: at a released version the participant is given that versio
 
 // TST-513009 · level: system · module: MOD-prompt-bar · MOD-job-runner
 // guards: UC-049; THE PAGE NAMES WHERE IT SENDS
-// given: drafter's context holds 1 500 tokens, which the page and its chapters do not fit into; and, in a second page, a participant with a larger context is offered beside it
+// given: the endpoint drafter declares a context of 1 500 tokens, which the page and its chapters do not fit into; and, in a second page, the endpoint big-drafter with a larger context is declared beside it
 // input: a message sent to drafter
 // expect: nothing is sent; the bar says that nothing was sent, which participant does not hold the message and how many tokens it holds against how many the message needs; with no larger participant it says so; with a larger one it offers it by name; nothing is left out silently (the message is not shortened and sent) (flow: UC-049 alternative 3a)
 test("alternative 3a: a message that does not fit is not sent, and a participant with a larger context is offered", async () => {
   const small = ROW_SMALL("drafter", 1500);
-  const alone = await scenario({ instanceFiles: register(small) });
+  const alone = await scenario({ ...register(small) });
   const w = watch(alone);
   await sendNow(alone, "What do I see?");
   assert.deepEqual(w.endpoint(), [], "nothing is sent");
@@ -198,7 +210,7 @@ test("alternative 3a: a message that does not fit is not sent, and a participant
   assert.match(statusOf(alone).textContent, /drafter does not hold this message: its context holds 1500 tokens, the job needs about \d+/);
   assert.match(statusOf(alone).textContent, /No offered participant has a larger context\./);
   w.stop();
-  const both = await scenario({ instanceFiles: register(small, ROW_SMALL("big-drafter", 1000000)) });
+  const both = await scenario({ ...register(small, ROW_SMALL("big-drafter", 1000000)) });
   const v = watch(both, { script: [answer("Now it fits.")] });
   select(both, "drafter");
   await sendNow(both, "What do I see?", { participant: "drafter" });
@@ -206,7 +218,7 @@ test("alternative 3a: a message that does not fit is not sent, and a participant
   assert.match(statusOf(both).textContent, /big-drafter/, "a participant with a larger context is offered by name");
   v.stop();
 });
-const ROW_SMALL = (name, context) => `| ${name} | model endpoint | ${name}-model | ${context} | - | draft text | this machine | endpoint fixture |`;
+const ROW_SMALL = (name, context) => ({ settings: { [`endpoint:${name}`]: endpointOf(name, "this machine", context) } });
 
 // ---------------------------------------------------------------- the hand-over to GitHub Actions (4a, 4b, 4c, 4d) and Stop (5a)
 
@@ -223,7 +235,7 @@ async function proposes(s, w) {
 }
 const handOverButton = (s) => all(proposalOf(s), "button", "queue")[0];
 const handedOver = async (options = {}) => {
-  const s = await scenario({ instanceFiles: register(DRAFTER, HANDY), ...options });
+  const s = await scenario({ ...register(DRAFTER, HANDY), ...options });
   const w = watch(s, { script: [answer("I will hand this on.", { handOver: HAND_OVER })] });
   const clock = followClock();
   await proposes(s, w);
@@ -232,7 +244,7 @@ const handedOver = async (options = {}) => {
 
 // TST-513010 · level: system · module: MOD-prompt-bar · MOD-runtimes · MOD-workflow-entries
 // guards: UC-049; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; A HOSTED JOB WRITES WITH THE PERSON'S TOKEN FROM A CI SECRET; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET; A JOB IS RECORDED IN ITS PRODUCT REPOSITORY; NO SECRET IN THE REPOSITORY
-// given: handy, a model endpoint at "GitHub Actions in the USA" with the CI secret CI_KEY, that can run code and tests; the product holds Agent M's job workflow; handy answers a message by proposing to hand over a converse job on A LOAN HAS A DUE DATE with a task
+// given: handy, an endpoint of this browser at "GitHub Actions in the USA", called through the Bridge release-bridge and naming the CI secret CI_KEY, so that what it hands on is spawned as its own job; the product holds Agent M's job workflow; handy answers a message by proposing to hand over a converse job on A LOAN HAS A DUE DATE with a task
 // input: the person's Send, whose answer proposes the hand-over — no further click —; the run (the real entry onDispatch on fixture checkouts; the conversation's kind runs through Agent M's own job runner, calling the fixture endpoint); the next poll
 // expect: the proposal shows the kind, what it works on, the task, "handy — GitHub Actions in the USA" and the route "ci hosted", and no button Hand over; the hand-over goes on at once and commits one file, the record of the job, which names the participant, the model, the route and what it works on and holds none of the conversation's messages and not the task (the record says the task travels with the hand-over); the job workflow is started once with the job and the task as its inputs; the bar says waiting for GitHub Actions; the run ends done in its record without a commit of the task, and the bar shows the end (flow: UC-049 alternative 4a)
 test("alternative 4a: the participant proposes a hand-over, which is queued without a further click and starts the workflow with the task, and the run's end is shown", async () => {
@@ -289,7 +301,7 @@ test("alternative 4b: when the tab is closed the conversation is gone and the jo
   const [path, record] = queuedRecord(s);
   assert.ok(conversationOf(s).length > 0 && followingOf(s).includes("Handed over"), "known positive: the first tab held a conversation and followed the job");
   done();
-  const reopened = await scenario({ instanceFiles: register(DRAFTER, HANDY), extraFiles: { [path]: record } });
+  const reopened = await scenario({ ...register(DRAFTER, HANDY), extraFiles: { [path]: record } });
   assert.deepEqual(conversationOf(reopened), [], "the conversation is gone");
   assert.equal(followingOf(reopened), "", "no job is followed");
   assert.match(reopened.product.files[path], /participant: handy[\s\S]*works_on:[\s\S]*A LOAN HAS A DUE DATE|works_on:[\s\S]*A LOAN HAS A DUE DATE[\s\S]*participant: handy/, "the record shows what the job was");
@@ -301,7 +313,7 @@ test("alternative 4b: when the tab is closed the conversation is gone and the jo
 // input: the participant proposes a hand-over
 // expect: nothing is handed over — no Hand over, no write, no workflow started —; the conversation says what is missing (the job workflow) and links the route that sets it up (settings); following the link goes there (flow: UC-049 alternative 4c)
 test("alternative 4c: a product without the job workflow gets nothing handed over, and the bar says what is missing and links setting it up", async () => {
-  const s = await scenario({ instanceFiles: register(DRAFTER, HANDY) });
+  const s = await scenario({ ...register(DRAFTER, HANDY) });
   delete s.product.files[".github/workflows/agent-m-jobs.yml"];
   const w = watch(s, { script: [answer("I will hand this on.", { handOver: HAND_OVER })] });
   await proposes(s, w);
@@ -330,7 +342,7 @@ test("alternative 4d: when GitHub's runners cannot reach the endpoint the run fa
     const after = git(product.origin, "show", `main:${path}`);
     assert.match(after, /state: failed/);
     assert.match(after, /The routes that would work: a self-hosted runner, or a Bridge\./);
-    assert.match(after, /the run failed against the endpoint https:\/\/fixture-endpoint\.example\.test\/v1 \(fixture-model\)/);
+    assert.match(after, /the run failed against the endpoint https:\/\/fixture-endpoint\.example\.test\/v1 \(handy-model\)/);
     s.product.change(path, after);
   });
   await clock.tick();
@@ -344,9 +356,9 @@ test("alternative 4d: when GitHub's runners cannot reach the endpoint the run fa
 // guards: UC-049; A CANCELLED JOB WRITES NOTHING MORE; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // given: a message that is still running in the tab (the endpoint has not answered)
 // input: the person's click on Stop; then the endpoint is let to answer
-// expect: the message is aborted — the bar can be used again, nothing was written to any repository, and the answer that comes too late is not added to the conversation (flow: UC-049 alternative 5a)
+// expect: the message is aborted — the bar can be used again, nothing was written to any repository (the two requests that are no GET are greenToMerge's read-only GraphQL requests, ITM-1170), and the answer that comes too late is not added to the conversation (flow: UC-049 alternative 5a)
 test("alternative 5a: Stop ends the loop in the tab and nothing is written", async () => {
-  const s = await scenario({ instanceFiles: register(DRAFTER) });
+  const s = await scenario({ ...register(DRAFTER) });
   let release;
   const w = watch(s, { script: [answer("Too late.")], hold: new Promise((resolve) => { release = resolve; }) });
   await sendNow(s, "Take your time.");
@@ -357,7 +369,8 @@ test("alternative 5a: Stop ends the loop in the tab and nothing is written", asy
   release();
   await rest(s);
   assert.ok(!conversationOf(s).some((line) => line.includes("Too late.")), "an answer after Stop is not shown");
-  assert.deepEqual(w.github().filter((request) => request.method !== "GET"), []);
+  assert.deepEqual(w.github().filter((request) => request.method !== "GET").map((request) => `${request.method} ${request.path}`), Array(2).fill("POST /graphql"), "the POSTs are greenToMerge's reads (ITM-1170)");
+  assert.ok(w.github().filter((request) => request.method !== "GET").every((request) => String(request.body).includes("refUpdateRule")), "each is greenToMerge's query");
   w.stop();
 });
 
@@ -436,7 +449,7 @@ test("alternative 6b: when the file changed while the participant worked nothing
 // input: the bar read; "Hello, what is this?" sent to drafter and answered; a second message sent
 // expect: the bar says above the selector that the conversation is recorded; the first Send commits a conversation record docs/conversations/<yyyymmdd>-<hhmm>-<4 hex>.md in the product's repository — not the instance's — as a commit, then the answer is appended to the same record, each message its own section with the participant and its model and the page it was held on; the second message and its answer are appended to the same file, nothing earlier changed; no commit touches the instance's repository; the record is no proposal (no queue entry, no approval) (flow: UC-049 alternative 6c)
 test("alternative 6c: with recording on every message is appended to the conversation record of the repository of its page", async () => {
-  const s = await scenario({ recording: true, instanceFiles: register(DRAFTER), answers: [{ answer: "It is the specification browser." }, { answer: "Two requirements." }] });
+  const s = await scenario({ recording: true, ...register(DRAFTER), answers: [{ answer: "It is the specification browser." }, { answer: "Two requirements." }] });
   assert.equal(one(barOf(s), "p", "recording").hidden, false, "the bar says above the selector that the conversation is recorded");
   assert.match(one(barOf(s), "p", "recording").textContent, /recorded in the repository of the page it is held on/);
   const recordsBefore = conversationRecords(s).length;
@@ -487,7 +500,7 @@ test("postcondition: with recording off only what the author saved is written, a
 test("alternative 4e: a tool refuses content of a source whose licence does not allow the participant's place", async () => {
   const restricted = ["---", "id: SRC-restricted", "title: A restricted handbook", "kind: document", "authority: informational", "identifier: Handbook", "licence: restricted - internal", "places:", "  - this machine", "content_repository: https://github.com/akmaier/lending-tool", "---",
     "# SRC-restricted A restricted handbook", "", "## Versions", "", "| Version | Date | Edition | Read from | Files |", "|---|---|---|---|---|", "| `1` | 2026-10-13 | fixture | this repository | one file, hashed only |", ""].join("\n");
-  const s = await scenario({ instanceFiles: { ...register(TOOLER), "docs/sources/SRC-restricted.md": restricted }, extraFiles: { "docs/sources/SRC-restricted/handbook.md": "RESTRICTED-HANDBOOK-TEXT: never for the USA.\n" }, answers: [{ answer: "x" }] });
+  const s = await scenario({ ...register(TOOLER), instanceFiles: { "docs/sources/SRC-restricted.md": restricted }, extraFiles: { "docs/sources/SRC-restricted/handbook.md": "RESTRICTED-HANDBOOK-TEXT: never for the USA.\n" }, answers: [{ answer: "x" }] });
   const w = watch(s, { script: [calls({ id: "c1", name: "read-file", args: { path: "docs/sources/SRC-restricted/handbook.md" } }), answer("I could not read it, so I answer without it.")] });
   await sendNow(s, "Summarise the handbook.");
   await free(s);
@@ -505,7 +518,7 @@ test("alternative 4e: a tool refuses content of a source whose licence does not 
 // input: a message sent to drafter and answered
 // expect: the conversation record is in the instance's repository under docs/conversations/ and in no product's (flow: UC-049 alternative 6c)
 test("alternative 6c: a conversation held on a page of the instance is recorded in the instance's repository", async () => {
-  const s = await scenario({ recording: true, instanceFiles: register(DRAFTER), answers: [{ answer: "ok" }], hash: "#trace/key=specification/ref=main" });
+  const s = await scenario({ recording: true, ...register(DRAFTER), answers: [{ answer: "ok" }], hash: "#trace/key=specification/ref=main" });
   await send(s, "A message held on the instance's page.");
   const inInstance = Object.entries(s.instance.files).filter(([path]) => path.startsWith("docs/conversations/"));
   assert.equal(inInstance.length, 1);
@@ -519,7 +532,7 @@ test("alternative 6c: a conversation held on a page of the instance is recorded 
 // input: Send — no further click —; Review the draft; Save
 // expect: UC-049 4a.1: the change runs in this tab at once, its draft is shown for review, nothing is written before Save and no job is queued; Save commits the change as an open proposal — a queue entry with its rationale —, SPEC.md stays as it was and no approval record is written (flow: UC-049 alternative 4a)
 test("alternative 4a: a hand-over of a change of requirements runs in the tab without a click, and Save commits an open proposal", async () => {
-  const s = await scenario({ instanceFiles: register(DRAFTER, HANDY), answers: [{ answer: "x" }] });
+  const s = await scenario({ ...register(DRAFTER, HANDY), answers: [{ answer: "x" }] });
   const w = watch(s, { script: [answer("Handing on.", { handOver: { kind: "change-requirements", works_on: [LOAN], task: "Make the due date visible." } }), { envelope: { draft: draft(), answers: [] } }] });
   await onRequirementPage(s); // the page of the requirement, whose subject gives the person's own source
   await sendNow(s, "Please change this rule.", { participant: "handy" });

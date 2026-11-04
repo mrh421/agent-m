@@ -36,7 +36,8 @@ const GONE = ["tests", "tests-schedule", "tests-generate", "tests-browser", "aud
 function fixtureFiles() {
   const FIX = fileURLToPath(new URL("./fixtures/architecture/", import.meta.url));
   const files = {};
-  (function walk(dir) { for (const name of readdirSync(dir)) { const path = join(dir, name); if (statSync(path).isDirectory()) walk(path); else files[relative(FIX, path).split("\\").join("/")] = readFileSync(path, "utf8"); } })(FIX);
+  // The fixture keeps its test file as tests/reader.test.js.fixture, so that node --test tests/ does not run it; the walk builds it back under its name.
+  (function walk(dir) { for (const name of readdirSync(dir)) { const path = join(dir, name); if (statSync(path).isDirectory()) walk(path); else files[relative(FIX, path).split("\\").join("/").replace(/\.fixture$/, "")] = readFileSync(path, "utf8"); } })(FIX);
   return files;
 }
 
@@ -64,15 +65,14 @@ function assertViewContext(context) {
   assert.equal(typeof context.go, "function");
 }
 
-// TST-1206001 · level: unit · module: MOD-site-frame
+// TST-1302003 · level: unit · module: MOD-site-frame
 // guards: UC-026; UC-027; UC-028; UC-029; UC-030; THE MENU FOLLOWS THE PROCESS
 // given: the table of the dashboard's views, the list built.json and the menu that follows the process
 // input: the views runs, schedule, generate and trace in DASHBOARD, the views whose files were never built, builtViews(built.json), stageView and entryOf for the entry Tests
-// expect: runs, schedule, generate and trace are built-in views without a file, for their use cases, and count as built; tests, tests-schedule, tests-generate,
-//   tests-browser and audit are no view of the table; the entry Tests opens schedule, and #runs and #generate belong to it; built.json names no file for any of them
+// expect: runs, schedule, generate and trace are built-in views without a file, for their use cases, and count as built; tests, tests-schedule, tests-generate, tests-browser and audit are no view of the table; the entry Tests opens schedule, and #runs and #generate belong to it; built.json names no file for any of them
 // Planted fault: leaving the table as it is (tests with the file tests-runs-view.mjs) makes the entry Tests open nothing; the entry's views in the order runs,
 //   schedule, generate make it open runs.
-test("TST-1206001 the test pages' routes and the trace route are built in, and the menu entry Tests opens schedule", () => {
+test("TST-1302003 the test pages' routes and the trace route are built in, and the menu entry Tests opens schedule", () => {
   const built = builtViews(builtFiles);
   for (const [view, useCases] of Object.entries(ROUTES)) {
     const entry = DASHBOARD.find((candidate) => candidate.view === view);
@@ -92,10 +92,9 @@ test("TST-1206001 the test pages' routes and the trace route are built in, and t
 
 // TST-1206002 · level: unit · module: MOD-site-frame
 // guards: UC-028; THE MENU FOLLOWS THE PROCESS
-// given: counter-proof of TST-1206001: the table without the built-in views of the test pages
+// given: counter-proof of TST-1302003: the table without the built-in views of the test pages
 // input: builtViews over the table and over that table, stageView for the entry Tests over each
-// expect: with the table the entry Tests opens schedule; without its built-in views none of runs, schedule, generate is built and the entry Tests opens nothing (the known
-//   negative); the known positive: release is still built, and the entry Releases opens it
+// expect: with the table the entry Tests opens schedule; without its built-in views none of runs, schedule, generate is built and the entry Tests opens nothing (the known negative); the known positive: release is still built, and the entry Releases opens it
 // Planted fault: a table that keeps one of the views where the test removes it makes the known negative fail.
 test("TST-1206002 counter-proof: without the table's built-in views the menu entry Tests opens nothing", () => {
   assert.equal(stageView(tests, builtViews(builtFiles)), "schedule", "with the table, the entry Tests opens schedule");
@@ -110,8 +109,7 @@ test("TST-1206002 counter-proof: without the table's built-in views the menu ent
 // guards: UC-027; THE MENU FOLLOWS THE PROCESS
 // given: the menu that follows the process, the views built as builtViews(built.json) gives them
 // input: menuHtml over those views, the link of the entry Tests and of the entry Releases
-// expect: the entry Tests names its views in the order schedule, runs, generate and links #schedule, the setup of the batteries first (UC-027 1: "Tests → Schedule");
-//   the known positive: the entry Releases still links #release
+// expect: the entry Tests names its views in the order schedule, runs, generate and links #schedule, the setup of the batteries first (UC-027 1: "Tests → Schedule"); the known positive: the entry Releases still links #release
 // Planted fault: the entry's views in the order runs, schedule, generate make its link #runs.
 test("TST-1224001 the menu's entry Tests links #schedule", () => {
   assert.deepEqual(tests.views, ["schedule", "runs", "generate"]);
@@ -125,9 +123,7 @@ test("TST-1224001 the menu's entry Tests links #schedule", () => {
 // guards: UC-028; THE MENU FOLLOWS THE PROCESS
 // given: the live app on the instance, a token stored; MOD-test-pages' routes schedule and runs recording what they are rendered with
 // input: the dashboard opened at #tests, at #runs and at #runs/commit=<sha>; the route's go("runs", { commit })
-// expect: the menu's entry Tests links #schedule, and #tests renders the route schedule with no parameter (ITM-1224); #runs renders the route runs with no parameter,
-//   #runs/commit=<sha> with { commit } — each with the frame's ViewContext, the product shown included; go writes #runs/commit=<sha>; the page shows the route, not
-//   the use cases or "not built yet"
+// expect: the menu's entry Tests links #schedule, and #tests renders the route schedule with no parameter (ITM-1224); #runs renders the route runs with no parameter, #runs/commit=<sha> with { commit } — each with the frame's ViewContext, the product shown included; go writes #runs/commit=<sha>; the page shows the route, not the use cases or "not built yet"
 // Planted fault: an app without the dispatch says "The Tests entry is not built yet." at #tests and shows the use cases at #runs; the entry's views in the order
 //   runs, schedule, generate make the entry link #runs and #tests render runs.
 test("TST-1206003 the menu entry Tests opens MOD-test-pages' route schedule, and #runs/commit=<sha> hands the commit to the route runs", async () => {

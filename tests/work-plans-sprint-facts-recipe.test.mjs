@@ -181,3 +181,26 @@ test("where no issue is dated within the time box, the issues part says so", asy
   const parts = await recipe(contextOf({ issues: [issue(30, "2026-09-01T08:00:00Z")] }));
   assert.match(byName(parts, "issues of sprint team1/01").text, /none of the product's issues was opened or closed within the time box/);
 });
+
+// TST-1405001 · level: unit · module: MOD-work-plans
+// guards: UC-041; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED
+// given: the fixture, whose SPEC.md holds the requirement RULE ONE; ITM-002, selected for team1/01, realises RULE ONE instead of UC-001, its pull request 2 is open and its job JOB-20261014-0900-a1b2 ended failed; ITM-003, selected for team1/02, realises RULE NINE, which the SPEC does not hold
+// input: the recipe sprint-facts for team1/01, then for team1/02
+// expect: the facts of team1/01 name ITM-002 not done with the state "blocked" and a reason that names the failed job, never "not accepted": RULE ONE counts as accepted because the SPEC holds it, as on Progress; known positive: the facts of team1/02 name ITM-003 "waiting for acceptance" with a reason naming RULE NINE
+// Planted fault: deriving the states from statuses(snapshot) alone sends ITM-002 as "waiting for acceptance — RULE ONE is not accepted"; counting every name an item realises as accepted sends ITM-003 as "ready".
+test("the closer is sent each item's state as Progress derives it: a requirement the SPEC holds is accepted, one it does not hold is not", async () => {
+  const files = productFiles();
+  files["SPEC.md"] = lines("# Fixture", "", "## 1. Rules", "", "**RULE ONE** *(PO, 2026-09-01)*", "The rule RULE ONE.", "*Check:* no automatic check; at review.", "");
+  files["docs/backlog/ITM-002-b.md"] = files["docs/backlog/ITM-002-b.md"].replace("  - UC-001\nmodules:", "  - RULE ONE\nmodules:");
+  files["docs/backlog/ITM-003-c.md"] = files["docs/backlog/ITM-003-c.md"].replace("  - UC-001\nmodules:", "  - RULE NINE\nmodules:");
+  files["docs/jobs/JOB-20261014-0900-a1b2.md"] = `${JOB}\n## End\n\nat: 2026-10-14 11:00 UTC\nstate: failed\n`;
+  const first = JSON.parse(byName(await recipe(contextOf({ files })), "facts of sprint team1/01").text);
+  const blocked = first.notDone.find((each) => each.item === "ITM-002");
+  assert.equal(blocked?.state, "blocked", JSON.stringify(blocked));
+  assert.match(blocked.reason ?? "", /fail/);
+  assert.doesNotMatch(blocked.reason ?? "", /not accepted/);
+  const second = JSON.parse(byName(await recipe(contextOf({ files, params: { sprint: "team1/02" } })), "facts of sprint team1/02").text);
+  const waiting = second.notDone.find((each) => each.item === "ITM-003");
+  assert.equal(waiting?.state, "waiting for acceptance", `known positive: a requirement the SPEC does not hold is not accepted — ${JSON.stringify(waiting)}`);
+  assert.match(waiting.reason ?? "", /RULE NINE/);
+});

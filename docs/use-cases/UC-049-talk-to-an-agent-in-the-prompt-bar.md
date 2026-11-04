@@ -158,11 +158,8 @@ sequenceDiagram
   the hand-over goes on without a further click. Nothing it starts accepts anything; only an approval record accepts.
   1. Where the kind's result waits for the author and the endpoint or CLI session can do the kind — a kind other than
      the conversation itself —, it runs in this tab at once, on the page's context. Its draft is shown as UC-019 describes, and the author saves it (step 6).
-  2. Any other kind is spawned as a job; the conversation itself handed on is the endpoint's own job. For a kind of the product's workflow, the hand-over names a participant of the
-     instance's list that holds the kind's role (UC-017), and the job goes to that participant, never to the endpoint
-     itself; where the product's start rules keep it from starting, the conversation names the reasons and nothing is
-     queued. For any other kind, the job is the endpoint's own, and its configuration names the CI secret that holds
-     its key (UC-003).
+  2. Any other kind is spawned as a job of the endpoint or CLI session itself, the conversation itself handed on among
+     them. An endpoint's configuration names the CI secret that holds its key (UC-003).
   3. Agent M commits the record of a job in the product repository that names who does it, the page and the commit it
      read, and none of the conversation's messages; it starts the product's job workflow (UC-010) with the task as the
      workflow's input. The agent in the workflow reaches the endpoint with the key from that CI secret, and writes with
@@ -181,10 +178,8 @@ sequenceDiagram
   processing place. The tool refuses and says why; it continues without it.
 - **4f. The conversation runs on GitHub Actions** — the endpoint's own job, which the bar spawns for an endpoint that
   runs only there. Nobody attends the run, so what the endpoint proposes is written at once, as proposals: an edit of a
-  document as a pull request; a hand-over whose kind's result waits for a person, other than the conversation itself, and which works on no item of the
-  backlog or step of the plan, runs in the same run, by that kind's definition, and its writer writes as 4a.5 says. A
-  hand-over of any other kind is not run there, since its start rules and its role are decided where a person starts
-  it; the record says so. The job's record lists every result. The review pages show what was written for acceptance
+  document as a pull request; a hand-over of a kind other than the conversation itself runs in the same run, by that
+  kind's definition, and its writer writes as 4a.5 says. The job's record lists every result. The review pages show what was written for acceptance
   (UC-006, UC-008), each architecture file with its impact list.
 - **5a. The author presses Stop.** The loop in the tab ends and nothing is written; a run in GitHub Actions is cancelled
   and commits nothing more (UC-036).

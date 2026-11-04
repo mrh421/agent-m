@@ -133,9 +133,7 @@ test("draft — a draft of requirements shows each finding left in the same text
 // guards: UC-019; AN ARTIFACT RECORDS THE VERSION THAT PRODUCED IT; ONE CLICK PER DECISION; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON
 // given: the draft of two use cases, UC-007 and UC-008, for the instruction "align UC-007 and UC-008 with the new rule" among the conversation's messages, the second edited by the person in its editor
 // input: a click on Save
-// expect: one commit holding both files — the first as drafted, the second as edited, byte for byte, no trailer in a file —, whose message ends with the provenance lines — Agent-M-Version: <the
-//   instance's commit>, commit <it>; Agent-M-Kind: change-use-case; Agent-M-Participant: drafter-a; Agent-M-Model: example-model; Agent-M-Rounds: 1 —, no Agent-M-Job line, and no line that
-//   holds a word of the conversation; the page links the commit; afterwards latestDraft for the subject gives null, and the route draft drawn again for it says that there is no draft (<p class="none">) and shows no editor
+// expect: one commit holding both files — the first as drafted, the second as edited, byte for byte, no trailer in a file —, whose message ends with the provenance lines — Agent-M-Version: <the instance's commit>, commit <it>; Agent-M-Kind: change-use-case; Agent-M-Participant: drafter-a; Agent-M-Model: example-model; Agent-M-Rounds: 1 —, no Agent-M-Job line, and no line that holds a word of the conversation; the page links the commit; afterwards latestDraft for the subject gives null, and the route draft drawn again for it says that there is no draft (<p class="none">) and shows no editor
 test("draft — Save writes the use cases in one commit with the provenance lines and no message of the conversation", async () => {
   const fake = fakeProduct();
   const conversation = [{ at: "2026-10-16T10:00:00Z", from: "person", who: "alice", text: ALIGN, subject: UC7_KEY }];
@@ -253,8 +251,7 @@ test("draft — without a draft for the subject the page says so and links back 
 // guards: UC-023; UC-049; THE ROUNDS ARE COUNTED AND SHOWN; A REUSE DECISION RECORDS ITS DUE DILIGENCE; A DRAFTED CHANGE IS SHOWN AGAINST THE CURRENT TEXT
 // given: the draft of the decision ARC-001 for a change of the architecture, whose text holds a due-diligence section, with one correction round that had a warning, fixed
 // input: the route draft; then a click on Save
-// expect: the page shows the file's difference against the current text, the rounds of the job (Round 1 with the warning) and the due diligence (a table with "lend-lib" and "GPL-3.0"); Save writes the
-//   file in one commit whose message holds "Agent-M-Kind: change-architecture"; afterwards latestDraft for the subject gives null, and the route draft drawn again for it says that there is no draft (<p class="none">) and shows no editor
+// expect: the page shows the file's difference against the current text, the rounds of the job (Round 1 with the warning) and the due diligence (a table with "lend-lib" and "GPL-3.0"); Save writes the file in one commit whose message holds "Agent-M-Kind: change-architecture"; afterwards latestDraft for the subject gives null, and the route draft drawn again for it says that there is no draft (<p class="none">) and shows no editor
 test("draft — an architecture file is shown with its rounds and its due diligence, and saved", async () => {
   const diligent = `${ARC1}\n${DUE_DILIGENCE}`;
   const warning = finding({ artifact: "ARC-001", line: 9, kind: "warning", rule: "A REUSE DECISION RECORDS ITS DUE DILIGENCE", what: "the candidate desk-kit has no release history", fix: "record its release history" });
@@ -325,9 +322,7 @@ test("draft — requirements are shown with their classes, beside the requiremen
 // guards: UC-019; A SPEC EDIT IS SAVED AS A PROPOSAL; THE PERSON WHO PROMPTS IS A SOURCE; AN ARTIFACT RECORDS THE VERSION THAT PRODUCED IT; A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON
 // given: the draft of TST-507029, the conflict undecided
 // input: a click on Save
-// expect: one commit in a change queue under docs/spec-freigaben/, SPEC.md byte-identical; the proposal holds the changed rule and the new requirement, both naming SRC-alice among their sources, and not the
-//   conflict; the commit's message holds Agent-M-Kind: change-requirements, Agent-M-Participant: drafter-a, Agent-M-Model: example-model, Agent-M-Rounds: 1, and no line that holds the instruction
-//   "split this requirement"; the page links the commit; afterwards latestDraft for the subject gives null, and the route draft drawn again for it says that there is no draft (<p class="none">) and shows no editor
+// expect: one commit in a change queue under docs/spec-freigaben/, SPEC.md byte-identical; the proposal holds the changed rule and the new requirement, both naming SRC-alice among their sources, and not the conflict; the commit's message holds Agent-M-Kind: change-requirements, Agent-M-Participant: drafter-a, Agent-M-Model: example-model, Agent-M-Rounds: 1, and no line that holds the instruction "split this requirement"; the page links the commit; afterwards latestDraft for the subject gives null, and the route draft drawn again for it says that there is no draft (<p class="none">) and shows no editor
 test("draft — Save writes the composed section as an entry of a queue, the conflict undecided and left out", async () => {
   const fake = fakeProduct();
   const shown = await showRequirements(fake);
@@ -417,9 +412,7 @@ test("draft — Discard drops the requirements and writes nothing", async () => 
 // guards: UC-019; A CHANGE IS PROPOSED UNDER THE EXISTING NAME; A SPEC EDIT IS SAVED AS A PROPOSAL
 // given: the draft of a change of A LOAN HAS A DUE DATE with two candidates that change it: A LOAN HAS A DUE DATE (class change, of itself) and A MEMBER CAN RENEW ONCE (class change, of A LOAN HAS A DUE DATE)
 // input: the route draft; a click on Save; then the person sets the class of A MEMBER CAN RENEW ONCE to new and clicks Save
-// expect: the page shows no composed section and one problem reading "TwoChanges: A LOAN HAS A DUE DATE and A MEMBER CAN RENEW ONCE change A LOAN HAS A DUE DATE: one block would replace the other. Nothing was composed. To go on, give one of the two the class new, or merge them into one.";
-//   after the first Save the same text is shown a second time, as the result of Save, the two candidates are still there and nothing is written; after the class is set to new the composed section is shown and the second Save writes one commit whose proposal holds
-//   the changed rule of A LOAN HAS A DUE DATE and the block A MEMBER CAN RENEW ONCE
+// expect: the page shows no composed section and one problem reading "TwoChanges: A LOAN HAS A DUE DATE and A MEMBER CAN RENEW ONCE change A LOAN HAS A DUE DATE: one block would replace the other. Nothing was composed. To go on, give one of the two the class new, or merge them into one."; after the first Save the same text is shown a second time, as the result of Save, the two candidates are still there and nothing is written; after the class is set to new the composed section is shown and the second Save writes one commit whose proposal holds the changed rule of A LOAN HAS A DUE DATE and the block A MEMBER CAN RENEW ONCE
 test("draft — two candidates that change one requirement are refused on the page and on Save, nothing written", async () => {
   const fake = fakeProduct();
   const refusal = `TwoChanges: ${LOAN} and ${RENEW} change ${LOAN}: one block would replace the other. Nothing was composed. To go on, give one of the two the class new, or merge them into one.`;
@@ -449,8 +442,7 @@ test("draft — two candidates that change one requirement are refused on the pa
 // guards: UC-019; EVERY STEP EXPLAINS ITSELF
 // given: the draft of a change with one candidate of the class change of a requirement the SPEC does not hold
 // input: the route draft
-// expect: counter-proof — the page shows one problem reading "RequirementNotFound: the SPEC holds no requirement NO SUCH REQUIREMENT", which gives no advice on how to go on: the panel's words for two changes are
-//   for that refusal alone
+// expect: counter-proof — the page shows one problem reading "RequirementNotFound: the SPEC holds no requirement NO SUCH REQUIREMENT", which gives no advice on how to go on: the panel's words for two changes are for that refusal alone
 test("draft — a refusal other than two changes gets no advice on how to go on", async () => {
   const fake = fakeProduct();
   const draft = { candidates: [candidate(LOAN, { class: "change", of: "NO SUCH REQUIREMENT", rule: OVERDUE, passage: "overdue" })] };
@@ -611,16 +603,19 @@ test("TST-067109 draft: after Save the saved text is not unsaved", async () => {
 
 const NOTES_PATH = "docs/notes.md";
 const NOTES = "# Notes\n\nA note the participant proposed.\n";
+// A use case's text with the Mermaid diagram its schema requires, at the end of its main flow: what a converse edit of a use case holds.
+const withDiagram = (useCaseText) => useCaseText.replace("2. Agent M answers.\n", "2. Agent M answers.\n\n```mermaid\nflowchart LR\n    Author --> Agent\n```\n");
 
 // TST-507035 · level: component · module: MOD-review-pages
 // guards: UC-049; A DRAFTED CHANGE IS SHOWN AGAINST THE CURRENT TEXT; A GENERATED ARTIFACT IS A PROPOSAL
-// given: the draft of a conversation of the kind converse: the answer "Here is the change." and two edits — UC-007 changed, and a new file docs/notes.md
+// given: the draft of a conversation of the kind converse: the answer "Here is the change." and two edits — UC-007 changed, holding the Mermaid diagram a use case's schema requires, and a new file docs/notes.md
 // input: the route draft; then a click on Save
 // expect: the answer is shown; two drafts, each in an editor, the new file as all added lines against nothing; Save writes both in one commit, the new file too, and the message holds Agent-M-Kind: converse; afterwards latestDraft for the subject gives null, and the route draft drawn again for it says that there is no draft (<p class="none">) and shows no editor
 test("draft — the edits of a converse draft are shown and saved, a new file too", async () => {
   const fake = fakeProduct();
+  const edited = withDiagram(draft7().text);
   const shown = await showDraft(fake, { kind: "converse", params: { ...useCaseParams, page: "the page" },
-    result: resultOf({ answer: "Here is the change.", edits: [{ path: UC7_PATH, text: draft7().text }, { path: NOTES_PATH, text: NOTES }] }, { rounds: [ROUND_ONE] }) });
+    result: resultOf({ answer: "Here is the change.", edits: [{ path: UC7_PATH, text: edited }, { path: NOTES_PATH, text: NOTES }] }, { rounds: [ROUND_ONE] }) });
   const { target } = shown;
   kept(shown, UC7_KEY);
   assert.match(byClass(target, "div", "answer")[0].textContent, /Here is the change\./);
@@ -630,18 +625,18 @@ test("draft — the edits of a converse draft are shown and saved, a new file to
   click(buttonsNamed(boxes[0], "Save")[0]);
   await until(() => byClass(target, "p", "saved").length === 1, "the commit");
   assert.equal(written(fake).length, 1, "one commit");
-  assert.deepEqual(written(fake)[0].files.map((file) => [file.path, file.text]), [[UC7_PATH, draft7().text], [NOTES_PATH, NOTES]]);
+  assert.deepEqual(written(fake)[0].files.map((file) => [file.path, file.text]), [[UC7_PATH, edited], [NOTES_PATH, NOTES]]);
   assert.ok(messageLines(written(fake)[0]).includes("Agent-M-Kind: converse"));
   await assertDropped(shown, UC7_KEY);
 });
 
 // TST-507036 · level: component · module: MOD-review-pages
 // guards: UC-049; A DRAFTED CHANGE IS SHOWN AGAINST THE CURRENT TEXT; AN EDITED FILE KEEPS ITS IDENTIFIER
-// given: a converse draft whose edit of UC-007 keeps its identifier and drops the section "## Postcondition", which the schema of a use case requires
+// given: a converse draft whose edit of UC-007 keeps its identifier and its Mermaid diagram, and drops the section "## Postcondition", which the schema of a use case requires
 // input: the route draft; a click on Save
 // expect: the editor opens with Save disabled — "Save is disabled: the section ## Postcondition is required, and missing" —; the click writes nothing
 test("draft — a converse edit its owner's schema finds an error in cannot be saved", async () => {
-  const broken = UC7.replace(/## Postcondition[^]*$/, "");
+  const broken = withDiagram(UC7).replace(/## Postcondition[^]*$/, "");
   const fake = fakeProduct();
   const { target } = await showDraft(fake, { kind: "converse", params: useCaseParams, result: resultOf({ answer: "Here.", edits: [{ path: UC7_PATH, text: broken }] }, { rounds: [ROUND_ONE] }) });
   assert.match(draftBoxes(target)[0].textContent, /Save is disabled: .*the section ## Postcondition is required, and missing/);

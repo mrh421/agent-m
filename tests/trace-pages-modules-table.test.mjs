@@ -70,15 +70,14 @@ const items = (node) => find(node, (each) => each.localName === "li").map((each)
 // guards: UC-025; MODULE GAPS ARE REPORTED, NOT FORBIDDEN
 // given: the fixture product at main: MOD-page (follows ARC-001, realises ALPHA RULE and GONE RULE, which the SPEC does not hold, has two code files and one test, and its file is open) and MOD-review (follows ARC-001, realises BETA RULE, has one code file and no test)
 // input: Route.render with the key "modules" at main
-// expect: one row for each module, MOD-page first; MOD-page's subsystem ARC-001, its requirements "ALPHA RULE — in SPEC" and "GONE RULE — not in the SPEC", its file docs/architecture/MOD-page.md with the status open, its code
-//   src/page/extra.mjs and src/page/index.mjs, its tests TST-1; MOD-review's tests none
+// expect: one row for each module, MOD-page first; MOD-page's subsystem ARC-001, its requirements "ALPHA RULE — in SPEC" alone (the requirement its one test guards, not GONE RULE, which only its file names), its file docs/architecture/MOD-page.md with the status open, its code src/page/extra.mjs and src/page/index.mjs, its tests TST-1; MOD-review's tests none
 test("the modules view shows a table with a row for each module: subsystem, requirements with their statuses, file, code and tests", async () => {
   const target = await render(hostOf());
   const rows = byClass(target, "tr", "module-row");
   assert.deepEqual(rows.map((row) => row.getAttribute("data-module")), ["MOD-page", "MOD-review"]);
   const page = rowOf(target, "MOD-page");
   assert.match(cell(page, "module-subsystem").textContent, /ARC-001/);
-  assert.deepEqual(items(cell(page, "module-realises")), ["ALPHA RULE — in SPEC", "GONE RULE — not in the SPEC"]);
+  assert.deepEqual(items(cell(page, "module-realises")), ["ALPHA RULE — in SPEC"]);
   assert.match(cell(page, "module-file").textContent, /docs\/architecture\/MOD-page\.md/);
   assert.match(cell(page, "module-file").textContent, /open/);
   assert.deepEqual(items(cell(page, "module-code")), ["src/page/extra.mjs", "src/page/index.mjs"]);
@@ -128,8 +127,7 @@ test("a click on a module opens its file and its folder in a row below it, and a
 // guards: UC-025; A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: one Host for main, whose snapshots count every readMany
 // input: the modules view rendered at main
-// expect: the graph is read once, the stored one — one readOn of ("trace-cache", "<main's commit>.json.gz") — for the table, the gaps and the diagram, and is not built: no code or test file is read or named to readMany;
-//         the diagram's module files are named to readMany in one batch before they are read
+// expect: the graph is read once, the stored one — one readOn of ("trace-cache", "<main's commit>.json.gz") — for the table, the gaps and the diagram, and is not built: no code or test file is read or named to readMany; the diagram's module files are named to readMany in one batch before they are read
 test("the modules view reads the stored graph once for its diagram, its table and its gaps, and its module files in one batch", async () => {
   const productHost = hostOf();
   const drawn = await render(productHost);
@@ -144,8 +142,7 @@ test("the modules view reads the stored graph once for its diagram, its table an
 // guards: UC-025; EVERY PAGE SHARES ONE LOOK AND WORKS ON A PHONE
 // given: the fixture product at main
 // input: Route.render with the key "modules" at main
-// expect: the table of the modules is a <table class="list"> inside a <div class="table-scroll"> (the site's box that scrolls a wide table sideways, so that the page keeps its margins on a phone), which is focusable by the
-//   keyboard (tabindex 0) and named (a role region and an aria-label) because it scrolls
+// expect: the table of the modules is a <table class="list"> inside a <div class="table-scroll"> (the site's box that scrolls a wide table sideways, so that the page keeps its margins on a phone), which is focusable by the keyboard (tabindex 0) and named (a role region and an aria-label) because it scrolls
 test("the table of the modules stands in the site's scroll box, which a keyboard reaches", async () => {
   const target = await render(hostOf());
   const [box] = byClass(target, "div", "table-scroll");

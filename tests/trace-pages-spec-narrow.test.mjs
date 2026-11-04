@@ -158,8 +158,7 @@ test("the filter by realised keeps the requirements a use case realises, or thos
 // guards: UC-020
 // given: the fixture on main
 // input: the source Source A and not realised together; then the text "book" added; then the text "loan" in place of it; then the text cleared
-// expect: BETA RULE alone (Source A, not realised; EPSILON RULE, added, names no source); BETA RULE ("book" stands in its rule); no row and no group, since "loan" stands in ALPHA RULE's rule, which is realised,
-//         and the line "No requirement matches." on the page; then, with the filters still set, BETA RULE, and the line gone
+// expect: BETA RULE alone (Source A, not realised; EPSILON RULE, added, names no source); BETA RULE ("book" stands in its rule); no row and no group, since "loan" stands in ALPHA RULE's rule, which is realised, and the line "No requirement matches." on the page; then, with the filters still set, BETA RULE, and the line gone
 test("the text and the filters narrow together, and a tree with nothing left says so", async () => {
   const target = await render(main());
   const nothing = () => find(target, (node) => hasClass(node, "spec-narrow-none")).filter((node) => !hiddenWithin(node, target));

@@ -35,13 +35,14 @@
 
 import { explain, schemaForm, chosenProduct } from "../site-frame/index.mjs";
 import { readSetting } from "../browser-store/index.mjs";
-import { readDocument, writeDocument } from "../documents/index.mjs";
-import { catalogue, modelSchema } from "../model-catalogue/index.mjs";
+import { readDocument, writeDocument, documentFindings } from "../documents/index.mjs";
+import { catalogue, modelSchema, modelFindings, modelDiagram, planGrid } from "../model-catalogue/index.mjs";
 import { participantSchema } from "../participant-list/index.mjs";
 import { declarationSchema, declarationFindings, roleAssignmentFindings, roleAssignmentSchema, workflowOf } from "../product-process/index.mjs";
 import { sourceSchemas } from "../source-register/index.mjs";
-import { showDifference } from "../markdown-render/index.mjs";
+import { showDifference, renderMermaid } from "../markdown-render/index.mjs";
 import { saveFile } from "../artifact-edits/index.mjs";
+import { heads } from "./routes.mjs";
 
 const DECLARATION_PATH = "docs/process.md";
 const PARTICIPANTS_PATH = "docs/participants.md";
@@ -110,12 +111,12 @@ function setField(form, key, value) {
 }
 
 export const route = {
-  name: "process",
-  entry: "implementation",
-  title: "How this product is developed",
+  ...heads.process,
 
   async render(target, context) {
-    const { instance, product } = context;
+    // The empty product is the instance itself (MOD-site-frame's ViewContext).
+    const { instance } = context;
+    const product = context.product ?? instance;
 
     const [productInfo, instanceInfo] = await Promise.all([product.host.repositoryInfo(), instance.host.repositoryInfo()]);
     const [productSnapshot, instanceSnapshot] = await Promise.all([
@@ -284,7 +285,7 @@ export const route = {
         el("p", null, `example: ${model.about?.example ?? ""}`),
         el("p", null, `chapter: ${model.about?.chapter ?? ""}`));
       card.setAttribute("data-model", model.name);
-      const choose = el("button", null, "Choose");
+      const choose = el("button", "btn", "Choose");
       choose.type = "button";
       choose.addEventListener("click", () => pick(model));
       card.append(choose);
@@ -396,7 +397,7 @@ function lostArtifacts(before, after) {
 
 // ---- The route `models` — the instance's process models (UC-031 steps 1 and 2b). It lists the catalogue of the instance's snapshot: the shipped
 // models, then the instance's own, each with its kind of work, the products of this browser whose declaration names it (each address of the
-// setting `products` connected with MOD-site-frame's `chosenProduct`, its `docs/process.md` read with that product's host; an address that
+// setting `products` connected with MOD-site-frame's `chosenProduct`, its `docs/process.md` read with that product's host through a snapshot narrowed to that file; an address that
 // cannot be read is shown with its reason) and the catalogue's findings for it. A shipped model offers *Adapt*, an instance's model *Edit*,
 // the page *+ New model*; they lead to `#models/name=<name>`, `+ New model` to `#models/name=` (the frame reads only `key=value` parts).
 
@@ -414,7 +415,7 @@ async function declarationsOf(context) {
     try {
       const product = await chosenProduct({ store, fragment: `#models/product=${encodeURIComponent(address)}` });
       const { defaultBranch } = await product.host.repositoryInfo();
-      const declaration = await (await product.host.readSnapshot(defaultBranch)).read(DECLARATION_PATH);
+      const declaration = await (await product.host.readSnapshot(defaultBranch, { folders: [DECLARATION_PATH] })).read(DECLARATION_PATH);
       const modelFile = declaration == null ? null : String(readDocument(declarationSchema, DECLARATION_PATH, declaration).fields.model_file ?? "");
       return { address, modelFile };
     } catch (failure) {
@@ -423,23 +424,30 @@ async function declarationsOf(context) {
   }));
 }
 
-export const modelsRoute = {
-  name: "models",
-  entry: "implementation",
-  title: "Process models",
+// The products among `declarations` whose declaration names the model file `path`, as a list; and the products that could not be read, with their reasons, as a
+// list (null where every one could be). The list of the models and the editor of a model both draw them (UC-031 1 and 6a).
+const productsDeclaring = (declarations, path) => el("ul", "products", ...declarations.filter((declaration) => declaration.modelFile === path).map((declaration) => el("li", null, declaration.address)));
+const unreadableOf = (declarations) => {
+  const unreadable = declarations.filter((declaration) => declaration.reason !== undefined);
+  return unreadable.length ? el("ul", "unreadable", ...unreadable.map((declaration) => el("li", "source", `${declaration.address}: ${declaration.reason}`))) : null;
+};
 
-  async render(target, context) {
+export const modelsRoute = {
+  ...heads.models,
+
+  async render(target, context, params = {}) {
+    // `models/<name>` (UC-031 steps 2 to 6): the editor; `models` alone: the list.
+    if (params.name !== undefined) return editor(target, context, params.name);
     const { instance } = context;
     const { defaultBranch } = await instance.host.repositoryInfo();
     const [cat, declarations] = await Promise.all([
       instance.host.readSnapshot(defaultBranch).then((snapshot) => catalogue(snapshot)), declarationsOf(context)]);
 
     const row = (model, button) => {
-      const declaring = declarations.filter((declaration) => declaration.modelFile === model.path);
       const findings = cat.findings[model.path] ?? [];
       const item = el("li", "model", el("h4", null, model.name),
         el("span", "kind", model.kind), explain("model-kind"),
-        el("ul", "products", ...declaring.map((declaration) => el("li", null, declaration.address))), explain("model-products"));
+        productsDeclaring(declarations, model.path), explain("model-products"));
       if (findings.length) {
         item.append(el("ul", "findings", ...findings.map((finding) => el("li", null, `${finding.kind}: ${finding.what}`))), explain("model-findings"));
       }
@@ -456,12 +464,229 @@ export const modelsRoute = {
       el("ul", null, ...cat.models.filter(isOwn).map((model) => row(model, link("Edit", "edit", to(model))))),
       link("+ New model", "new-model", "#models/name="));
 
-    const unreadable = declarations.filter((declaration) => declaration.reason !== undefined);
     const page = el("article", "models-page", el("h2", null, "Process models"));
-    if (unreadable.length) {
-      page.append(el("ul", "unreadable", ...unreadable.map((declaration) => el("li", "source", `${declaration.address}: ${declaration.reason}`))));
-    }
-    page.append(shipped, own);
+    page.append(...[unreadableOf(declarations), shipped, own].filter(Boolean));
     target.replaceChildren(page);
   },
 };
+
+// ---- The route `models/<name>` — the editor of a process model (UC-031 steps 2 to 6, 2a, 4a, 5a and 6b). A shipped model's name opens *Adapt*: a
+// copy of its file under a new name, with `adapted_from` naming it; an instance's model opens itself (*Edit*); the empty name opens *+ New model*,
+// which first asks for the kind of work and then opens a definition of that kind with its sections empty. The form is MOD-site-frame's schemaForm
+// over `modelSchema.model`, with `modelFindings` beside their fields while the author types, and *Save* offered only without an error. Beside it
+// the live diagram of `modelDiagram`, drawn with `renderMermaid`, and, for a planned model, the preview of `planGrid` for a product of this browser
+// the author picks, its accepted requirements those of its facts (`productFacts`, read once on that pick). *Save* writes
+// `docs/process-models/<name>.md` of the instance with `saveFile`, as the person's own commit, only on the blob the editor opened at that path; a
+// file changed meanwhile is not written, and both versions are shown (6b). *Discard* leads back to the list: the draft is kept on the screen only
+// (4a — the module's Uses name no write to the browser's store).
+
+// A Finding's identity: every field of MOD-text-tools' Finding — artifact, line, kind, rule, what, fix.
+const identity = ({ artifact, line, kind, rule, what, fix }) => JSON.stringify([artifact, line, kind, rule, what, fix]);
+
+// The findings of modelFindings beyond the model's schema: those documentFindings does not also give for the same document.
+// schemaForm shows documentFindings' own beside their fields already, so that each finding is shown once.
+function beyondSchema(document) {
+  const schemaOwn = new Set(documentFindings(modelSchema.model, document).map(identity));
+  return modelFindings(document).filter((found) => !schemaOwn.has(identity(found)));
+}
+
+// The file of the instance's model named `name`.
+const modelPath = (name) => `${INSTANCE_MODELS}${name}.md`;
+
+// The definition + New model opens for the kind of work picked (2a): the kind, the measure where only one fits it, each section of the model's
+// schema as a table without rows, and for pulled work the flow control's three rows, their values left out.
+function emptyDefinition(kind) {
+  const table = (heading, columns) => `${heading}\n\n| ${columns.join(" | ")} |\n|${columns.map(() => "---|").join("")}\n`;
+  const sections = [table("## Phases", ["Name", "Role", "Produces"]), table("## Transitions", ["From", "To", "Kind"]),
+    table("## Verification pairs", ["Phase", "Checked by"]), table("## Gates", ["Between", "Artifacts", "Condition", "Decider"]),
+    table("## Roles", ["Name", "Filled by", "How many", "Capabilities"])];
+  if (kind === "pulled") sections.push(`${table("## Flow control", ["Kind", "Value"])}| WIP limit | — |\n| Time box | — |\n| Sprints | no |\n`);
+  const measure = kind === "planned" ? "measure: plan entries per phase\n" : "";
+  return `---\nkind: ${kind}\n${measure}---\n# New model\n\n${sections.join("\n")}`;
+}
+
+// The first name `<name>-adapted`, `<name>-adapted-2`, … that no model of the catalogue has and no file of the instance holds.
+function adaptedName(name, cat, snapshot) {
+  const taken = (candidate) => cat.models.some((model) => model.name === candidate) || snapshot.paths.includes(modelPath(candidate));
+  let candidate = `${name}-adapted`;
+  for (let n = 2; taken(candidate); n++) candidate = `${name}-adapted-${n}`;
+  return candidate;
+}
+
+async function editor(target, context, name) {
+  const { instance, store } = context;
+  const reading = declarationsOf(context); // the products' declarations, read beside the instance's snapshot (UC-031 6a)
+  const { defaultBranch } = await instance.host.repositoryInfo();
+  const snapshot = await instance.host.readSnapshot(defaultBranch);
+  const cat = await catalogue(snapshot);
+  const declarations = await reading;
+  const page = el("article", "model-editor");
+  target.replaceChildren(page);
+
+  if (name === "") {
+    // 2a: the kind of work first; the form follows it.
+    page.append(el("h2", null, "New model"));
+    const choice = el("section", "kind-choice", el("h3", null, "The kind of work"), explain("model-kind"));
+    for (const kind of ["planned", "pulled"]) {
+      const button = el("button", "btn", kind);
+      button.type = "button";
+      button.setAttribute("data-kind", kind);
+      button.addEventListener("click", () => {
+        choice.remove();
+        open(readDocument(modelSchema.model, modelPath("new-model"), emptyDefinition(kind)));
+      });
+      choice.append(button);
+    }
+    page.append(choice, link("Discard", "discard", "#models"));
+    return;
+  }
+
+  const model = cat.models.find((candidate) => candidate.name === name);
+  const text = model ? await snapshot.read(model.path) : null;
+  if (text == null) {
+    page.append(el("h2", null, "Process model"), el("p", "unknown-model", `The catalogue of this instance holds no model named ${name}.`),
+      link("Process models", "back", "#models"));
+    return;
+  }
+  if (model.path.startsWith(INSTANCE_MODELS)) {
+    page.append(el("h2", null, `Edit ${name}`));
+    open(readDocument(modelSchema.model, model.path, text));
+    return;
+  }
+  // Adapt (step 2): the shipped file under a new name, naming the model it was adapted from.
+  const copyName = adaptedName(name, cat, snapshot);
+  const shipped = readDocument(modelSchema.model, modelPath(copyName), text);
+  const copy = { ...shipped, fields: { ...shipped.fields, name: copyName, adapted_from: name } };
+  page.append(el("h2", null, `Adapt ${name}`));
+  open(readDocument(modelSchema.model, copy.path, writeDocument(modelSchema.model, copy)));
+
+  // The editor on `opened`: the form, the live diagram, the plan's preview for a planned model, and Save.
+  function open(opened) {
+    const notice = el("div", "save-notice");
+    const diagram = el("div", "model-diagram");
+    const grid = el("div", "plan-grid");
+    const preview = el("section", "plan-preview", el("h3", null, "The plan for a product"), explain("process-model"));
+    const saved = new Map(); // the blob each path was saved with from this editor, the version a second save starts from
+    let current = null; // the Model the form holds now, as the catalogue reads it
+    let chosen = null; // the product picked for the preview: { address, requirements } | { address, reason }
+    let turn = 0;
+
+    // Where the definition is saved: the file named by the name typed, or, while none is, where it was opened.
+    const placed = (document) => ({ ...document, path: document.fields.name ? modelPath(String(document.fields.name)) : opened.path });
+
+    // 6a: the products of this browser that declare the model the definition would be saved as, beside the form; those that could not be read, as the list shows them.
+    // The form's extraChecks draw them when it opens and at every typing.
+    const users = el("div", "model-users");
+    const usersPart = el("section", "model-products", el("h3", null, "Products that declare this model"), explain("model-products"), users);
+    const showUsers = (path) => users.replaceChildren(...[productsDeclaring(declarations, path), unreadableOf(declarations)].filter(Boolean));
+
+    // The Model the definition typed is, read by the catalogue itself from a snapshot that holds only that file; null for a definition that
+    // cannot be written yet (a required value left out) or that stands at no path of an instance's model.
+    async function modelOfTyped(document) {
+      let typed;
+      try {
+        typed = writeDocument(modelSchema.model, document);
+      } catch {
+        return null;
+      }
+      const only = { repository: snapshot.repository, ref: snapshot.ref, commit: snapshot.commit, paths: [document.path],
+        read: async (path) => (path === document.path ? typed : null), readMany: async () => {}, blob: () => null };
+      return (await catalogue(only)).models.find((candidate) => candidate.path === document.path) ?? null;
+    }
+
+    // The diagram and the preview follow the definition typed; the newest typing wins, and a definition that cannot be read leaves the last.
+    async function follow(document) {
+      const mine = ++turn;
+      const typed = await modelOfTyped(document);
+      if (mine !== turn || !typed) return;
+      current = typed;
+      const drawn = await renderMermaid(modelDiagram(typed));
+      if (mine !== turn) return;
+      diagram.replaceChildren(drawn);
+      showPreview();
+    }
+
+    // Step 5 and 5a: every accepted requirement of the product picked once in every phase, with the count; a product without one shows the
+    // phases empty. Only for a planned model.
+    function showPreview() {
+      preview.hidden = current?.kind !== "planned";
+      if (preview.hidden || !chosen) return grid.replaceChildren();
+      if (chosen.reason !== undefined) return grid.replaceChildren(el("p", "preview-unreadable", `${chosen.address}: ${chosen.reason}`));
+      const { entries, count } = planGrid(chosen.requirements, current);
+      const none = chosen.requirements.length ? [] : [el("p", "preview-none", `${chosen.address} has no accepted requirements yet: the plan's phases stay empty.`)];
+      grid.replaceChildren(el("p", "plan-count", count), ...none, el("ul", "plan-phases", ...current.phases.map((phase) => {
+        const item = el("li", "plan-phase", el("h4", null, phase.name),
+          el("ul", null, ...entries.filter((entry) => entry.phase === phase.name).map((entry) => el("li", null, entry.requirement))));
+        item.setAttribute("data-phase", phase.name);
+        return item;
+      })));
+    }
+
+    // The product the author picks: its facts read once, for its accepted requirements.
+    async function pick(address) {
+      grid.replaceChildren(el("p", null, `Reading the accepted requirements of ${address} …`));
+      try {
+        const product = await chosenProduct({ store, fragment: `#models/product=${encodeURIComponent(address)}` });
+        // MOD-progress-measures is imported only here, on the first pick: the routes `models` and `process` load nothing of it before.
+        const { productFacts } = await import("../progress-measures/index.mjs");
+        const facts = await productFacts(product.host, snapshot, (commit) => instance.host.readSnapshot(commit), new Date(), { scope: "all" });
+        chosen = Array.isArray(facts.requirements) ? { address, requirements: facts.requirements }
+          : { address, reason: "its accepted requirements cannot be read." };
+      } catch (failure) {
+        chosen = { address, reason: String(failure?.message ?? failure) };
+      }
+      showPreview();
+    }
+
+    const form = schemaForm(modelSchema.model, opened, {
+      extraChecks: (live) => {
+        const document = placed(live);
+        showUsers(document.path);
+        follow(document);
+        return beyondSchema(document);
+      },
+      onSave: async (live) => {
+        const document = placed(live);
+        const typed = writeDocument(modelSchema.model, document);
+        const openedBlob = saved.has(document.path) ? saved.get(document.path) : snapshot.blob(document.path);
+        let result;
+        try {
+          result = await saveFile(instance.host, { path: document.path, text: typed, openedBlob, openedId: null });
+        } catch (failure) {
+          notice.replaceChildren(el("p", "save-failed", `Nothing was saved: ${failure?.message ?? failure}`));
+          return;
+        }
+        if (result.refused) {
+          // 6b: nothing is written; the version in the repository beside the author's, for the author to decide.
+          notice.replaceChildren(el("p", "save-refused", `${document.path} changed in the repository since this editor opened it, so nothing was written. `
+            + "Your definition stays in the form. Below, the version in the repository against yours: keep yours and save it once you have taken the "
+            + "newer one into it, or discard yours."), showDifference(result.current ?? "", typed));
+          return;
+        }
+        saved.set(document.path, result.blob);
+        const declaring = declarations.some((declaration) => declaration.modelFile === document.path);
+        notice.replaceChildren(el("p", "saved", `Saved as ${document.path}.`),
+          ...(declaring ? [el("p", "saved-products", "Products that declare it:"), productsDeclaring(declarations, document.path)] : []),
+          link("Process models", "back", "#models"));
+      },
+    });
+    // 2a, "Agent M adapts the form to it": a planned definition's form has no part `## Flow control`, which MOD-model-catalogue gives "for
+    // `pulled` only". The form follows the kind the definition is opened with.
+    if (opened.fields.kind === "planned") {
+      for (const part of elementsOf(form, (node) => node.getAttribute("data-section") === "## Flow control")) part.remove();
+    }
+    // Inserted in the same turn schemaForm returns it, so that its queued focus finds it in the page.
+    page.append(usersPart, el("section", "model-form", explain("model-findings"), form), notice,
+      el("section", "model-picture", el("h3", null, "Phases, verification pairs and gates"), explain("phases-and-gates"), diagram));
+    for (const address of readSetting(store, "products") ?? []) {
+      const button = el("button", "btn", address);
+      button.type = "button";
+      button.setAttribute("data-preview-product", address);
+      button.addEventListener("click", () => pick(address));
+      preview.append(button);
+    }
+    preview.append(grid);
+    page.append(preview, link("Discard", "discard", "#models"));
+    showPreview();
+  }
+}

@@ -127,8 +127,7 @@ async function tabJobAtGate(id = START.id) {
 // guards: UC-034; A JOB STOPS AT EVERY GATE; A RUNTIME IS INTERCHANGEABLE
 // given: a job of the tab's route run to a gate before the merge — its writer has run once, its record has a `Gate reached` and no End; a second job of the tab, run to its end with no gate, as the known comparison
 // input: resumeJob(record, GATE, { kind: "tab" }, host, head) with the head read, on the first job
-// expect: it resolves with nothing; the record shows the gate resumed — `gate record:` GATE — and then the End `done` with the writer's results (`commit abc1234`, `file src/x.mjs`, `pull request …/7`, `note: …`), the usage (10 input, 5 output tokens)
-//         and the cost the other job's End holds; the resumption is a commit on the head read, the End the next commit on the head after it; the writer is called no second time and no request goes to the drafter's endpoint
+// expect: it resolves with nothing; the record shows the gate resumed — `gate record:` GATE — and then the End `done` with the writer's results (`commit abc1234`, `file src/x.mjs`, `pull request …/7`, `note: …`), the usage (10 input, 5 output tokens) and the cost the other job's End holds; the resumption is a commit on the head read, the End the next commit on the head after it; the writer is called no second time and no request goes to the drafter's endpoint
 test("resumeJob — in the tab it appends the resumption, then the end the job would have had, from the result the tab kept", async () => {
   assert.equal(typeof runtimes.resumeJob, "function");
   const { fake, result } = await tabJobAtGate();
@@ -249,4 +248,115 @@ test("resumeJob — a branch that moved refuses the resumption with nothing writ
   assert.equal(fake.writes.length, commits);
   await runtimes.resumeJob(record, GATE, TAB, fake.host, fake.head());
   assert.equal((await fake.record()).end.state, "done");
+});
+
+// ---------------------------------------------------------------- a gate that is rejected (ITM-1412)
+//
+// UC-034 7a / UC-024 10a: "The gate record states the rejection and its reason. The job ends, and the item returns to *ready* with the reason attached." MOD-runtimes resumes a job "after its gate"; a gate that is
+// rejected is decided too, so resumeJob, given the record of the rejection, ends the job where it resumes it for a passed one. Readings taken, which the pull request names:
+//   - resumeJob reads the gate record it is given. A record that is `decision: rejected` ends the job: one commit on the head read appends `## End`, state `failed`, no results, whose reason names the gate the
+//     job last reached, the gate record's path and its `## Reason`, on one line; no `## Resumed` is appended, and nothing goes on — the tab drops the result it kept, a Bridge is not asked, CI starts nothing.
+//   - A record that is not rejected, or that the repository does not hold at that path (as in the tests above), resumes the job as before.
+//   - A job that is at no gate is refused with `NotWaiting` as for a resumption, and an ended one with `RecordEnded`; a tab job of which the tab keeps no result is ended all the same, since the end needs no result.
+
+const text = (...lines) => `${lines.join("\n")}\n`;
+const REASON = "The review found no test.";
+const gateRecord = (decision) => text("---", `gate: ${GATE_NAME}`, `job: ${START.id}`, "decider: bob", "role: Owner", `decision: ${decision}`, "on:", "  - 0123456789abcdef0123456789abcdef01234567",
+  "date: 2026-10-20 09:45 UTC", "---", "# Gate record", "", "**REGISTER**", "", ...(decision === "rejected" ? ["## Reason", "", REASON] : []));
+const withGateRecord = (fake, decision) => { fake.tree.set(GATE, gateRecord(decision)); return fake; };
+const reasonOf = async (fake) => (await fake.record()).end.reason;
+
+// TST-1412005 · level: unit · module: MOD-runtimes
+// guards: A JOB STOPS AT EVERY GATE; THE GATE IS RECORDED; UC-034; UC-024
+// given: a job on CI whose record shows a gate reached, and the gate record GATE in the repository with `decision: rejected` and the reason "The review found no test."
+// input: resumeJob(record, GATE, { kind: "ci", runner: "hosted" }, host, head)
+// expect: it resolves with nothing; exactly one commit, on `trunk`, on the head read, of the job's record alone, which gains an `## End` of state failed with no results whose reason names the gate "Development → Review", GATE and "The review found no test.", and gains no `## Resumed`; the earlier bytes are unchanged; the record's state is failed
+test("resumeJob — a rejected gate record ends the job failed, naming the gate record and its reason", async () => {
+  const fake = withGateRecord(repositoryAtGate({ ...START, route: "ci hosted" }), "rejected");
+  const before = fake.text(), head = fake.head();
+  const outcome = await runtimes.resumeJob(await fake.record(), GATE, CI, fake.host, head);
+  assert.equal(outcome, undefined);
+  assert.equal(fake.writes.length, 1);
+  assert.deepEqual([fake.writes[0].branch, fake.writes[0].expectedHead, fake.writes[0].files.map((file) => file.path)], ["trunk", head, [RECORD_PATH]]);
+  assert.ok(fake.text().startsWith(before), "the bytes before stay as they are");
+  assert.doesNotMatch(fake.text(), /## Resumed/);
+  const record = await fake.record();
+  assert.deepEqual([record.end.state, record.end.results], ["failed", []]);
+  assert.equal(record.end.reason.includes("\n"), false, "the reason is on one line");
+  for (const named of [GATE_NAME, GATE, REASON]) assert.ok(record.end.reason.includes(named), `the reason names ${named}: ${record.end.reason}`);
+});
+
+// TST-1412006 · level: unit · module: MOD-runtimes
+// guards: A JOB STOPS AT EVERY GATE; A JOB IS RECORDED IN ITS PRODUCT REPOSITORY; UC-034
+// given: the job of TST-790001 run in the tab to a gate before the merge (its writer has run once), and the gate record GATE in the repository with `decision: rejected`
+// input: resumeJob(record, GATE, { kind: "tab" }, host, head); then resumeJob of the same record again with a gate record that is not rejected
+// expect: one commit of the End `failed` with the reason of TST-1412005 and nothing else — no `## Resumed`, no result of the writer, no second call of the writer and no request to the drafter's endpoint; the second call is refused `NotHeld`, since the tab no longer keeps the job's result
+test("resumeJob — in the tab a rejected gate ends the job and the tab drops the result it kept", async () => {
+  const { fake } = await tabJobAtGate("JOB-20261020-0933-dddd");
+  const id = "JOB-20261020-0933-dddd", path = `docs/jobs/${id}.md`;
+  fake.tree.set(GATE, gateRecord("rejected"));
+  const calls = requests.length, commits = fake.writes.length;
+  await runtimes.resumeJob(await fake.record(), GATE, TAB, fake.host, fake.head());
+  assert.equal(fake.writes.length - commits, 1);
+  assert.deepEqual(fake.writes[commits].files.map((file) => file.path), [path]);
+  const record = await fake.record();
+  assert.deepEqual([record.end.state, record.end.results], ["failed", []]);
+  for (const named of [GATE_NAME, GATE, REASON]) assert.ok(record.end.reason.includes(named), `the reason names ${named}: ${record.end.reason}`);
+  assert.doesNotMatch(fake.tree.get(path), /## Resumed/);
+  assert.deepEqual([writerCalls.length, requests.length], [1, calls], "nothing is drafted or written again");
+  fake.tree.set(GATE, gateRecord("passed"));
+  await assert.rejects(runtimes.resumeJob(record, GATE, TAB, fake.host, fake.head()), (error) => error.name === "NotHeld" && error.job === id);
+});
+
+// TST-1412007 · level: unit · module: MOD-runtimes
+// guards: A JOB STOPS AT EVERY GATE; A REMOTE INTERFACE NAMES HOW IT FAILS; UC-034
+// given: a job on a Bridge route at a gate, and the gate record GATE with `decision: rejected`, the Bridge `lab-pc` behind fetch; a job of the tab at a gate of which the tab keeps no result (the known positive of TST-790002: with a gate record not rejected it is refused `NotHeld`)
+// input: resumeJob of the Bridge's job with the Bridge's handle; resumeJob of the tab's job
+// expect: the Bridge's job: one commit of the End `failed`, no request to the Bridge; the tab's job: one commit of the End `failed` with the same reason, and no `NotHeld`
+test("resumeJob — a rejected gate hands nothing over to a Bridge and ends a tab job whose result is not kept", async () => {
+  bridgeAnswers();
+  bridgeFake = withGateRecord(repositoryAtGate({ ...START, route: "bridge lab-pc" }), "rejected");
+  await runtimes.resumeJob(await bridgeFake.record(), GATE, BRIDGE_ROUTE, bridgeFake.host, bridgeFake.head(), bridgeAt({ name: "lab-pc", address: BRIDGE_ADDRESS, token: "token-lab-pc" }));
+  assert.deepEqual([bridgeFake.writes.length, handOvers.length], [1, 0]);
+  assert.equal((await bridgeFake.record()).end.state, "failed");
+  const lost = repositoryAtGate({ ...START, id: "JOB-20261020-0934-eeee" });
+  lost.tree.set(GATE, gateRecord("passed"));
+  await assert.rejects(runtimes.resumeJob(await lost.record(), GATE, TAB, lost.host, lost.head()), (error) => error.name === "NotHeld");
+  assert.equal(lost.writes.length, 0);
+  lost.tree.set(GATE, gateRecord("rejected"));
+  await runtimes.resumeJob(await lost.record(), GATE, TAB, lost.host, lost.head());
+  assert.equal(lost.writes.length, 1);
+  assert.ok((await lost.record()).end.reason.includes(REASON));
+});
+
+// TST-1412008 · level: unit · module: MOD-runtimes
+// guards: A JOB STOPS AT EVERY GATE; UC-034
+// given: a job on CI at a gate and another on a Bridge at a gate, the gate record GATE in the repository with `decision: passed` (the counter-proof: a passed record resumes)
+// input: resumeJob of each
+// expect: CI: one commit that gains `## Resumed` with `gate record:` GATE and no End; the Bridge: the same commit, then one request, POST /v1/jobs — the job handed over again
+test("resumeJob — a passed gate record still resumes the job and ends nothing", async () => {
+  const fake = withGateRecord(repositoryAtGate({ ...START, route: "ci hosted" }), "passed");
+  await runtimes.resumeJob(await fake.record(), GATE, CI, fake.host, fake.head());
+  assert.equal(fake.writes.length, 1);
+  assert.deepEqual([(await fake.record()).gates.map((gate) => gate.resumedBy), (await fake.record()).end], [[GATE], null]);
+  bridgeAnswers();
+  bridgeFake = withGateRecord(repositoryAtGate({ ...START, route: "bridge lab-pc" }), "passed");
+  await runtimes.resumeJob(await bridgeFake.record(), GATE, BRIDGE_ROUTE, bridgeFake.host, bridgeFake.head(), bridgeAt({ name: "lab-pc", address: BRIDGE_ADDRESS, token: "token-lab-pc" }));
+  assert.deepEqual([bridgeFake.writes.length, handOvers.map((each) => [each.method, each.path])], [1, [["POST", "/v1/jobs"]]]);
+  assert.equal((await bridgeFake.record()).end, null);
+});
+
+// TST-1412009 · level: unit · module: MOD-runtimes
+// guards: A JOB STOPS AT EVERY GATE
+// given: a job on CI at no gate, and one that has its End already, each with the gate record GATE `decision: rejected` in the repository (known positive: the job at a gate is ended by it, TST-1412005)
+// input: resumeJob of each
+// expect: the first is refused `NotWaiting`, the second `RecordEnded`; nothing is committed
+test("resumeJob — a rejected gate record ends no job that waits at no gate, nor one that has ended", async () => {
+  const noGate = withGateRecord(fakeRepository({ [RECORD_PATH]: startRecord({ ...START, route: "ci hosted" }).text }), "rejected");
+  await assert.rejects(runtimes.resumeJob(await noGate.record(), GATE, CI, noGate.host, noGate.head()), (error) => error.name === "NotWaiting");
+  assert.equal(noGate.writes.length, 0);
+  const ended = withGateRecord(repositoryAtGate({ ...START, route: "ci hosted" }), "rejected");
+  await runtimes.resumeJob(await ended.record(), GATE, CI, ended.host, ended.head());
+  await assert.rejects(runtimes.resumeJob(await ended.record(), GATE, CI, ended.host, ended.head()), (error) => error.name === "RecordEnded");
+  assert.equal(ended.writes.length, 1);
 });

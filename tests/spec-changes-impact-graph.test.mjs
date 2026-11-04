@@ -63,6 +63,8 @@ function snapshotOf(tree, { notStoredFirst = false, commit = (++commits).toStrin
       return Object.hasOwn(tree, path) ? tree[path] : null;
     },
     async readOn(branch, path, options) {
+      // The references stored beside the graph (MOD-trace-graph's storedReferences): this fake stores none, so the graph is read; their read is not counted here.
+      if (path.endsWith(".references.json.gz")) return null;
       readOns.push([branch, path]);
       return notStoredFirst && readOns.length === 1 ? null : stored(branch, path, options);
     },
@@ -74,8 +76,7 @@ const graphFile = (snapshot) => ["trace-cache", `${snapshot.commit}.json.gz`];
 // guards: OPEN PROPOSALS ARE SHOWN IN THE BROWSER; A REQUIREMENT IS NOT CHANGED WITHOUT AN IMPACT LIST
 // given: a snapshot that keeps no blob, with three open entries that each change one requirement, all named by the use case UC-001, and the graph of its commit stored on trace-cache
 // input: entryView for entries 01, 02 and 03 of the queue, one after the other, and then all three at once on a second snapshot of the same files
-// expect: each impact names its requirement as changed, referenced by UC-001; the stored graph is read once for the three entries — one readOn of ("trace-cache", "<commit>.json.gz") —, whether they are asked
-//         one after the other or all at once; the use case file is never read: no graph is built
+// expect: each impact names its requirement as changed, referenced by UC-001; the stored graph is read once for the three entries — one readOn of ("trace-cache", "<commit>.json.gz") —, whether they are asked one after the other or all at once; the use case file is never read: no graph is built
 test("TST-674001 the open entries of one snapshot read one stored graph, and build none", async () => {
   const snapshot = snapshotOf(files());
   for (const n of [1, 2, 3]) {
@@ -93,8 +94,7 @@ test("TST-674001 the open entries of one snapshot read one stored graph, and bui
 // guards: OPEN PROPOSALS ARE SHOWN IN THE BROWSER
 // given: two snapshot objects of the same files at two commits, and a third snapshot object of the first one's commit, each keeping no blob
 // input: entryView of entry 01 on each
-// expect: the snapshots of the two commits each read their commit's stored graph once (the counter-proof of TST-674001: a graph kept for every commit to come would read the second commit's never); the third
-//         snapshot object reads none: the graph of a commit is read once for the page, whichever snapshot object asks
+// expect: the snapshots of the two commits each read their commit's stored graph once (the counter-proof of TST-674001: a graph kept for every commit to come would read the second commit's never); the third snapshot object reads none: the graph of a commit is read once for the page, whichever snapshot object asks
 test("TST-674002 another commit reads its own stored graph, another snapshot of the same commit none", async () => {
   const first = snapshotOf(files()), second = snapshotOf(files()), again = snapshotOf(files(), { commit: first.commit });
   await entryView(QUEUE, 1, first);

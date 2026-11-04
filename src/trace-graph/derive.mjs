@@ -3,7 +3,7 @@
 // it, requirementImpact, which lists every place an artifact names a requirement, read through the edges that point at it, and
 // coverageGaps, which lists the requirements and use cases that lack a counterpart and the names that match nothing.
 // architectureImpact derives the architecture-change list from the graph's facts and the caller's before/after texts, moduleOrder the
-// order of the modules by the interfaces they use, and moduleRows the module rows with their gaps.
+// order of the modules by the interfaces they use, moduleRows the module rows with their gaps, and compareGraphs what differs between two versions' graphs.
 //
 // Module: MOD-trace-graph
 
@@ -247,7 +247,7 @@ export function moduleRows(graph) {
     return {
       module: module.id,
       subsystem: edgesVia("follows", module.id).map((edge) => edge.to).find((to) => graph.nodes.get(to)?.kind === "ARC") ?? null,
-      realises: unique(edgesVia("realises", module.id).map((edge) => edge.to)),
+      realises: unique(edgesVia("guards").filter((edge) => tests.includes(edge.from) && graph.nodes.get(edge.to)?.kind === "requirement").map((edge) => edge.to)),
       describedBy: module.path,
       code,
       tests,
@@ -266,7 +266,7 @@ export function moduleRows(graph) {
     else if (!designed.has(`${row.subsystem} ${row.module}`)) {
       gap(GAPS.notNamed, row.module, module.path, `${row.module} follows ${row.subsystem}, which does not name it among the modules it designs`);
     }
-    if (!row.realises.some((name) => graph.nodes.get(name)?.kind === "requirement")) gap(GAPS.realisesNothing, row.module, module.path, `${row.module} realises no requirement`);
+    if (row.realises.length === 0) gap(GAPS.realisesNothing, row.module, module.path, `${row.module} realises no requirement`);
     if (row.tests.length === 0) gap(GAPS.noTest, row.module, module.path, `no test exercises ${row.module}`);
     if (row.code.length === 0) gap(GAPS.noCode, row.module, module.path, `${row.module} has no code file in its folder`);
     const outer = module.folder && modules.find((other) => other !== module && other.folder && where(module.folder).startsWith(`${where(other.folder)}/`));
@@ -293,4 +293,30 @@ export function moduleRows(graph) {
   }
   gaps.sort((a, b) => byText(a.kind, b.kind) || byText(a.artifact, b.artifact) || byText(a.what, b.what));
   return { rows, gaps };
+}
+
+// compareGraphs(earlier: Graph, later: Graph) -> Comparison — the requirements added, changed and removed between two versions, and the coverage gained
+// and lost (UC-020). A requirement is added where only `later` holds it, removed where only `earlier` does, and changed where both hold it and what its
+// node keeps differs but for its line, which moves whenever a requirement above it is added or removed: the graph keeps of a requirement no text, only
+// the items of its source. A requirement is covered, as coverageGaps counts it, by a use case's or a module's `realises` and a test's `guards`: the
+// coverage is one { name, by } for each requirement and each artifact that covers it, gained where only `later` has it and lost where only `earlier` has.
+// The requirements come by name, the coverage by name and then by the artifact.
+const COVERING = { realises: new Set(["UC", "MOD"]), guards: new Set(["TST"]) };
+export function compareGraphs(earlier, later) {
+  const requirementsOf = (graph) => new Map([...graph.nodes.values()].filter((node) => node.kind === "requirement").map((node) => [node.id, node]));
+  const kept = ({ line, ...facts }) => JSON.stringify(facts);
+  const before = requirementsOf(earlier), after = requirementsOf(later);
+  const coverageOf = (graph, names) => new Map(graph.edges
+    .filter((edge) => COVERING[edge.via]?.has(graph.nodes.get(edge.from)?.kind) && names.has(edge.to))
+    .map((edge) => [`${edge.to}\0${edge.from}`, { name: edge.to, by: edge.from }]));
+  const was = coverageOf(earlier, before), now = coverageOf(later, after);
+  const only = (these, those) => [...these].filter(([key]) => !those.has(key)).sort(([a], [b]) => byText(a, b)).map(([, entry]) => entry);
+  return {
+    requirements: {
+      added: unique([...after.keys()].filter((name) => !before.has(name))),
+      changed: unique([...after.keys()].filter((name) => before.has(name) && kept(before.get(name)) !== kept(after.get(name)))),
+      removed: unique([...before.keys()].filter((name) => !after.has(name))),
+    },
+    coverage: { gained: only(now, was), lost: only(was, now) },
+  };
 }

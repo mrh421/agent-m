@@ -104,6 +104,8 @@ function hostOf(files, pullRequests, commits) {
     async repositoryInfo() { return { defaultBranch: "main", visibility: "public", canWrite: true, archived: false, description: "" }; },
     async readSnapshot() { return snapshot(); },
     async listPullRequests() { return pullRequests; },
+    // The file at each commit, as the tree holds it (MOD-repository-hosts' readFileAt), for the declared model the board reads first (ITM-1260).
+    async readFileAt(path, at) { return new Map(at.map((commit) => [commit, tree.has(path) ? tree.get(path) : null])); },
     async commitFiles(change) {
       commits.push(structuredClone(change));
       head += 1;

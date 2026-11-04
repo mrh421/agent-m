@@ -186,7 +186,7 @@ For the conversation cases, the keys are those of tests/test_conversation_not_re
 
 ```json
 {
-  "given": "With recording off, the person sends two messages, and the participant proposes handing its task over, which goes on without a further click.",
+  "given": "With recording off, the person sends one message to tooler and a second to handy (an endpoint of this browser, called through the Bridge lab-pc, that names the CI secret KEY_A), and handy proposes handing its task over, which goes on without a further click.",
   "input": {
     "recording": false,
     "page": "product",
@@ -212,7 +212,7 @@ For the conversation cases, the keys are those of tests/test_conversation_not_re
       },
       {
         "send": "NEEDLE-THREE run the tests of the notes",
-        "to": "tooler"
+        "to": "handy"
       },
       {
         "handOver": true

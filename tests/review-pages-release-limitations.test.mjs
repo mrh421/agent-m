@@ -17,6 +17,7 @@
 // Each test states its input and its expected result before it runs (given / input / expect). The counter-proofs are recorded in the pull request.
 
 import "./review-pages-harness.mjs";
+import { until } from "./review-pages-wait.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -116,13 +117,6 @@ function find(root, match) {
 }
 const byClass = (root, name, className) => find(root, (node) => node.localName === name && node.className.split(" ").includes(className));
 const click = (node) => node.dispatchEvent(new Event("click"));
-async function until(condition, what) {
-  for (let turn = 0; turn < 400; turn++) {
-    if (condition()) return;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  assert.fail(`waited for ${what}`);
-}
 const reasonFields = (root) => byClass(root, "input", "reason");
 const fieldOf = (root, id) => {
   const field = reasonFields(root).find((each) => each.getAttribute("data-id") === id);
@@ -167,7 +161,7 @@ test("MOD-review-pages release-report/release-v<version> — Accept hands both r
   fieldOf(page, FAIL).value = WHY_FAIL;
   fieldOf(page, RATE).value = WHY_RATE;
   click(byClass(page, "button", "accept")[0]);
-  await until(() => fake.calls.some((call) => call.fn === "createTag"), "the tag");
+  await until(page, () => fake.calls.some((call) => call.fn === "createTag"), "the tag");
 
   assert.equal(fake.writes().length, 1, "one commit");
   const approval = approvalOf(fake);
@@ -189,7 +183,7 @@ test("MOD-review-pages release-report/release-v<version> — with one reason emp
   const page = await show(fake, { id: "release-v2026.4.0" });
   fieldOf(page, FAIL).value = WHY_FAIL;
   click(byClass(page, "button", "accept")[0]);
-  await until(() => /needs its reason/.test(page.textContent), "the refusal on the page");
+  await until(page, () => /needs its reason/.test(page.textContent), "the refusal on the page");
 
   assert.equal(fake.calls.length, 0, "no commit and no tag");
   const said = byClass(page, "p", "result").map((paragraph) => paragraph.textContent).join(" ");
@@ -209,7 +203,7 @@ test("MOD-review-pages release-report/release-v<version> — a green report has 
   assert.match(byClass(page, "section", "changelog-entry")[0]?.textContent ?? "", /Ten of ten model runs pass\./);
   assert.equal(reasonFields(page).length, 0, "no reason field");
   click(byClass(page, "button", "accept")[0]);
-  await until(() => fake.calls.some((call) => call.fn === "createTag"), "the tag");
+  await until(page, () => fake.calls.some((call) => call.fn === "createTag"), "the tag");
 
   assert.equal(fake.writes().length, 1, "one commit");
   assert.ok(!/^limitation: \S/m.test(approvalOf(fake).text), "no limitation line that names a test");
@@ -234,7 +228,7 @@ test("MOD-review-pages release-report/all — Accept all N shown hands each repo
   fieldOf(shown, FAIL).value = WHY_FAIL;
   fieldOf(shown, RATE).value = WHY_RATE;
   click(byClass(page, "button", "accept-all")[0]);
-  await until(() => fake.calls.some((call) => call.fn === "createTag"), "the tag");
+  await until(page, () => fake.calls.some((call) => call.fn === "createTag"), "the tag");
 
   assert.deepEqual(approvalOf(fake).text.split("\n").filter((line) => line.startsWith("limitation:")).sort(),
     [`limitation: ${FAIL} — ${WHY_FAIL}`, `limitation: ${RATE} — ${WHY_RATE}`], "one limitation line for each, with its reason");

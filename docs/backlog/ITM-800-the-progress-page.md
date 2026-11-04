@@ -11,7 +11,6 @@ realises:
 modules:
   - MOD-implementation-pages
 builds_on:
-  - ITM-794
   - ITM-795
   - ITM-796
   - ITM-797
@@ -35,8 +34,19 @@ item builds it as the module's file states it, from `productFacts` read once: th
 `whoWorksOnWhat`, linking each job; a cell, card or point leading to the trace page of what is behind it. Each chart and
 panel carries a folded *What is this?*. Nothing is written.
 
+ITM-1252, open, builds the route `progress` for a model with sprints; this item's V-model and Kanban measures stay
+with it.
+
 ## Acceptance
 
 - A V-model, a Scrum and a Kanban fixture product each show their declared measure; a product without a token that
   reaches it shows nothing and says so.
 - The first commit holds only the tests, and CI is red on it. No stub is committed.
+- **No existing expected result changes; searched at sprint team1/133's planning.** No test asserts the panel that
+  says a model's measure "is not drawn here yet" (`src/implementation-pages/progress.mjs:239-245`): `drawn here yet` and
+  `data-part="measure"` match nothing under `tests/`, while the same search finds `is not drawn` in
+  `tests/review-pages-use-cases.test.mjs:227`. The sprint panels of TST-1252201 to 1252205 and
+  `tests/dashboard-backlog-teams.test.mjs` stay.
+- The reading taken: a model for which `progressIn` gives neither a grid, sprints nor a flow keeps the link to the
+  backlog.
+- It starts once ITM-1171 is merged into the sprint's branch, since both change MOD-implementation-pages.

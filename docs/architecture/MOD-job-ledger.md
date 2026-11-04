@@ -177,7 +177,8 @@ by: tab <identifier>
   ended, with the live state: a runtime that is reachable and does not know the job makes it `ended without record`; an
   unreachable one leaves it as its record says, and the list shows the source as not reachable.
 - `listJobs(products: { address: string, snapshot: Snapshot }[], live: Map<string, LiveState>) -> JobRow[]` — every job of
-  every product given, newest first, waiting at a gate first among those that have not ended. A record that cannot be read
+  every product given, newest first, waiting at a gate first among those that have not ended. The records of each
+  snapshot are named to its `readMany` first, so that they are read in batches. A record that cannot be read
   is listed with what could be read and the reason.
 - `recordsNewestFirst(snapshot: Snapshot) -> AsyncIterable<JobRecord>` — the job records of a snapshot, newest first by
   the start their paths name, each read only when its caller asks for the next one, so that a caller that looks for a

@@ -67,7 +67,8 @@ function product({ headStored }) {
       async read(path) { calls.push(`read ${name(commit)} ${path}`); return files[path] ?? null; },
       async readMany(paths) { calls.push(`readMany ${name(commit)} ${[...paths].join(", ")}`); },
       async readOn(branch, path, options) {
-        const file = path === fileOf(head) ? "<head>.json.gz" : path === fileOf(earlier) ? "<earlier>.json.gz" : path;
+        const file = path === fileOf(head) ? "<head>.json.gz" : path === fileOf(earlier) ? "<earlier>.json.gz"
+          : path === `${head}.gaps.json` ? "<head>.gaps.json" : path === `${earlier}.gaps.json` ? "<earlier>.gaps.json" : path;
         calls.push(`readOn ${branch} ${file}`);
         if (branch !== "trace-cache") return null;
         if (path === "latest.json") return `${JSON.stringify({ commit: earlier })}\n`;
@@ -128,7 +129,7 @@ test("where the head's graph is stored, the specification shows the head and sen
   assert.equal(byClass(target, "version-earlier").length, 0);
   assert.equal(byClass(target, "requirement-edit").length, 3);
   assert.deepEqual(counted(given.calls), counted([
-    "listTags", "repositoryInfo", "readSnapshot main", "readOn trace-cache <head>.json.gz", "read head SPEC.md", "read head docs/groups/requirements.md",
+    "listTags", "repositoryInfo", "readSnapshot main", "readOn trace-cache <head>.gaps.json", "readOn trace-cache <head>.json.gz", "read head SPEC.md", "read head docs/groups/requirements.md",
   ]));
 });
 
@@ -149,14 +150,14 @@ test("while the head's graph is not stored, the specification shows the earlier 
   assert.equal(byClass(target, "version-as-of").length, 0);
   for (const name of ["requirement-edit", "requirement-new", "arrange-link", "spec-change-links"]) assert.equal(byClass(target, name).length, 0, name);
   assert.deepEqual(counted(given.calls), counted([
-    "listTags", "repositoryInfo", "readSnapshot main", "readOn trace-cache <head>.json.gz", "read head SPEC.md", "read head docs/groups/requirements.md",
-    "readOn trace-cache latest.json", "readOn trace-cache <earlier>.json.gz",
+    "listTags", "repositoryInfo", "readSnapshot main", "readOn trace-cache <head>.gaps.json", "readOn trace-cache <head>.json.gz", "read head SPEC.md", "read head docs/groups/requirements.md",
+    "readOn trace-cache latest.json", "readOn trace-cache <earlier>.gaps.json", "readOn trace-cache <earlier>.json.gz",
     "readSnapshot earlier", "read earlier SPEC.md", "read earlier docs/groups/requirements.md",
   ]));
   byClass(target, "requirement-name").find((node) => node.textContent === "RULE ONE").dispatchEvent(new Event("click"));
   await until(() => byClass(target, "requirement-trace").length > 0);
   assert.match(byClass(target, "requirement-traces")[0].textContent, /UC-001 Read a book/);
-  assert.deepEqual(given.calls.slice(11), ["readMany earlier docs/sources.md", "read earlier docs/sources.md"],
+  assert.deepEqual(given.calls.slice(13), ["readMany earlier docs/sources.md", "read earlier docs/sources.md"],
     "opening reads the earlier commit's links to sources, as an opening reads them at any version, and no graph: the earlier one is held");
 });
 

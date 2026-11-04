@@ -273,11 +273,11 @@ const SPEC_LISTED = [IN_SPEC("A PREAMBLE RULE", null), IN_SPEC("A SAMPLE RULE", 
   IN_SPEC("A NAME WITHOUT A RULE", "## 2. Writing"), IN_SPEC("A DECIDED RULE", "## 3. Deciding"), IN_SPEC("AN AGING RULE", "## 4. Aging")];
 const OF_ENTRY = (state, from, ...listed) => listed.map(([name, section]) => ({ name, section, state, from }));
 const ENTRIES_LISTED = [
-  ...OF_ENTRY("open", WRITING_SECOND, ["A WRITE RULE", "## 2. Writing"], ["A SECOND QUEUE RULE", "## 2. Writing"]),
   ...OF_ENTRY("open", E1.proposal, ["A SAMPLE RULE", "## 1. Reading"], ["ANOTHER SAMPLE RULE", "## 1. Reading"], ["AN ADDED RULE", "## 1a. Added"]),
   ...OF_ENTRY("approved", WRITING_PROPOSED, ["A WRITE RULE", "## 2. Writing"]),
   ...OF_ENTRY("stale", AGING_PROPOSED, ["AN AGING RULE", "## 4. Aging"]),
   ...OF_ENTRY("waiting for its anchor", ADDED_AGAIN, ["AN ADDED RULE", "## 1a. Added"]),
+  ...OF_ENTRY("open", WRITING_SECOND, ["A WRITE RULE", "## 2. Writing"], ["A SECOND QUEUE RULE", "## 2. Writing"]),
 ];
 
 const blocksOf = (part) => part.text.split(/\n{2,}/).filter((block) => block.trim() !== "");
@@ -316,7 +316,7 @@ test("spec-with-queues — every requirement of the SPEC, with its section and i
 // guards: DERIVATION SEES THE EXISTING REQUIREMENTS; UC-005; UC-019
 // given: the product above with its two queues: the older one's entry 01 open, whose proposal changes two requirements of section 1 and adds the section 1a, 02 approved, 03 in SPEC, 04 stale and 05 waiting for its anchor; the newer one's entry 01 open
 // input: the recipe spec-with-queues, with the job's context
-// expect: one part whose text lists the SPEC's nine requirements and then the eight of the entries that are not in SPEC — the newer queue's two, then the older queue's, in the order of its index: three of 01, one each of 02, 04 and 05 —, each as its proposal states it, with the state of its entry and the heading of the section it stands in there: AN ADDED RULE under 1a, though its entry starts at section 1; a requirement that an entry changes is listed as the SPEC states it and as the entry proposes it
+// expect: one part whose text lists the SPEC's nine requirements and then the eight of the entries that are not in SPEC — in the order of the queues' folders' names, the older queue's in the order of its index: three of 01, one each of 02, 04 and 05, then the newer queue's two —, each as its proposal states it, with the state of its entry and the heading of the section it stands in there: AN ADDED RULE under 1a, though its entry starts at section 1; a requirement that an entry changes is listed as the SPEC states it and as the entry proposes it
 test("spec-with-queues — every requirement of every open entry, with the state of its entry, after the SPEC's own", async () => {
   const parts = await run("spec-with-queues", WITH_QUEUES);
 

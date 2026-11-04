@@ -90,8 +90,14 @@ the mails also pass the jump host, where they can be read; Agent M says so befor
 4. **IMAP route — servers and password.**
    1. The author enters the IMAP and the SMTP server with their ports. Agent M presets the usual
       encryption for each port — `993` implicit TLS for IMAP, `587` STARTTLS or `465` implicit TLS
-      for SMTP — and the account name as the address; the author corrects what differs. A folded
-      explanation says where a mail provider usually lists these settings.
+      for SMTP — and the account name as the address; the author corrects what differs. Where the SMTP
+      server takes another account name than the IMAP server — as an Exchange shared mailbox does, read under
+      the author's account and the mailbox's alias and sent through the author's own account —, the author
+      enters it for the SMTP server; left empty, the SMTP server takes the IMAP server's. Where the server
+      lets the account send only from another address, the author enters that sender's address and,
+      optionally, its display name, and a mail sent from it names the mailbox's address as its reply
+      address; left empty, mail is sent from the account name. A folded explanation says where a mail
+      provider usually lists these settings.
    2. **Gmail.** Gmail refuses the account password over IMAP; it accepts an **app password**, which
       needs 2-Step Verification. A folded explanation links Google's page for creating one and says that
       work or school accounts may not offer it, in which case the organisation's administrator decides.

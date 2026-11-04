@@ -28,8 +28,9 @@ origin:
 ## Outcome
 
 The final switch. `docs/index.html` loads `start.mjs` with the views of the modules, and the live app moved in by
-ITM-574 goes, with `built.json`, `src/site/`, `src/theme/lme.css`, `src/brand/` and what of `docs/assets/style.css` no
-route needs. `stepHtml` goes with the app (queue `2026-10-17b`). The live addresses
+ITM-574 goes, with `docs/assets/dashboard/built.json`, `src/site/`, `src/theme/lme.css` and `src/brand/`
+(`docs/assets/style.css` is gone since `c358b76ca`). `stepHtml` (`src/site-frame/dashboard-app.mjs:115`) goes with the
+app (queue `2026-10-17b`). Today `docs/index.html:365` still loads `src/site-frame/dashboard-app.mjs`. The live addresses
 of the old app lead, through the frame's routing, to the routes that took them over.
 
 It waits for akmaier's acceptance of the module-file draft committed with the plan, which names these files as taken over in the module's Parts.
@@ -41,6 +42,9 @@ It waits for akmaier's acceptance of the module-file draft committed with the pl
 - A test of only a removed file goes with it, and the requirement it guarded is kept by a test of the module, named in the pull request.
 - The first commit holds only the tests, and CI is red on it. No stub is committed.
 
-**Found at ITM-574's gate (2026-10-17, po-opus).** `src/site-frame/dashboard-app.mjs:12` still reads
-`// Module: MOD-dashboard-app`, a module with no file. `tests/review-core.d/dashboard-app.test.mjs:113` and `:146` select
-files by that line. This item removes the line and re-points that selection.
+**Found at ITM-574's gate (2026-10-17, po-opus).** `src/site-frame/dashboard-app.mjs:11` and `docs/index.html:2` still
+read `Module: MOD-dashboard-app`, a module with no file. This item removes the line. No test selects files by it any more
+(`tests/review-core.d/dashboard-app.test.mjs` is headed `Module: MOD-site-frame`).
+
+**Noted at sprint team1/138's probe:** it cannot be built as the accepted texts say; the reasons are in
+`docs/backlog/sprints/team1/138.md` (`## ITM-700 leaves the selection`). Waits for akmaier.

@@ -7,6 +7,8 @@ no header row — MOD-documents' own illustration of a table without a header ro
 
 What the language cannot say is written where it applies:
 
+- The title line is `# Decisions — queue <package> <heading>` (MOD-spec-changes, Data), `<heading>` the section's
+  heading without its number, followed by the line `Append-only.`.
 - A row's third cell is `uebernommen`: a decision row is written only once an entry is accepted, so there is no other
   decision yet.
 - A row's fourth cell, `Reference`, names the approval record that was accepted: `approval:<file name, under

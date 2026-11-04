@@ -18,6 +18,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { until as settles } from "./review-pages-wait.mjs";
 
 const { openStore, writeSetting } = await import("../src/browser-store/index.mjs");
 const { registerStrategies } = await import("../src/job-runner/index.mjs");
@@ -187,7 +188,7 @@ async function panelFor(target, participant = "drafter-a") {
 
 // ---------------------------------------------------------------- assertions
 
-// TST-361001 - level: unit - module: MOD-review-pages
+// TST-361001 · level: unit · module: MOD-review-pages
 // guards: UC-005; THE PAGE NAMES WHERE IT SENDS; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; EVERY STEP EXPLAINS ITSELF
 // given: a product that links SRC-policy version 2026-10-01, whose version has main.md and appendix.md
 // input: the SPEC change list, then #spec-entry/id=draft
@@ -201,7 +202,7 @@ test("spec-entry/draft - linked source, part, files and participant are shown be
   endpointAnswers();
   const fake = fakeProduct();
   const list = await show(fake, {});
-  assert.equal(find(list, (node) => node.localName === "a" && node.getAttribute("href") === "#spec-entry/id=draft").length, 1);
+  assert.equal(find(list, (node) => node.localName === "a" && node.getAttribute("href") === `#spec-entry/id=draft/product=${encodeURIComponent(ON_GITHUB.web)}`).length, 1);
 
   const target = await show(fake);
   assert.deepEqual(byClass(target, "li", "source").map((item) => item.getAttribute("data-source")), [SOURCE]);
@@ -213,8 +214,8 @@ test("spec-entry/draft - linked source, part, files and participant are shown be
   assert.equal(requests.length, 0);
 });
 
-// TST-361002 - level: unit - module: MOD-review-pages
-// guards: UC-005 (steps 1 to 3, alternative flow 2a); THE PAGE NAMES WHERE IT SENDS; NO REQUIREMENT IS LEFT OUT OF THE CONTEXT SILENTLY; ONE CLICK PER DECISION
+// TST-361002 · level: unit · module: MOD-review-pages
+// guards: UC-005; THE PAGE NAMES WHERE IT SENDS; NO REQUIREMENT IS LEFT OUT OF THE CONTEXT SILENTLY; ONE CLICK PER DECISION
 // given: a two-file linked source, the person leaves main.md checked and clears appendix.md
 // input: Show the run panel, once with drafter-a and once with small-d
 // expect: the panel names derive-requirements' destination and the selected file, the existing requirements count, and chapter 8; small-d is named as unable to hold the context and Run is not offered; nothing is sent
@@ -246,8 +247,8 @@ test("spec-entry/draft - the run panel sends fewer source files and refuses a pa
   assert.equal(requests.length, 0);
 });
 
-// TST-361003 - level: unit - module: MOD-review-pages
-// guards: UC-005 (steps 5 to 8, alternative flows 5a, 7a); A CONFLICT IS DECIDED BY A PERSON; THE MODEL'S CLASSIFICATION IS MEASURED, NOT TRUSTED; A GENERATED ARTIFACT IS A PROPOSAL; THE ROUNDS ARE COUNTED AND SHOWN
+// TST-361003 · level: unit · module: MOD-review-pages
+// guards: UC-005; A CONFLICT IS DECIDED BY A PERSON; THE MODEL'S CLASSIFICATION IS MEASURED, NOT TRUSTED; A GENERATED ARTIFACT IS A PROPOSAL; THE ROUNDS ARE COUNTED AND SHOWN
 // given: the endpoint returns new, change, duplicate, conflict and unlinked-source candidates
 // input: Run; move the new candidate to duplicate of A BOOK IS SHELVED; decide the conflict as a change of A BOOK IS SHELVED (A LOAN HAS A DUE DATE is changed by THE DUE DATE IS SHOWN already: a second change of it is refused); Write proposals
 // expect: candidates are grouped by class and editable; the unlinked source is listed apart; the written queue contains the moved duplicate and decided conflict, and no entry for the unlinked candidate
@@ -290,8 +291,8 @@ test("spec-entry/draft - candidates are reviewed, classes changed, conflicts dec
   assert.doesNotMatch(written, /AN EXTERNAL RULE IS NAMED/);
 });
 
-// TST-361004 - level: unit - module: MOD-review-pages
-// guards: UC-005 (step 8); A CONFLICT IS DECIDED BY A PERSON
+// TST-361004 · level: unit · module: MOD-review-pages
+// guards: UC-005; A CONFLICT IS DECIDED BY A PERSON
 // given: the endpoint returns a conflict and the person does not change its class
 // input: Run, then Write proposals
 // expect: the undecided conflict stays out of the written queue
@@ -315,8 +316,8 @@ test("spec-entry/draft - an undecided conflict is not written", async () => {
   assert.doesNotMatch(written, /THE DUE DATE MAY BE HIDDEN/);
 });
 
-// TST-361005 - level: unit - module: MOD-review-pages
-// guards: UC-005 (alternative flow 1a); ONE CLICK PER DECISION
+// TST-361005 · level: unit · module: MOD-review-pages
+// guards: UC-005; ONE CLICK PER DECISION
 // given: the source register records a wrong SHA-256 for main.md
 // input: Show the run panel
 // expect: the hash mismatch is named; no Run exists and nothing is sent
@@ -334,4 +335,47 @@ test("spec-entry/draft - a changed source file hash sends nothing", async () => 
   assert.match(byClass(target, "p", "problem")[0].textContent, /SHA-256/);
   assert.equal(runButtons(target).length, 0);
   assert.equal(requests.length, 0);
+});
+
+// TST-1389001 · level: unit · module: MOD-review-pages
+// guards: UC-005; A SOURCE VERSION IS FIXED BY IDENTIFIER AND HASH
+// given: the source register records a wrong SHA-256 for main.md of SRC-policy 2026-10-01; the person's token is stored; known positive: the same page over the register that records main.md's SHA-256; counter-proof: the same page over a content repository that does not hold main.md
+// input: choose main.md and drafter-a, Show the run panel
+// expect: the problem names main.md, says that its content changed and that a new version must be registered, and links the library's entry of SRC-policy (#library/source=SRC-policy), where a new version is registered (UC-016); no Run, nothing sent, nothing written; known positive: with the recorded SHA-256 the run panel is shown and no paragraph says the content changed; counter-proof: a file the content repository does not hold is a problem that does not say the content changed and links no new version
+test("TST-1389001: spec-entry/draft - a changed source file is named as changed, with the link to register a new version", async () => {
+  const showPanel = async (entries) => {
+    endpointAnswers();
+    const fake = fakeProduct();
+    const target = await show(fake, { id: "draft" }, { entries });
+    for (const box of byClass(target, "input", "source-file")) box.checked = box.value === MAIN_FILE;
+    chooseParticipant(target, "drafter-a");
+    click(byClass(target, "button", "prepare")[0]);
+    await settles(target, () => byClass(target, "section", "run-panel").length === 1 || byClass(target, "p", "problem").length > 0, "the run panel or a problem");
+    return { fake, target };
+  };
+
+  const { fake, target } = await showPanel({ ...SOURCE_FILES, [`docs/sources/${SOURCE}.md`]: sourceEntry({ mainSha: "0".repeat(64) }) });
+  const problem = byClass(target, "p", "problem")[0];
+  assert.ok(problem, "a problem is shown");
+  assert.match(problem.textContent, /\bmain\.md\b/);
+  assert.match(problem.textContent, /\bchanged\b/);
+  assert.match(problem.textContent, /new version/);
+  assert.match(problem.textContent, /\bregister/i);
+  const links = find(problem, (node) => node.localName === "a").map((a) => a.getAttribute("href"));
+  assert.deepEqual(links, ["#library/source=SRC-policy"]);
+  assert.equal(runButtons(target).length, 0);
+  assert.equal(requests.length, 0);
+  assert.deepEqual(fake.writes(), []);
+
+  const known = await showPanel(SOURCE_FILES);
+  assert.equal(byClass(known.target, "section", "run-panel").length, 1, "known positive: the run panel is shown");
+  assert.ok(!byClass(known.target, "p", "problem").some((p) => /\bchanged\b/.test(p.textContent)), "known positive: nothing says the content changed");
+
+  const { [`docs/sources/${SOURCE}/2026-10-01/${MAIN_FILE}`]: _held, ...withoutMain } = SOURCE_FILES;
+  const missing = await showPanel(withoutMain);
+  const unreadable = byClass(missing.target, "p", "problem")[0];
+  assert.ok(unreadable, "counter-proof: a problem is shown");
+  assert.match(unreadable.textContent, /does not hold/, "counter-proof: the file is not held");
+  assert.doesNotMatch(unreadable.textContent, /\bchanged\b/, "counter-proof: a missing file is not named as changed");
+  assert.equal(find(unreadable, (node) => node.localName === "a" && /new version/.test(node.textContent)).length, 0, "counter-proof: no new version is linked");
 });

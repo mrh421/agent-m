@@ -24,10 +24,12 @@ left" once it has ended (MOD-prompt-bar, `startPromptBar`); while the loop runs 
 - `68a0809e`: search-files read 6 484 files and "froze the tab".
 - `bbc3a0b0`: "The prompt bar's conversation froze again" while graph-checks built the trace graph twice.
 - In both, the person saw no sign of which tool ran.
-- MOD-job-runner's `runOnTab` takes `onRound` and `onOutput` (`docs/architecture/MOD-job-runner.md:286`).
+- MOD-runtimes' `runOnTab` takes `onOutput` (`docs/architecture/MOD-runtimes.md:249-251`), and hands it to MOD-job-runner's
+  loop, which also takes `onRound` (`src/job-runner/loop.mjs:117`, `:201`). The bar calls `runMessage` without either
+  (`src/prompt-bar/bar.mjs:309`, `:367`).
 
 **First task:** read whether UC-049 or MOD-prompt-bar states what the bar shows while the loop runs, and whether
-`onRound` or `onOutput` reaches a tool call as it happens. Where the texts give it, build it and name the reading. Where
+`onOutput` reaches a tool call as it happens. Where the texts give it, build it and name the reading. Where
 they do not, the item stops for a draft to akmaier.
 
 ## Acceptance

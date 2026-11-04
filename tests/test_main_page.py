@@ -113,11 +113,12 @@ def rendered_review_menu() -> list:
               "return all(document.body, 'nav')[0].children.map((entry) => ({ name: entry.localName, label: entry.textContent, href: entry.getAttribute('href'), key: entry.getAttribute('data-entry') }));")
 
 
-def rendered_home(products=True) -> dict:
-    """The root's actual Frame entry and MainPage view with the repository's existing test-owned browser and GitHub server."""
+def rendered_home(products=True, hash="") -> dict:
+    """The root's actual Frame entry and MainPage view with the repository's existing test-owned browser and GitHub server, at the route `hash` names (the route home where it names none)."""
     return js(f"const {{ all }} = await import({json.dumps((TESTS / 'site-frame-start.d' / 'dom.mjs').as_uri())});"
               f"const {{ browser, cardsOf, waitsOf, network, smallProduct, instanceFiles, INSTANCE, PRODUCT, PRODUCT_URL, timers }} = await import({json.dumps((TESTS / 'main-page-home-harness.mjs').as_uri())});"
               f"const {{ store }} = browser({{ products: {json.dumps(['https://github.com/alice/product'] if products else [])} }}); const net = network({{ [PRODUCT]: smallProduct(), [INSTANCE]: instanceFiles() }}); net.install(); timers.install();"
+              f"location.hash = {json.dumps(hash)};"
               "globalThis.setInterval = () => 1; try { await siteFrame.startPage({ page: 'main', views: [mainPage.view] }); const target = all(document.body, 'main')[0];"
               "return { cards: cardsOf(target).map((card) => card.textContent), waits: waitsOf(target) }; } finally { timers.restore(); net.restore(); }")
 
@@ -156,9 +157,11 @@ class TheMainPageShowsWhatGoesOnInTheInstance(unittest.TestCase):
         self.assertEqual(len(rendered_home()["cards"]), 1)
 
     def test_what_waits_for_a_person_is_listed_with_the_page_where_it_is_decided(self):
+        """What waits is listed on the page Jobs, which the main page links (UC-046 step 5): the root's route `jobs` lists the product's open use case, and the route `home` lists none."""
         waits = js(facts() + "return progressMeasures.waitingForAPerson(f);")
         self.assertEqual(waits, [{"kind": "use case", "id": "UC-004", "path": UC4["path"]}])
-        self.assertIn("use case: UC-002", rendered_home()["waits"])
+        self.assertIn("use case: UC-002 · alice/product", rendered_home(hash="#jobs")["waits"])
+        self.assertEqual(rendered_home()["waits"], [])
 
 
 class EachProductsProgressByStage(unittest.TestCase):

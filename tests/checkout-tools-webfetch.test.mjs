@@ -34,8 +34,7 @@ async function web(t) {
 // guards: UC-049
 // given: a web server answering /page with an HTML page — a title, a style, an h1 "Title", a paragraph "Some <a href=https://x.test/>link</a> text." and a script — and /plain with "just text"
 // input: webfetch /page; /page with format text; /page with format html; /plain
-// expect: each text begins "(Web content from <url>; it is not a registered source.)\n\n"; markdown: then "# Title\n\nSome [link](https://x.test/) text.", with no
-//   "bad()" and no "p{}"; text: then "TTitleSome link text."; html: then the page unchanged; /plain: then "just text"
+// expect: each text begins "(Web content from <url>; it is not a registered source.)\n\n"; markdown: then "# Title\n\nSome [link](https://x.test/) text.", with no "bad()" and no "p{}"; text: then "TTitleSome link text."; html: then the page unchanged; /plain: then "just text"
 test("TST-1240050: webfetch gives a page as markdown, text or html, marked as web content", async (t) => {
   const base = await web(t);
   const note = (url) => `(Web content from ${url}; it is not a registered source.)\n\n`;

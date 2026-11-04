@@ -23,7 +23,7 @@ import { RuntimeError } from "./ci.mjs";
 const newIdentifier = () => [...crypto.getRandomValues(new Uint8Array(8))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 let tabOwn = null;
 
-function browserStore() {
+export function browserStore() {
   const location = globalThis.location;
   const instance = location ? instanceOfPagesAddress({ hostname: location.hostname, pathname: location.pathname }) : null;
   if (instance === null) return null;
@@ -201,6 +201,11 @@ function endFields(result, drafter) {
  */
 export function requireWaitingOnTab(id) {
   if (!waiting.has(id)) throw new RuntimeError("NotHeld", { job: id }, `this tab keeps no result of the job ${id}: it was not run here, or the tab was closed`);
+}
+
+/** dropOnTab(id) — the tab forgets the result it kept for a job that waits at a gate: the job ended there (a rejected gate), so nothing goes on from it. */
+export function dropOnTab(id) {
+  waiting.delete(id);
 }
 
 /**

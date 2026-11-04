@@ -371,7 +371,7 @@ def result(case: dict) -> dict:
 
 
 class TestBridgeMail(unittest.TestCase):
-    # TST-431001 - level: release - module: MOD-mail-protocols; MOD-desktop-shell
+    # TST-431001 · level: release · module: MOD-mail-protocols; MOD-desktop-shell
     # guards: THE BRIDGE HOLDS THE MAILBOX PASSWORD ONLY FOR ONE REQUEST; THE MAIL SERVER IS REACHED ONLY OVER TLS; READING THE MAILBOX CHANGES NOTHING IN IT
     # given: the Markdown cases beside this file, each with local IMAP and SMTP fixture servers and MOD-desktop-shell's composed Bridge
     # input: each case posts /v1/mail/test through the Bridge pairing token
@@ -386,7 +386,7 @@ class TestBridgeMail(unittest.TestCase):
             with self.subTest(case=loaded["name"]):
                 self.assertEqual(result(loaded["case"]), loaded["case"]["expected"])
 
-    # TST-431002 - level: release - module: MOD-mail-protocols; MOD-desktop-shell
+    # TST-431002 · level: release · module: MOD-mail-protocols; MOD-desktop-shell
     # guards: THE BRIDGE HOLDS THE MAILBOX PASSWORD ONLY FOR ONE REQUEST; THE MAIL SERVER IS REACHED ONLY OVER TLS; READING THE MAILBOX CHANGES NOTHING IN IT
     # given: the loaded release cases
     # input: their case declarations

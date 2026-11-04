@@ -64,7 +64,7 @@ const AT_RELEASE = front(RELEASE, "ci-hosted") + outcomes("| TST-905 | system | 
 const RECORDS = { [`runs/${COMMIT}/20261018-1000-commit-aaaa.md`]: FIRST, [`runs/${COMMIT}/20261018-1100-on-demand-bbbb.md`]: SECOND,
   [`runs/${COMMIT}/20261018-1200-on-demand-cccc.md`]: UNCOMMITTED, [`runs/${RELEASE}/20261001-1000-release-candidate-dddd.md`]: AT_RELEASE };
 
-const snapshotOf = (commit, files) => ({ commit, paths: Object.keys(files), blob: () => "b".repeat(40), read: async (path) => files[path] ?? null });
+const snapshotOf = (commit, files) => ({ commit, paths: Object.keys(files), blob: () => "b".repeat(40), read: async (path) => files[path] ?? null, readMany: async () => {} });
 
 // The product's host. `results` is the branch test-results (an Error: reading it fails); `logs` maps a run id to its log.
 function productHost({ results = RECORDS, logs = { 777: "the full log of run 777" }, schedule = null, asked = [], web = PRODUCT } = {}) {

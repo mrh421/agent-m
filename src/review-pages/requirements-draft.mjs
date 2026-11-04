@@ -1,6 +1,6 @@
 // requirements-draft.mjs — a draft of requirements from the conversation (MOD-review-pages, Parts; Interfaces: `draft`, UC-019 8, 8a, 9, 9a): the candidates each with its class beside the requirement
-// it refers to, the sections `entrySections` composes from them and the classes as the author leaves them, and Save, which saves each composed section with `proposeSection` as an entry of the
-// person's open queue of the day, only on the section the job read. A conflict the author has not decided is kept out of what is composed and saved.
+// it refers to, the sections `entrySections` composes from them and the classes as the author leaves them, and Save, which saves each composed section with `proposeSection` as an entry of its
+// section's queue, only on the section the job read. A conflict the author has not decided is kept out of what is composed and saved.
 //
 // Module: MOD-review-pages
 //

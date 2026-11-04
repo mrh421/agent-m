@@ -51,8 +51,7 @@ async function start({ tokens = {}, tested = {}, products = [], fragment = "", v
 // guards: A TOKEN'S EXPIRY IS WARNED OF IN ADVANCE; UC-042
 // given: the instance's token named "Agent M" whose recorded expiry is 14 days from today
 // input: startPage
-// expect: one notice of kind token-expiring whose text begins "Your GitHub token expires on <that date> (Agent M)." and tells where the new
-//   value is pasted, with a link labelled "Renew" to GitHub's list of tokens
+// expect: one notice of kind token-expiring whose text begins "Your GitHub token expires on <that date> (Agent M)." and tells where the new value is pasted, with a link labelled "Renew" to GitHub's list of tokens
 test("TST-683001 a token that expires in 14 days is named with its date, and its renewal is linked", async () => {
   const page = await start({ tokens: { "github-token": { expires: day(14) } } });
   assert.equal(page.notices.length, 1);
@@ -111,8 +110,7 @@ test("TST-683004 days are counted in whole UTC days, whatever the time of day", 
 // guards: AN EXPIRED TOKEN IS NAMED AND ITS RENEWAL LINKED
 // given: the instance's token whose last test is a refusal, with an expiry 5 days away; the same token whose last test worked
 // input: startPage for each
-// expect: the refused one gives one notice of kind token-refused, "The server refused your token Agent M." with the renewal link,
-//   and no token-expiring notice; the one that worked gives the token-expiring notice only
+// expect: the refused one gives one notice of kind token-refused, "The server refused your token Agent M." with the renewal link, and no token-expiring notice; the one that worked gives the token-expiring notice only
 test("TST-683005 a token the server refused is named with its renewal, and a refusal is not shown beside an expiry", async () => {
   const refused = await start({ tokens: { "github-token": { expires: day(5) } }, tested: { "github-token": "refused" } });
   assert.deepEqual(refused.notices.map((n) => n.kind), ["token-refused"]);
@@ -143,7 +141,7 @@ test("TST-683006 a product's own token is named on that product's pages only, wi
 // guards: AN EXPIRED TOKEN IS NAMED AND ITS RENEWAL LINKED
 // given: a view whose route fails with MOD-repository-hosts' TokenRefused { tokenName: "Agent M for acme/widget", renewal: "https://example.test/renew" } and a view whose route fails with another error, Error("something else")
 // input: startPage with each
-// expect: the first page starts and shows one notice of kind token-refused, "The server refused your token Agent M for acme/widget.", linked to https://example.test/renew; the second start resolves, shows no notice, and its main area reads "This page could not be drawn: something else" (ITM-865: it rejected with that error before)
+// expect: the first page starts and shows one notice of kind token-refused, "The server refused your token Agent M for acme/widget.", linked to https://example.test/renew; the second start resolves, shows no notice, and its main area reads first, in plain words, "Something went wrong while this page was being drawn, so it cannot be shown. Reload the page to try again. If it happens again, report it, together with the message below." and then the message, "This page could not be drawn: something else" (ITM-865: it rejected with that error before; ITM-1401: the message stood alone before)
 test("TST-683007 a route that fails with TokenRefused shows the refusal as a notice; another failure is shown as a fault of the page", async () => {
   const failing = (error) => ({ routes: [{ name: "alpha", entry: "requirements", title: "alpha", async render() { throw error; } }], strategies: [] });
   const refusal = Object.assign(new Error("rejected"), { name: "TokenRefused", tokenName: "Agent M for acme/widget", renewal: "https://example.test/renew" });
@@ -155,5 +153,6 @@ test("TST-683007 a route that fails with TokenRefused shows the refusal as a not
   const other = await start({ tokens: kept, views: [failing(new Error("something else"))] });
   await settle();
   assert.deepEqual(other.notices.filter((n) => n.kind === "token-refused"), []);
-  assert.equal(all(other.document.body, "main")[0].textContent, "This page could not be drawn: something else");
+  assert.equal(all(other.document.body, "main")[0].textContent, "Something went wrong while this page was being drawn, so it cannot be shown. Reload the page to try again. "
+    + "If it happens again, report it, together with the message below.This page could not be drawn: something else");
 });

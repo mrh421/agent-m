@@ -127,7 +127,9 @@ resource on its runner, queued to that runner's route; for its run panel it hand
 
 ## Parts
 
-- `index.mjs` — the interface: `view`.
+- `index.mjs` — the interface: `view`, the routes of routes.mjs with the strategies of the view's kinds.
+- `routes.mjs` — the routes' heads, the view module the frame loads at start; it imports index.mjs, and with it the
+  strategies, only when a job is prepared (`loadStrategies`).
 - `settings.mjs` — the one page of every setting, its tests, clears, export and import.
 - `setup.mjs` — getting one's own Agent M and finishing its setup.
 - `products.mjs` — adding a product.
@@ -219,7 +221,10 @@ It keeps nothing but the screen and an unsaved form. Its formats are those of th
     or the repository the person names; *+ New version*, refused when its bytes equal an existing version's, the
     products on older versions, *Move* with the requirements affected and the passages changed; *Fetch again* for a
     legal text whose fetch failed, and *+ New version* of a fetched one, each starting the fetch run for that entry
-    (MOD-repository-hosts' `startWorkflow` with the input `source`); for the chosen product, the linked sources with version and part, and removing a link
+    (MOD-repository-hosts' `startWorkflow` with the input `source`). The error a waiting legal text shows (UC-004 7a) is
+    the line naming it in the log of a failed run of the fetch workflow: the logs are read only while a legal text
+    waits without its line, newest failed run first, no further back than the newest successful run started by a push,
+    and none is read while no legal text waits; for the chosen product, the linked sources with version and part, and removing a link
     with the requirements that name the source listed first.
   - `resources`, `resources/instance` — a product's or the instance's resources in a form from the resource schema; the
     pin, licence and maintainer read where they can be; the route; the secret by name only; the processing place;
@@ -231,7 +236,8 @@ It keeps nothing but the screen and an unsaved form. Its formats are those of th
     *Copy from the instance*.
   - `mailbox` — the route recognised from the address; for Microsoft 365 the app registration's steps and the sign-in
     with its permissions named before the provider's window opens; for every other mailbox the servers and ports, the
-    notice before the password field, and an app password explained; the Bridge the connection goes through, chosen
+    account name, the SMTP server's own account name and the sender where they differ (UC-037 step 4.1), the notice
+    before the password field, and an app password explained; the Bridge the connection goes through, chosen
     among this browser's Bridges, and, for one reached through the jump host, the notice that the jump host can read the
     password and the mails, before saving; the folders; the processing places the mail may go to, a place outside the EU
     stated as not compliant before saving; *Store and test*; *Disconnect*. Each test of the mailbox — *Store and test*

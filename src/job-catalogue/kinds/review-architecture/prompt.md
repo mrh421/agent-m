@@ -29,6 +29,10 @@ The task, where one is given, is the work asked for, within what the inputs belo
 
 {{accepted-use-cases}}
 
+## The whole architecture as it stands on the default branch
+
+{{whole-architecture}}
+
 ## Chapters 9 to 12 of the book *Vibe Coding*: modeling, architecture, agentic design, implementation
 
 {{chapters-for-architecture}}

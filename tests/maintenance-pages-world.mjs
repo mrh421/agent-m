@@ -1,5 +1,5 @@
 // The world of the tests of MOD-maintenance-pages' replies page — a helper, no test of its own: the browser, the repositories and the clock of tests/main-page-home-harness.mjs, and over its fake GitHub this file's fake of the Bridge lab-pc-4
-// (the mail operations read, drafts, sent, find, show-draft, store-draft, update-draft, confirm-send, send), of GitHub's issues of alice/product and of the model endpoints ep1 and ep2. Used by tests/maintenance-pages-replies.test.mjs (ITM-966),
+// (the mail operations read, drafts, sent, find, show-draft, store-draft, update-draft, confirm-send, send), of GitHub's issues of alice/product — listed, read one by one, commented, labelled, closed — and of the model endpoints ep1 and ep2. Used by tests/maintenance-pages-replies.test.mjs (ITM-966),
 // tests/maintenance-pages-send.test.mjs (ITM-967) and tests/maintenance-pages-ask.test.mjs (ITM-968). It holds no expected result.
 //
 // Module: MOD-maintenance-pages
@@ -125,7 +125,14 @@ function world({ mails, drafts = [], issues, rows = [LOCAL, CLOUD, NO_DRAFTER], 
     if (url.origin === BRIDGE && url.pathname.startsWith("/v1/ask/") && method === "GET") return json({ state: "done", text: asked.get(url.pathname.slice("/v1/ask/".length)), usage: null });
     if (url.host === "api.github.com" && url.pathname.startsWith(`/repos/${PRODUCT}/issues`)) {
       kept.github.push({ method, path: url.pathname, body: init.body ?? null });
-      if (method === "GET" && url.pathname === `/repos/${PRODUCT}/issues`) return json(kept.issues.map((issue) => ({ number: issue.number, title: issue.title, body: issue.body, state: issue.state, labels: issue.labels, comments: issue.comments.length, html_url: `${PRODUCT_URL}/issues/${issue.number}` })));
+      // An issue as GitHub's "List repository issues" and "Get an issue" answer it: its comments by their count.
+      const issueJson = (issue) => ({ number: issue.number, title: issue.title, body: issue.body, state: issue.state, labels: issue.labels, comments: issue.comments.length, html_url: `${PRODUCT_URL}/issues/${issue.number}` });
+      if (method === "GET" && url.pathname === `/repos/${PRODUCT}/issues`) return json(kept.issues.map(issueJson));
+      const single = /^\/repos\/alice\/product\/issues\/(\d+)$/.exec(url.pathname);
+      if (method === "GET" && single) {
+        const found = kept.issues.find((issue) => issue.number === Number(single[1]));
+        return found ? json(issueJson(found)) : json({ message: "Not Found" }, 404);
+      }
       if (method === "POST" && url.pathname === `/repos/${PRODUCT}/issues`) {
         if (kept.createStatus) return json({ message: "Resource not accessible by personal access token" }, kept.createStatus);
         const given = JSON.parse(init.body);

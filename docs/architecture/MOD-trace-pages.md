@@ -37,10 +37,9 @@ uses:
   - MOD-trace-graph.moduleRows
   - MOD-trace-graph.graphFindings
   - MOD-approvals.statuses
-  - MOD-spec-changes.queues
-  - MOD-spec-changes.entryView
+  - MOD-spec-changes.entryImpact
   - MOD-spec-changes.requirementHistory
-  - MOD-progress-measures.storedOverview
+  - MOD-progress-measures.waitingQueues
   - MOD-source-register.sourceSchemas
   - MOD-source-register.linkedVersion
   - MOD-source-register.affectedRequirements
@@ -93,7 +92,9 @@ It runs in a browser, loaded by `docs/index.html` through MOD-site-frame.
 
 ## Parts
 
-- `index.mjs` — the interface: `view`.
+- `index.mjs` — the interface: `view`, the routes of routes.mjs with the strategies of the view's kinds.
+- `routes.mjs` — the routes' heads, the view module the frame loads at start; it imports index.mjs, and with it the
+  strategies, only when a job is prepared (`loadStrategies`).
 - `flow.mjs` — the template method: version choice and comparison, tree or table, filters, a row's detail, links.
 - `subject.mjs` — the subject the specification view gives the prompt bar: the page, what is open, its draft route, the
   person's own source.
@@ -151,8 +152,9 @@ It reads the product's snapshot at the chosen version through its host — the S
 architecture files, code files, tests, approval records, the product's links to sources —, the history of the SPEC and
 the result records on the branch `test-results`. The specification asks at once what does not wait for another read —
 the snapshot, the default branch and the tags; then the SPEC, the person's source, the entries waiting, the group file,
-the stored graph and the history of the links —, and reads the change queues from the overview stored for the commit
-where there is one. For the audit it reads the product's `docs/process.md` and `docs/gates/`
+the stored graph and the history of the links —, reads the change queues through MOD-progress-measures' `waitingQueues`,
+and of each entry waiting its proposal and what it changes, never its rationale; the rationales that MOD-spec-changes'
+`queues` reads for each entry's issue, where `waitingQueues` derives the queues through it, are `queues`' reads. For the audit it reads the product's `docs/process.md` and `docs/gates/`
 at the release's commit, and the instance's `SPEC.md`, whose requirements are the process requirements. Through the
 instance's host that the frame gives every route, it also reads the instance's process models at the commit that this
 `docs/process.md` names (`model_version`), for the model the product had declared at the release (UC-031 6a).
@@ -160,8 +162,11 @@ instance's host that the frame gives every route, it also reads the instance's p
 A mark of an opened test's history (UC-029 step 5) finds the id of its run in the `run` address of the result records of its
 commit on the branch `test-results` that hold the test: the last part of the address's path, as `WebLinks`' `run` builds it
 (`…/actions/runs/<id>` on GitHub, `…/-/pipelines/<id>` on GitLab); a mark whose records name no run has no link to a log.
-The link to the full log is `WebLinks`' `run` for that id; where `ciRunLog` gives `null` for it, the server no longer keeps the
-log, the link reads *no longer available*, and the mark keeps its outcome (UC-029 5b).
+The link to the full log is `WebLinks`' `run` for that id. Whether the server still keeps the log is asked when the person
+opens the link, with `ciRunLog` for that run alone; where it gives `null`, the link reads *no longer available*, and the
+mark keeps its outcome (UC-029 5b). The history reads the records that the newest ten commits of the branch `test-results`
+added (`readHistory` with their changes) and those of the release tags' commits, through a snapshot of that branch
+narrowed to them (`readSnapshot` with `folders`), in one batch; *Earlier runs* reads the next ten.
 
 ## Uses
 
@@ -181,17 +186,16 @@ log, the link reads *no longer available*, and the mark keeps its outcome (UC-02
   and a run's log on the server; for the audit, the instance at the commit the release's declaration names;
   MOD-repository-hosts.repositoryInfo — the default branch, on which alone a requirement leads to editing, and at which
   the instance's links are read for the person's own source; MOD-repository-hosts.ciRunLog — whether the server still keeps a
-  run's log (UC-029 5b).
+  run's log, once the person opens it (UC-029 5b).
 - MOD-documents.artifactSchemas, MOD-documents.readDocument, MOD-spec-document.parseSpec, MOD-group-document.parseGroupFile,
   MOD-group-document.hierarchy, MOD-test-document.testDeclarations — the artifacts of the version.
 - MOD-trace-graph.storedGraph, MOD-trace-graph.latestGraph, MOD-trace-graph.tracesTo, MOD-trace-graph.coverageGaps, MOD-trace-graph.compareGraphs,
   MOD-trace-graph.moduleRows, MOD-trace-graph.graphFindings — the rows, gaps, unknown names and comparisons.
 - MOD-approvals.statuses — the review status of use cases and architecture files.
-- MOD-spec-changes.queues, MOD-spec-changes.entryView, MOD-spec-changes.requirementHistory — open proposals, what each
-  open entry changes, withdraws or adds (its `impact`), and a requirement's history.
-- MOD-progress-measures.storedOverview — the change queues with an entry not in the SPEC yet, as the workflow stored them
-  for the version's commit, of which the specification lists those waiting for acceptance without reading every queue;
-  where no overview is stored, `queues` reads them all.
+- MOD-spec-changes.entryImpact, MOD-spec-changes.requirementHistory — what each open entry changes, withdraws or adds,
+  and a requirement's history.
+- MOD-progress-measures.waitingQueues — the change queues with an entry not in the SPEC yet, of which the specification
+  lists those waiting for acceptance.
 - MOD-source-register.sourceSchemas, MOD-source-register.linkedVersion — a requirement's sources with version and part;
   MOD-source-register.affectedRequirements — the requirements marked *source changed*;
   MOD-source-register.personSource, MOD-source-register.personAccount — the person's own source, which the subject of a

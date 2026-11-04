@@ -87,8 +87,9 @@ test or worse rate and its reason.
 
 **The audit document**, `docs/audits/<tag>.md` when a person commits it: the release tag and its commit SHA; the summary;
 one row per requirement valid at the release — its name, what it constrains, its sources with authority, version and the
-hashes of the version, the tests that guard it by level with their outcome or rate and their counter-proof, for a process
-requirement the gate records and artifacts it added, and the acceptance of the report — who, when and the blob SHA of the
+hashes of the version, the tests that guard it by level with their outcome or rate — a rate with the last release's rate
+and whether it passed — and their counter-proof, for a process requirement the gate records and artifacts it added and
+each of its gates no record holds, and the acceptance of the report — who, when and the blob SHA of the
 accepted text —; the blob SHAs of the report and of the approval records, so that every statement can be checked against
 the repository without Agent M.
 
@@ -134,19 +135,25 @@ Tags of a product's line: `v<YYYY.MINOR.PATCH>` for a release, `v<YYYY.MINOR.PAT
   the records through the snapshot; fails with their errors — `TokenRefused`, `PermissionMissing`, `RateLimited`,
   `Unreachable` —, and with `NotSupported` through a host that does no server operations, such as a local clone.
 - `auditRows(at: Snapshot, results: Snapshot, head: Snapshot, release: { tag: string, commit: string }, gates: Array<{
-  requirement: string, gate: string, record: string }>, instanceSpec: string, register: Document[], accepted: { person:
-  string, date: string } | null) -> { summary: { passing: number, noTest: number, notPassed: number, flaky: number,
+  requirement: string, gate: string, record: string, artifacts?: string }>, instanceSpec: string, register: Document[],
+  accepted: { person: string, date: string } | null, unrecorded: Array<{ requirement: string, gate: string }> = []) -> {
+  summary: { passing: number, noTest: number, notPassed: number, flaky: number,
   worse: number, byImplementer: number, accepted: boolean, limitations: string[] }, rows: Array<{ requirement: string,
   constrains: "product" | "process", sources: Array<{ id: string, authority: string, version: string, hashes: string[] }>,
   tests: Array<{ id: string, level: string, outcome: string, counterProof: string | null, worse: boolean,
-  byImplementer: boolean }>, gates: string[] }>,
+  byImplementer: boolean, passed: boolean, lastRate: string | null }>, gates: string[], artifacts: string[], unrecorded:
+  string[] }>,
   evidence: { report: { path: string, blob: string } | null, records: Array<{ path: string, blob: string }>, acceptance:
   { person: string, date: string, blob: string } | null } }` — one
   row per requirement valid at the release, a requirement without a test or without a passing outcome included and
   counted: each requirement of the product's SPEC at the release, which constrains the product, and each process
   requirement whose gate the product's workflow holds — a requirement of the instance's SPEC, `instanceSpec`, which
   constrains the development process (MOD-spec-document) — with its gate records. `gates` are those records, which the
-  caller reads through Process, since Process lies above this subsystem. A release before Agent M's records says which parts
+  caller reads through Process, since Process lies above this subsystem; an entry's `artifacts` are the artifacts its gate
+  asks for, as the workflow names them. `unrecorded` are the gates the workflow holds that no record holds, read by the
+  caller the same way: their requirement has its row as one whose gate `gates` names does. A row's `artifacts` give, for
+  each of its `gates` in their order, the artifacts that gate asked for, `""` where its entry gives none, and its
+  `unrecorded` the names of its gates no record holds. A release before Agent M's records says which parts
   cannot be derived: `summary.limitations` names them, and each test's `outcome` is `cannot be derived`. The implementer of a
   release test is a participant of an `implement` job whose `worksOn` names an item or use case that traces to the requirement;
   its writer is a participant of a `write-tests` job whose `results` name the test's file. `evidence` is read from `head`:
@@ -159,7 +166,10 @@ Tags of a product's line: `v<YYYY.MINOR.PATCH>` for a release, `v<YYYY.MINOR.PAT
   A test's `worse` says that its rate on the release commit is worse than on the last release's, and its `byImplementer`
   that it is a release test whose writer is an implementer of the requirement (above), so that the rows a summary number
   counts are told from the rows alone: `summary.worse` counts the rows holding a test with `worse`, and
-  `summary.byImplementer` the distinct tests with `byImplementer`, each in the rows that hold it.
+  `summary.byImplementer` the distinct tests with `byImplementer`, each in the rows that hold it. A test's `passed` says
+  that its run completed and passed and that its rate is no worse than the last release's, and its `lastRate` is its rate
+  on the last release's commit, `null` where there is none; a model-dependent test's `outcome` stays its rate.
+  `summary.passing` counts the rows with tests, each of them `passed`.
 - `auditDocument(audit: { summary: object, rows: object[], evidence: object }, release: { tag: string, commit: string })
   -> string` — the
   self-contained Markdown document of the audit; the browser saves it, and a person with write access may commit it to

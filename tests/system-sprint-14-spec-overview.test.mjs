@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { TOKEN, openDashboard, repoServer } from "./app-harness.mjs";
+import { TOKEN, openDashboard, repoServer, writeRequests } from "./app-harness.mjs";
 
 const QUEUE = "2026-10-08_wording";
 const OLD = `# Fixture specification
@@ -48,15 +48,12 @@ function files(spec = OLD) {
   };
 }
 
-const writes = (server) => server.requests.filter((request) => /^(write|other|handler) (?!GET )/.test(request));
-
 // CASE ITM-277-SYSTEM-02
 // TST-473080 · level: system · module: MOD-trace-pages
 // guards: UC-020; A REQUIREMENT HAS FOUR FIELDS
 // given: a fresh dashboard load after current SPEC bytes change, then fixtures with an empty and an absent SPEC
 // input: open #spec for each fixture
-// expect: only fresh current text appears, as "in SPEC" or as what the open entry would do to it; the entry's proposed requirement appears by its name, marked not yet placed, as "proposed" and its text does not;
-//         empty and absent SPECs name their empty state while queue history remains usable
+// expect: only fresh current text appears, as "in SPEC" or as what the open entry would do to it; the entry's proposed requirement appears by its name, marked not yet placed, as "proposed" and its text does not; empty and absent SPECs name their empty state while queue history remains usable
 test("#spec reads fresh current SPEC bytes and keeps queue history for empty or absent SPEC", async () => {
   const changing = await repoServer({ files: files() });
   await openDashboard({ server: changing, hash: "#spec" });
@@ -73,6 +70,6 @@ test("#spec reads fresh current SPEC bytes and keeps queue history for empty or 
     const page = await openDashboard({ server, hash: "#spec" });
     assert.match(page.main(), /No current requirements are recorded in SPEC\.md\./, `${label} SPEC states the explicit empty result`);
     assert.match(page.main(), new RegExp(`href="#spec-entry/id=spec-${QUEUE}-01"`), `${label} SPEC preserves the queue history`);
-    assert.equal(writes(server).length, 0, `${label} overview writes nothing`);
+    assert.equal(writeRequests(server).length, 0, `${label} overview writes nothing`);
   }
 });

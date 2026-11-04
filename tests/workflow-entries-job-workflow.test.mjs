@@ -17,7 +17,7 @@
 // Deterministic, no network: the product and the instance are temporary git repositories — each a bare origin, the clone the workflow's
 // checkout stands for, and a seed clone —, laid out as the job workflow lays them out: the workspace holds `product/` and `instance/`. The
 // model endpoint is a fake `fetch` that answers as an OpenAI-compatible endpoint does and records every request. The kind is MOD-job-catalogue's
-// `decide-gate`, whose recipe and writer the module's own strategies do not give yet: the tests register a recipe `gate-inputs` and a writer
+// `decide-gate`, whose recipe and writer no module offers: the tests register a recipe `gate-inputs` and a writer
 // `gate-record` of their own, with the runner's registry, which the entry fills with the strategies of the modules that offer them. The
 // product, the instance and the participant are the small ones this file holds. Where the module file leaves a reading open, the test states
 // the one it takes, and the pull request names it:
@@ -118,11 +118,11 @@ function repository(root, name, files, folder) {
   return origin;
 }
 // The workspace of a job workflow: product/ and instance/, the product holding the records given.
-async function withWorkspace({ records = () => [], extra = {} } = {}, run) {
+async function withWorkspace({ records = () => [], extra = {}, participants = PARTICIPANTS } = {}, run) {
   const root = mkdtempSync(join(tmpdir(), "agent-m-jobs-"));
   const workspace = join(root, "ws");
   try {
-    const instance = repository(root, "instance", { "README.md": "# Instance\n", "docs/participants.md": PARTICIPANTS }, join(workspace, "instance"));
+    const instance = repository(root, "instance", { "README.md": "# Instance\n", "docs/participants.md": participants }, join(workspace, "instance"));
     const agentM = { version: "2026.10.0", commit: git(join(workspace, "instance"), "rev-parse", "HEAD") };
     const product = repository(root, "product", { "README.md": "# Thesis tool\n", ...Object.fromEntries(records(agentM)), ...extra }, join(workspace, "product"));
     return await run({ root, workspace, product, instance, agentM, head: git(join(workspace, "product"), "rev-parse", "HEAD"), productDir: join(workspace, "product") });
@@ -242,8 +242,7 @@ test("onRecordsChanged — a missing secret ends the entry not run, naming it, w
 // guards: ONE DEFINITION, THREE DRIVERS; A JOB IS RECORDED IN ITS PRODUCT REPOSITORY
 // given: the product with a queued job and the workspace of the job workflow
 // input: onRecordsChanged; the recipe of the kind keeps the context the entry gives the runner
-// expect: the context names the product's address and no instance checkout — the job's participant is a model endpoint in Agent M's own tool loop, which reads no
-//   files of a checkout itself (MOD-job-runner: `instance.checkout` is the folder in which the participant works and reads files itself) —, with the instance's snapshot read from the workspace's instance/ folder, holding the participants' register, the job's identifier, the person who started it, Agent M's version and commit as the record names them, and the participants the register lists
+// expect: the context names the product's address and no instance checkout — the job's participant is a model endpoint in Agent M's own tool loop, which reads no files of a checkout itself (MOD-job-runner: `instance.checkout` is the folder in which the participant works and reads files itself) —, with the instance's snapshot read from the workspace's instance/ folder, holding the participants' register, the job's identifier, the person who started it, Agent M's version and commit as the record names them, and the participants the register lists
 test("onRecordsChanged — the job's context of an endpoint in Agent M's own tool loop names no instance checkout", async () => {
   fakeEndpoint();
   seen = null;
@@ -448,4 +447,86 @@ test("chooseAgentKey and the agent's machine — the machine of the job's own ke
     assert.equal(own.outcome, "done", own.summary);
     assert.equal(requests.length, 1);
   });
+});
+
+// ---------------------------------------------------------------- a model endpoint's route names its secret
+
+// The participant of a model endpoint whose route names the CI secret of its key, for work handed to CI (MOD-participant-list, Route): `endpoint ci-bot secret FIXTURE_KEY`.
+const ENDPOINT_PARTICIPANTS = PARTICIPANTS.replace("| CI agent |", "| model endpoint |").replace("ci hosted secret FIXTURE_KEY", "endpoint ci-bot secret FIXTURE_KEY");
+
+// TST-1381005 · level: unit · module: MOD-workflow-entries
+// guards: A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
+// given: a product with a queued job of the route `ci hosted` whose record names the endpoint, an instance whose register lists ci-bot as a model endpoint with the route `endpoint ci-bot secret FIXTURE_KEY`, and the job workflow's environment with the person's token and FIXTURE_KEY
+// input: onRecordsChanged
+// expect: outcome `done`; the job's record ends `done`; the endpoint is asked once with FIXTURE_KEY in its authorisation header
+test("onRecordsChanged — a queued job of a model endpoint reads the key its route `endpoint <name> secret <NAME>` names", async () => {
+  const requests = fakeEndpoint();
+  await withWorkspace({ participants: ENDPOINT_PARTICIPANTS, records: (agentM) => [recordFile(jobStart(JOB, { agentM }))] }, async (w) => {
+    const status = await run(w);
+    assert.equal(status.outcome, "done", status.summary);
+    assert.match(fileAt(w, `docs/jobs/${JOB}.md`), /## End[^]*state: done/);
+    assert.equal(requests.length, 1, "the endpoint was asked once");
+    assert.equal(requests[0].headers.Authorization, `Bearer ${KEY}`);
+  });
+});
+
+// TST-1381006 · level: unit · module: MOD-workflow-entries
+// guards: A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
+// given: the product, instance and queued job of TST-1381005, and the environment without FIXTURE_KEY
+// input: onRecordsChanged; and, as the known positive, with the key
+// expect: without the key outcome `not run`, the summary naming FIXTURE_KEY, the origin's main as it was, the job not taken, the endpoint not asked; with the key the job is run
+test("onRecordsChanged — the key of a model endpoint's route is missing: not run, naming it, with nothing written", async () => {
+  const requests = fakeEndpoint();
+  await withWorkspace({ participants: ENDPOINT_PARTICIPANTS, records: (agentM) => [recordFile(jobStart(JOB, { agentM }))] }, async (w) => {
+    const status = await run(w, { FIXTURE_KEY: undefined });
+    assert.equal(status.outcome, "not run", status.summary);
+    assert.match(status.summary, /FIXTURE_KEY/);
+    assert.equal(headOf(w), w.head, "the origin is as it was");
+    assert.equal(requests.length, 0, "the endpoint is not asked");
+    assert.equal((await run(w)).outcome, "done", "known positive: with the key the job is run");
+    assert.equal(requests.length, 1);
+  });
+});
+
+// TST-1381007 · level: unit · module: MOD-workflow-entries
+// guards: A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
+// given: the product, instance and queued job of TST-1381005, and a file that reads the keys OTHER_KEY and FIXTURE_KEY
+// input: chooseAgentKey on a push, its output file read; onRecordsChanged on the agent's machine given OTHER_KEY (1), then given FIXTURE_KEY (2)
+// expect: the output is `agent=2`; given OTHER_KEY the job is left queued and the endpoint not asked (`nothing to do`); given FIXTURE_KEY it is run and the endpoint is asked with FIXTURE_KEY
+test("chooseAgentKey and the agent's machine — the machine of a model endpoint's route key runs its job, another leaves it queued", async () => {
+  const requests = fakeEndpoint();
+  await withWorkspace({ participants: ENDPOINT_PARTICIPANTS, records: (agentM) => [recordFile(jobStart(JOB, { agentM }))] }, async (w) => {
+    const output = join(w.root, "output.txt");
+    writeFileSync(output, "");
+    const chosen = await entry("chooseAgentKey", environment(w, { AGENT_M_TOKEN: undefined, FIXTURE_KEY: undefined, AGENT_M_KEY_NAMES: "OTHER_KEY FIXTURE_KEY", GITHUB_OUTPUT: output }));
+    assert.equal(chosen.outcome, "done", chosen.summary);
+    assert.equal(readFileSync(output, "utf8"), "agent=2\n");
+    const other = await entry("onRecordsChanged", agentMachine(w, { AGENT_M_KEY_NAMES: "OTHER_KEY FIXTURE_KEY", AGENT_M_KEY: "1", FIXTURE_KEY: undefined, OTHER_KEY: "other-key-value-0123" }));
+    assert.equal(other.outcome, "nothing to do", other.summary);
+    assert.equal(requests.length, 0);
+    const own = await entry("onRecordsChanged", agentMachine(w, { AGENT_M_KEY_NAMES: "OTHER_KEY FIXTURE_KEY", AGENT_M_KEY: "2" }));
+    assert.equal(own.outcome, "done", own.summary);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].headers.Authorization, `Bearer ${KEY}`);
+  });
+});
+
+// TST-1381008 · level: unit · module: MOD-workflow-entries
+// guards: A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
+// given: a product with a queued job whose participant ci-bot is a model endpoint with the route `endpoint ci-bot secret FIXTURE_KEY` (and, as the known positive, the same job with ci-bot a CI agent with the route `ci hosted secret FIXTURE_KEY`), and a file that reads the keys OTHER_KEY and FIXTURE_KEY
+// input: chooseAgentKey on a run started from the server's own page whose inputs name only the job (no endpoint, no secret), its output file read
+// expect: the output is `agent=2` for the model endpoint and for the CI agent alike
+test("chooseAgentKey — a dispatched job of a model endpoint receives the key its route names", async () => {
+  fakeEndpoint();
+  for (const [participants, route] of [[ENDPOINT_PARTICIPANTS, "model endpoint"], [PARTICIPANTS, "CI agent (known positive)"]]) {
+    await withWorkspace({ participants, records: (agentM) => [recordFile(jobStart(JOB, { agentM }))] }, async (w) => {
+      const output = join(w.root, "output.txt"), payload = join(w.root, "event.json");
+      writeFileSync(output, "");
+      writeFileSync(payload, JSON.stringify({ inputs: { job: JOB } }));
+      const chosen = await entry("chooseAgentKey", environment(w, { AGENT_M_TOKEN: undefined, FIXTURE_KEY: undefined, AGENT_M_KEY_NAMES: "OTHER_KEY FIXTURE_KEY", GITHUB_OUTPUT: output,
+        GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_EVENT_PATH: payload }));
+      assert.equal(chosen.outcome, "done", `${route}: ${chosen.summary}`);
+      assert.equal(readFileSync(output, "utf8"), "agent=2\n", route);
+    });
+  }
 });

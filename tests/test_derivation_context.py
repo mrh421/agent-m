@@ -243,7 +243,7 @@ def result(case: dict) -> dict:
 
 
 class TestDerivationContext(unittest.TestCase):
-    # TST-414100 - level: release - module: system
+    # TST-414100 · level: release · module: system
     # guards: DERIVATION SEES THE EXISTING REQUIREMENTS; A PROMPTED REQUIREMENT CHANGE FOLLOWS THE DERIVATION RULES
     # given: Markdown fixture cases that state the SPEC, the open queue and the expected prepared input
     # input: prepareJob for derive-requirements and change-requirements with MOD-spec-changes' real spec-with-queues recipe
@@ -255,7 +255,7 @@ class TestDerivationContext(unittest.TestCase):
             with self.subTest(case=item["name"]):
                 self.assertEqual(result(item["case"]), item["case"]["expected"])
 
-    # TST-447100 - level: release - module: system
+    # TST-447100 · level: release · module: system
     # guards: THE FIRST ARCHITECTURE IS DESIGNED AS A WHOLE; THE ARCHITECTURE'S PARTICIPANTS RECEIVE THE WHOLE PROJECT
     # given: Markdown fixture architecture cases with accepted use cases and no selection
     # input: prepareJob("derive-architecture") with MOD-approvals and MOD-spec-changes real recipes
@@ -267,7 +267,7 @@ class TestDerivationContext(unittest.TestCase):
             with self.subTest(case=item["name"]):
                 self.assertEqual(result(item["case"]), item["case"]["expected"])
 
-    # TST-414101 - level: release - module: system
+    # TST-414101 · level: release · module: system
     # guards: NO REQUIREMENT IS LEFT OUT OF THE CONTEXT SILENTLY; NOTHING IS LEFT OUT OF AN ARCHITECTURE PROMPT SILENTLY
     # given: a small participant and the same fixture context that fits the normal participant
     # input: prepareJob, then runJob on the not-fitting prepared job with a driver that records sends

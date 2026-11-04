@@ -39,8 +39,11 @@ reported as not found.
   recorded in the pull request.
 - Where the code does not do what the requirement says, the test follows the requirement and the disagreement is named
   as a finding.
-- Only the new test file and its data file change.
+- Only `tests/test_reuse_due_diligence.py` and its data file change.
 
-**Not done: what is missing.** TST-446101 tests the test's own helper `record_findings`
-(`tests/test_reuse_due_diligence.py:176-198`), not product code. No product code checks a due-diligence row for an empty
-*Read from* or *Read on*: `src/reuse-facts/index.mjs:593` writes the table's header and nothing reads the cells back.
+**The reading of the Check.** `DUE DILIGENCE IS FETCHED, NOT RECALLED` names its Check: "a record with a fact lacking
+address or date fails" (SPEC.md:1455-1459). The check is the test: it reads a due-diligence record and fails on a fact row without
+*Read from* or *Read on*, as `record_findings` does (`tests/test_reuse_due_diligence.py:176-198`). No product function is
+needed for it. What the test still lacks is reading the record the product writes: TST-446101 runs `record_findings` over
+the table MOD-reuse-facts' step `due-diligence` writes for a fixture draft (`src/reuse-facts/index.mjs:593`), which passes,
+and over the same record with one *Read on* cell emptied, which fails.

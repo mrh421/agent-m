@@ -100,7 +100,8 @@ function providerRequest(config, prompt, { maxTokens = config.kind === "anthropi
 
   const headers = { "content-type": "application/json", ...keyHeaders(config.kind, config.key) };
   const history = [...(system ? [{ role: "system", content: system }] : []), ...(messages ? openaiMessages(messages) : [{ role: "user", content: prompt }])];
-  const body = maxTokens === null ? { model: config.model, messages: history } : { model: config.model, messages: history, max_tokens: maxTokens };
+  // stream: false asks for the one JSON answer every caller reads; an endpoint whose stream defaults to true would otherwise answer in server-sent events.
+  const body = maxTokens === null ? { model: config.model, messages: history, stream: false } : { model: config.model, messages: history, max_tokens: maxTokens, stream: false };
   if (tools.length) body.tools = tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.input } }));
   return {
     url: endpointUrl(config.baseUrl, "/chat/completions"),

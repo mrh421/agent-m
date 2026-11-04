@@ -44,8 +44,7 @@ const READING = text("## 2. Reading", "", `**${CARD}** *(Product Owner)*`, "Ever
 const HEAD = text("# Thesis tool — Specification", "");
 const SPEC = HEAD + LENDING + READING;
 const FILES = { "README.md": "# Thesis tool\n", "SPEC.md": SPEC };
-const TODAY = new Date().toISOString().slice(0, 10);
-const QUEUE = `docs/spec-freigaben/${TODAY}_edits-of-anonymous`;
+const QUEUE = "docs/spec-freigaben/lending";
 const EDITED = LENDING.replace("returned.", "returned, or renewed.");
 const WHY = "Because it is clearer.";
 
@@ -136,8 +135,7 @@ function listed(target) {
 // guards: UC-018; WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; NO TEXT TRAVELS IN A URL
 // given: a GitHub product whose host cannot write (no token), whose default branch holds no queue of the person; the editor with the rule of A LOAN HAS A DUE DATE edited and a Why
 // input: a click on Save
-// expect: nothing committed; four pages — the queue's index, its decisions file, the entry's proposal and its rationale —, each with exactly one text beside its link; the proposal's text is
-//   the section as edited, byte for byte; the rationale's text holds the Why; the index's text names the section; no address holds a word of the text; no page is warned about
+// expect: nothing committed; four pages — the queue's index, its decisions file, the entry's proposal and its rationale —, each with exactly one text beside its link; the proposal's text is the section as edited, byte for byte; the rationale's text holds the Why; the index's text names the section; no address holds a word of the text; no page is warned about
 test("requirement/<name> — without a token each of GitHub's pages carries its file's text, the proposal byte for byte", async () => {
   const fake = fakeHost();
   const target = await saveWithoutToken(fake);

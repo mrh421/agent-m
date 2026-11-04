@@ -49,10 +49,7 @@ const count = (text, pattern) => (text.match(pattern) ?? []).length;
 // guards: NO MODEL READS A CREDENTIAL; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
 // given: the job workflow jobWorkflowFiles writes on GitHub for an instance at a commit, the token AGENT_M_TOKEN, the key FIXTURE_KEY and the self-hosted runner gpu
 // input: the text of .github/workflows/agent-m-jobs.yml
-// expect: every agent's job — hosted-agent-0, hosted-agent-1, runner-gpu-agent-0, runner-gpu-agent-1 — checks out the product and the instance with `persist-credentials:
-//   false` on each of its two checkouts (two checkouts, two such lines), so that no token stays in their .git/config; every agent's job, the hosted and the self-hosted
-//   runner's, names the model's user `AGENT_M_MODEL_USER: "agent-m-model"` (a self-hosted runner separates where it can, separationOf); counter-proof: the job that writes,
-//   hosted, keeps its token on both checkouts (`token: ${{ secrets.AGENT_M_TOKEN }}`), has no `persist-credentials: false`, since it pushes, and names no model's user
+// expect: every agent's job — hosted-agent-0, hosted-agent-1, runner-gpu-agent-0, runner-gpu-agent-1 — checks out the product and the instance with `persist-credentials: false` on each of its two checkouts (two checkouts, two such lines), so that no token stays in their .git/config; every agent's job, the hosted and the self-hosted runner's, names the model's user `AGENT_M_MODEL_USER: "agent-m-model"` (a self-hosted runner separates where it can, separationOf); counter-proof: the job that writes, hosted, keeps its token on both checkouts (`token: ${{ secrets.AGENT_M_TOKEN }}`), has no `persist-credentials: false`, since it pushes, and names no model's user
 test("TST-1243001: the agent's machine checks out without keeping a token, and every agent's job names the model's user", () => {
   const [file] = jobWorkflowFiles("github", INSTANCE, SECRETS, ["gpu"]);
   const jobs = jobsOf(file.text);
@@ -88,9 +85,7 @@ async function fakeEndpoint(t) {
 // guards: NO MODEL READS A CREDENTIAL; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
 // given: a fake endpoint on 127.0.0.1 under the base address <fake>/v1; a key holder for an OpenAI-compatible endpoint there with the key KEY, and one for an Anthropic endpoint there with the same key
 // input: POST <holder>/chat/completions with the body {"model":"m"} and the forged header `Authorization: Bearer forged`; POST <anthropic holder>/messages with the body {"model":"m"} and no key header
-// expect: the fake endpoint receives POST /v1/chat/completions with `authorization: Bearer KEY` and the body unchanged, and POST /v1/messages with `x-api-key: KEY` and
-//   no authorization header; each caller gets status 200 and the body {"ok":true}, which holds no key; the holder's address is http://127.0.0.1:<port>; counter-proof
-//   of the check: the request that reaches the endpoint carries the key
+// expect: the fake endpoint receives POST /v1/chat/completions with `authorization: Bearer KEY` and the body unchanged, and POST /v1/messages with `x-api-key: KEY` and no authorization header; each caller gets status 200 and the body {"ok":true}, which holds no key; the holder's address is http://127.0.0.1:<port>; counter-proof of the check: the request that reaches the endpoint carries the key
 test("TST-1243002: the key holder adds the key, in the endpoint kind's header, to each request it forwards to its endpoint", async (t) => {
   const fake = await fakeEndpoint(t);
   const openai = await holdKey({ kind: "openai-compatible", baseUrl: `${fake.address}/v1`, key: KEY });
@@ -131,8 +126,7 @@ function rawRequest(address, line) {
 // guards: NO MODEL READS A CREDENTIAL
 // given: a fake endpoint, and a second fake server `elsewhere`, both on 127.0.0.1; a key holder with the key KEY for the endpoint <fake>/v1
 // input: raw requests to the holder with the request targets http://127.0.0.1:<elsewhere>/steal, //127.0.0.1:<elsewhere>/steal and @127.0.0.1:<elsewhere>/steal; then /models as the known positive
-// expect: the holder answers each of the three with status 400 and `elsewhere` receives no request; the known positive is answered 200 and reaches the endpoint as
-//   GET /v1/models with the key
+// expect: the holder answers each of the three with status 400 and `elsewhere` receives no request; the known positive is answered 200 and reaches the endpoint as GET /v1/models with the key
 test("TST-1243003: the key holder sends the key to its endpoint only, whatever address a caller names", async (t) => {
   const fake = await fakeEndpoint(t);
   const elsewhere = await fakeEndpoint(t);
@@ -172,13 +166,7 @@ function machine(t, given, inputs) {
 // guards: NO MODEL READS A CREDENTIAL; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
 // given: the hosted agent's machine above (the key FIXTURE_KEY in its environment, GITHUB_TOKEN and AGENT_M_TOKEN as stand-ins for any token, the model's user agent-m-model), a key holder at http://127.0.0.1:45678, node at /opt/node/bin/node, the committer alice <1+alice@users.noreply.github.com>
 // input: separates for onDispatch of a hand-over to a model endpoint; modelUserCommands for that machine and its entry onDispatch
-// expect: separates is true; it is false for leaveResult, for a start without `endpoint`, on the writing machine (AGENT_M_PART write), on a route without a model's user
-//   (AGENT_M_MODEL_USER empty) and on the model's user's own side (AGENT_M_KEY_HOLDER set, AGENT_M_MODEL_USER not); the user is made with `useradd --create-home --home-dir
-//   /home/agent-m-model --user-group --shell /bin/bash agent-m-model` and no other group, so that it may not use sudo; the entry runs as `sudo -n -u agent-m-model --
-//   /usr/bin/env -i …` with node and /home/agent-m-model/instance/src/workflow-entries/main.mjs onDispatch; no argument of any command holds the key's or the token's
-//   value or sets FIXTURE_KEY, OTHER_KEY, GITHUB_TOKEN, AGENT_M_TOKEN or AGENT_M_MODEL_USER; the entry's variables name the holder (AGENT_M_KEY_HOLDER), the model's
-//   user's home as GITHUB_WORKSPACE and HOME, its product, result, event and summary there, and the committer; the product's checkout, the instance's checkout and the
-//   event are copied there, and the home is given to the user; the files of the result and the summary are read back as that user; the user's processes are ended
+// expect: separates is true; it is false for leaveResult, for a start without `endpoint`, on the writing machine (AGENT_M_PART write), on a route without a model's user (AGENT_M_MODEL_USER empty) and on the model's user's own side (AGENT_M_KEY_HOLDER set, AGENT_M_MODEL_USER not); the user is made with `useradd --create-home --home-dir /home/agent-m-model --user-group --shell /bin/bash agent-m-model` and no other group, so that it may not use sudo; the entry runs as `sudo -n -u agent-m-model -- /usr/bin/env -i …` with node and /home/agent-m-model/instance/src/workflow-entries/main.mjs onDispatch; no argument of any command holds the key's or the token's value or sets FIXTURE_KEY, OTHER_KEY, GITHUB_TOKEN, AGENT_M_TOKEN or AGENT_M_MODEL_USER; the entry's variables name the holder (AGENT_M_KEY_HOLDER), the model's user's home as GITHUB_WORKSPACE and HOME, its product, result, event and summary there, and the committer; the product's checkout, the instance's checkout and the event are copied there, and the home is given to the user; the files of the result and the summary are read back as that user; the user's processes are ended
 test("TST-1243004: a hand-over to a model endpoint runs as the model's user, whose command holds no key and no token", (t) => {
   const { env, at } = machine(t, MACHINE, INPUTS);
   assert.equal(separates("onDispatch", at("onDispatch")), true);
@@ -252,9 +240,7 @@ function linked(t) {
 // guards: NO MODEL READS A CREDENTIAL
 // given: a git checkout holding inside.txt (FIXTURE_VISIBLE=seen-inside) and links a command could make: environ-link to a file outside holding the key, proc-link to a folder outside whose file environ holds it, on Linux also self-link to /proc/self/environ of the process running the tools, whose environment then holds the key
 // input: read, write, edit and grep with the path of each link; grep and glob over the whole checkout for `FIXTURE_`
-// expect: read, write, edit and grep of environ-link and of proc-link/environ answer `refused: … is outside the checkout …`; grep over the checkout answers
-//   inside.txt's line (the known positive) and no line that holds the key, naming environ-link (and self-link) as outside the checkout; glob answers paths only; no answer
-//   holds the key, and the file outside still holds it unchanged
+// expect: read, write, edit and grep of environ-link and of proc-link/environ answer `refused: … is outside the checkout …`; grep over the checkout answers inside.txt's line (the known positive) and no line that holds the key, naming environ-link (and self-link) as outside the checkout; glob answers paths only; no answer holds the key, and the file outside still holds it unchanged
 test("TST-1243005: the tools that read in the driver's process refuse every link that leads out of the checkout", async (t) => {
   const { root, context } = linked(t);
   const { tools } = checkoutStrategies({ hidden: [] });
@@ -333,10 +319,7 @@ async function withEnvironment(values, run) {
 // guards: NO MODEL READS A CREDENTIAL; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
 // given: controlled claude, codex and opencode on PATH; a fake endpoint, and a key holder for it of the kind anthropic with KEY; CI=true and, as a variable the CLI could inherit, ANTHROPIC_API_KEY=KEY
 // input: agentDriver for claude with keyVariable ANTHROPIC_API_KEY and keyHolder the holder's address, send; the same for codex (keyVariable CODEX_API_KEY) and for opencode; then claude without keyHolder, as the counter-proof of the check
-// expect: claude is started with its task's arguments only, ANTHROPIC_BASE_URL the holder's address and ANTHROPIC_API_KEY the placeholder `agent-m-key-holder`, and no
-//   variable of it holds KEY; its request reaches the fake endpoint as POST /v1/messages with `x-api-key: KEY` and is answered 200 (counter-proof: the endpoint receives the
-//   key); codex is started with `-c openai_base_url="<holder>"` before `exec -`, CODEX_API_KEY the placeholder and no variable holding KEY; opencode, which names no key
-//   variable and no provider, is refused with KeyHolderUnsupported and not started; without keyHolder, claude's variables hold KEY — the gap this test closes
+// expect: claude is started with its task's arguments only, ANTHROPIC_BASE_URL the holder's address and ANTHROPIC_API_KEY the placeholder `agent-m-key-holder`, and no variable of it holds KEY; its request reaches the fake endpoint as POST /v1/messages with `x-api-key: KEY` and is answered 200 (counter-proof: the endpoint receives the key); codex is started with `-c openai_base_url="<holder>"` before `exec -`, CODEX_API_KEY the placeholder and no variable holding KEY; opencode, which names no key variable and no provider, is refused with KeyHolderUnsupported and not started; without keyHolder, claude's variables hold KEY — the gap this test closes
 test("TST-1243007: a coding agent's CLI reaches its provider through the key holder, with a placeholder for its key", async (t) => {
   const { folder, notes } = clis(t);
   const fake = await fakeEndpoint(t);
@@ -376,10 +359,7 @@ delete CLI_MACHINE.FIXTURE_KEY;
 // guards: NO MODEL READS A CREDENTIAL; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
 // given: the agent's machine above, given the key ANTHROPIC_API_KEY (KEY); the same machine given the second key, CODEX_API_KEY; the hosted machine of TST-1243004, whose key FIXTURE_KEY is no CLI's key variable
 // input: separates and heldOf for onRecordsChanged and for onDispatch of a recorded job (input `job` only); heldOf for a hand-over to an endpoint; keyAvailable on the model's user's side (AGENT_M_KEY_HOLDER set, no key's value) and on the machine's
-// expect: with ANTHROPIC_API_KEY both entries separate and the holder is for { kind anthropic, baseUrl https://api.anthropic.com, key KEY }; with CODEX_API_KEY for
-//   { kind openai-compatible, baseUrl https://api.openai.com/v1 }; a hand-over's input `endpoint` takes precedence; with FIXTURE_KEY and no endpoint neither separates
-//   and heldOf is null; leaveResult and the writing machine never separate; on the model's user's side keyAvailable is true for the machine's key only, the holder
-//   holding it, and on the machine true where the variable holds a value
+// expect: with ANTHROPIC_API_KEY both entries separate and the holder is for { kind anthropic, baseUrl https://api.anthropic.com, key KEY }; with CODEX_API_KEY for { kind openai-compatible, baseUrl https://api.openai.com/v1 }; a hand-over's input `endpoint` takes precedence; with FIXTURE_KEY and no endpoint neither separates and heldOf is null; leaveResult and the writing machine never separate; on the model's user's side keyAvailable is true for the machine's key only, the holder holding it, and on the machine true where the variable holds a value
 test("TST-1243008: a run of a coding agent whose key a CLI reads runs as the model's user, beside a key holder for that CLI's provider", (t) => {
   const anthropic = machine(t, CLI_MACHINE, {});
   assert.equal(separates("onRecordsChanged", anthropic.at("onRecordsChanged")), true);
@@ -422,13 +402,7 @@ const GITLAB = {
 // guards: NO MODEL READS A CREDENTIAL
 // given: the GitLab agent's job above, run as root (no sudo), a key holder at http://127.0.0.1:45678, node at /usr/local/bin/node; and the hosted GitHub machine of TST-1243004, run with sudo
 // input: modelUserCommands for onDispatch with `root: true`; ciEnvironment of the variables its entry is given; modelUserCommands of the GitHub machine without `root`
-// expect: as root no command is sudo: the user is made with `useradd …` directly, the entry and every read run as `runuser -u agent-m-model -- …`; `clear`, run before and
-//   after, ends the user's processes and removes the user (`pkill -KILL -u`, `userdel --force --remove`); no event file is copied; the folder that holds the project's clone
-//   and GitLab's files beside it, /builds/alice, is closed to every other user (chmod 0700, the last step of `prepare`; `closes` names it, `close(mode)` sets it back);
-//   the entry is given CI_PROJECT_DIR and AGENT_M_PRODUCT_DIR <home>/product, AGENT_M_RESULT_DIR <home>/result, GITLAB_CI, the pipeline's source, the inputs
-//   AGENT_M_INPUT_* and the holder, and none of CI_JOB_TOKEN, CI_REGISTRY_PASSWORD, CI_DEPENDENCY_PROXY_PASSWORD, FIXTURE_KEY, AGENT_M_MODEL_USER, GITHUB_WORKSPACE,
-//   GITHUB_EVENT_PATH; no argument of any command holds KEY or TOKEN; the CiEnvironment that side reads has the checkout <home>/product, the instance <home>/instance, the
-//   inputs unchanged, no key's value and the holder, and does not split again; on GitHub with sudo, `clear` is the same two commands under `sudo -n` and no folder is closed
+// expect: as root no command is sudo: the user is made with `useradd …` directly, the entry and every read run as `runuser -u agent-m-model -- …`; `clear`, run before and after, ends the user's processes and removes the user (`pkill -KILL -u`, `userdel --force --remove`); no event file is copied; the folder that holds the project's clone and GitLab's files beside it, /builds/alice, is closed to every other user (chmod 0700, the last step of `prepare`; `closes` names it, `close(mode)` sets it back); the entry is given CI_PROJECT_DIR and AGENT_M_PRODUCT_DIR <home>/product, AGENT_M_RESULT_DIR <home>/result, GITLAB_CI, the pipeline's source, the inputs AGENT_M_INPUT_* and the holder, and none of CI_JOB_TOKEN, CI_REGISTRY_PASSWORD, CI_DEPENDENCY_PROXY_PASSWORD, FIXTURE_KEY, AGENT_M_MODEL_USER, GITHUB_WORKSPACE, GITHUB_EVENT_PATH; no argument of any command holds KEY or TOKEN; the CiEnvironment that side reads has the checkout <home>/product, the instance <home>/instance, the inputs unchanged, no key's value and the holder, and does not split again; on GitHub with sudo, `clear` is the same two commands under `sudo -n` and no folder is closed
 test("TST-1243009: in a GitLab job that runs as root, the model's user is made and run without sudo, and gets no GitLab token", (t) => {
   const ci = ciEnvironment("onDispatch", GITLAB, new Date("2026-10-27T09:00:00Z"));
   assert.equal(separates("onDispatch", ci), true);
@@ -498,9 +472,7 @@ function gitlabJobsOf(text) {
 // guards: NO MODEL READS A CREDENTIAL
 // given: the job workflow jobWorkflowFiles writes on GitLab for the instance, the token AGENT_M_TOKEN, the key FIXTURE_KEY and the self-hosted runner gpu
 // input: the text of .gitlab/agent-m-jobs.yml
-// expect: every agent's job — agent-m-hosted-agent-0/1, agent-m-runner-gpu-agent-0/1 — names the model's user `AGENT_M_MODEL_USER: "agent-m-model"` and, before its
-//   first entry runs, sets the clone's remote to the project's address without the job's token, `git remote set-url origin "$CI_PROJECT_URL.git"`; counter-proof: the
-//   job that writes, agent-m-hosted, names no model's user
+// expect: every agent's job — agent-m-hosted-agent-0/1, agent-m-runner-gpu-agent-0/1 — names the model's user `AGENT_M_MODEL_USER: "agent-m-model"` and, before its first entry runs, sets the clone's remote to the project's address without the job's token, `git remote set-url origin "$CI_PROJECT_URL.git"`; counter-proof: the job that writes, agent-m-hosted, names no model's user
 test("TST-1243010: GitLab's agent's job keeps no token in its clone and names the model's user", () => {
   const [file] = jobWorkflowFiles("gitlab", INSTANCE, SECRETS, ["gpu"]);
   const jobs = gitlabJobsOf(file.text);
@@ -518,8 +490,7 @@ test("TST-1243010: GitLab's agent's job keeps no token in its clone and names th
 // guards: NO MODEL READS A CREDENTIAL
 // given: the facts of a machine: its platform, whether its user is root, whether `sudo -n true` succeeded there
 // input: separationOf for linux as root, linux with sudo, linux without either, darwin with sudo
-// expect: `root`, `sudo`, null, null — the model's user is made where the machine's user is root or may use sudo without a password, on Linux; elsewhere the entry
-//   runs as the machine's user, as before
+// expect: `root`, `sudo`, null, null — the model's user is made where the machine's user is root or may use sudo without a password, on Linux; elsewhere the entry runs as the machine's user, as before
 test("TST-1243011: the model's user is made where the machine allows it, and only there", () => {
   assert.equal(separationOf({ platform: "linux", root: true, sudo: false }), "root");
   assert.equal(separationOf({ platform: "linux", root: false, sudo: true }), "sudo");

@@ -117,19 +117,28 @@ after(async () => {
   await new Promise((resolve) => (server ? server.close(resolve) : resolve()));
 });
 
-// given: the vendored Mermaid in a browser; input: a flowchart of three nodes through renderMermaid
+// TST-918001 · level: component · module: MOD-markdown-render
+// guards: DIAGRAMS ARE MERMAID IN MARKDOWN
+// given: the vendored Mermaid in a browser
+// input: a flowchart of three nodes through renderMermaid
 // expect: the element holds an svg whose viewBox is wider and higher than 0 (the library measured what it drew), is not an `.unrendered` block, and stands in no document
 test("TST-918001: a flowchart is drawn: the element holds an svg and no .unrendered block", () => {
   assert.deepEqual(found.flowchart, { svg: true, sized: true, unrendered: false, message: "", connected: false });
 });
 
-// given: the same; input: a sequence diagram of two participants (Mermaid measures it with getBBox)
+// TST-918002 · level: component · module: MOD-markdown-render
+// guards: DIAGRAMS ARE MERMAID IN MARKDOWN
+// given: the same
+// input: a sequence diagram of two participants (Mermaid measures it with getBBox)
 // expect: the element holds an svg whose viewBox is wider and higher than 0 (the library measured what it drew), is not an `.unrendered` block, and stands in no document
 test("TST-918002: a sequence diagram is drawn: the element holds an svg and no .unrendered block", () => {
   assert.deepEqual(found.sequence, { svg: true, sized: true, unrendered: false, message: "", connected: false });
 });
 
-// given: the same; input: the two sources through the library on an element in no document, and on an element in the document
+// TST-918003 · level: component · module: MOD-markdown-render
+// guards: DIAGRAMS ARE MERMAID IN MARKDOWN
+// given: the same
+// input: the two sources through the library on an element in no document, and on an element in the document
 // expect: detached, each fails (the known positive of the fault: the library throws); in the document, each draws an svg and does not fail
 test("TST-918003: the counter-proof: the library draws the sources in the document and not on a detached element", () => {
   assert.deepEqual(found.control, {
@@ -138,7 +147,10 @@ test("TST-918003: the counter-proof: the library draws the sources in the docume
   });
 });
 
-// given: the same; input: a source that does not parse
+// TST-918004 · level: component · module: MOD-markdown-render
+// guards: DIAGRAMS ARE MERMAID IN MARKDOWN
+// given: the same
+// input: a source that does not parse
 // expect: an `.unrendered` block with the parser's message and no svg; and after all three draws no diagram stands in the document's body
 test("TST-918004: a diagram that does not parse is shown with its message, and the drawing leaves no diagram in the document", () => {
   assert.equal(found.broken.svg, false);
@@ -147,7 +159,10 @@ test("TST-918004: a diagram that does not parse is shown with its message, and t
   assert.deepEqual(found.strays, { filled: [], svgInBody: false }, "after the three draws no diagram stands in the document's body");
 });
 
-// given: the same, with a style planted in the drawn svg that loads a resource: an @import, an @font-face and a url inside an @keyframes
+// TST-918006 · level: component · module: MOD-markdown-render
+// guards: DIAGRAMS ARE MERMAID IN MARKDOWN
+// given: the vendored Mermaid in a browser, wrapped for three draws so that it plants a style in the drawn svg that loads a resource: an @import, an @font-face and a url inside an @keyframes
+// input: a flowchart of three nodes through renderMermaid, once for each planted style
 // expect: in each case the planting happened (the known positive) and the element the module returns holds no reference to the outside address
 test("TST-918006: a style planted in a drawn svg that would load a resource never reaches the element", () => {
   assert.deepEqual(found.hostile, {
@@ -155,7 +170,10 @@ test("TST-918006: a style planted in a drawn svg that would load a resource neve
   });
 });
 
-// given: the same; input: renderArtifact on a text with prose, a flowchart and a sequence diagram, inserted in the page
+// TST-918005 · level: component · module: MOD-markdown-render
+// guards: DIAGRAMS ARE MERMAID IN MARKDOWN
+// given: the same
+// input: renderArtifact on a text with prose, a flowchart and a sequence diagram, inserted in the page
 // expect: both diagrams are drawn (two svg, no .unrendered block) and the prose between them stays
 test("TST-918005: renderArtifact draws both diagrams of a text", () => {
   assert.deepEqual(found.artifact, { svgs: 2, failed: 0, prose: true });

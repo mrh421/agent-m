@@ -75,7 +75,7 @@ test("Agent M declares its schedule: two minutes, its own command and setup, and
   assert.equal(schedule.fields.minutes, 2);
   assert.equal(schedule.fields.command, "node tests/test-schedule-command.mjs");
   assert.equal(schedule.fields.setup, "sh tests/test-schedule-setup.sh");
-  assert.deepEqual(schedule.fields.cache, ["/home/runner/apt-archives", "/home/runner/apt-lists"]);
+  assert.deepEqual(schedule.fields.cache, ["/home/runner/apt-archives", "/home/runner/apt-lists", "/home/runner/agent-m-electron-44/node_modules/electron"]);
   const rows = schedule.sections.find((s) => s.heading === "## Levels").rows.map(({ cells }) => cells.Row);
   assert.deepEqual(rows, ROWS);
 });

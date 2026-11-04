@@ -11,8 +11,9 @@
  * One test declaration, as MOD-test-document's Data states it: a block of comment lines directly before a test case, in
  * the comment marker of the file's language, or, for a manual test of level `user`, the same lines under a heading
  * `### TST-<nnn> <title>` of a Markdown file. A missing key reads `null`.
+ * `id` is `null` only in a declaration unidentifiedDeclarations gives.
  * @typedef {{
- *   id: string,
+ *   id: string | null,
  *   title: string | null,
  *   level: "unit" | "component" | "system" | "release" | "user" | null,
  *   module: string | null,
@@ -28,6 +29,6 @@
  * }} TestDeclaration
  */
 
-export { isNamedTestFile, isTestFile, testDeclarations } from "./declarations.mjs";
+export { isNamedTestFile, isTestFile, testDeclarations, unidentifiedDeclarations } from "./declarations.mjs";
 export { testFindings } from "./checks.mjs";
 export { testHeader } from "./header.mjs";

@@ -1,12 +1,12 @@
 // What a spawn of the prompt bar reads before it queues (MOD-prompt-bar's hand-over.mjs `spawnEndpointJob` and `assess`; UC-049 4a): a job that is an endpoint's own works on
 // nothing of the product's plan, so its spawn reads none of the product's facts — no MOD-progress-measures' productFacts, no backlog item, sprint, process declaration, job record or
-// pull request —, only the product's default branch (its head, its paths, its visibility) and, through MOD-runtimes' handOverJob, the job workflow's file. A hand-over that works on an
-// item of the backlog or a step of the plan is still checked by MOD-work-plans' startable on the facts; one that works on no item or step reads no facts. The job's identifier is new
+// pull request —, only the product's default branch (its head, its paths, its visibility) and, through MOD-runtimes' handOverJob, the job workflow's file. No hand-over reads the facts,
+// whether or not it works on an item of the backlog or a step of the plan: no start rule of the product's process applies to it (UC-049 4a.2). The job's identifier is new
 // against the paths under docs/jobs/ of the snapshot read, without reading a record.
 // Run: node --test tests/prompt-bar-spawn-reads.test.mjs
 //
 // Module: MOD-prompt-bar
-// Guards: UC-049; A JOB IDENTIFIER IS NEVER REUSED; NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED; A JOB GOES ONLY TO A HOLDER OF ITS ROLE
+// Guards: UC-049; A JOB IDENTIFIER IS NEVER REUSED
 // Level: unit
 //
 // Each test states its expected result in its own text; none reads it from a document. The repositories are fixtures in memory (default branch `trunk`) whose hosts keep every call —
@@ -19,7 +19,9 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { openStore, writeSetting } from "../src/browser-store/index.mjs";
 import { registerStrategies } from "../src/job-runner/index.mjs";
-import { handOverStrategies } from "../src/prompt-bar/index.mjs";
+import { loadHandOverStrategies } from "../src/prompt-bar/index.mjs";
+
+const handOverStrategies = await loadHandOverStrategies();
 import { assess, spawnEndpointJob } from "../src/prompt-bar/hand-over.mjs";
 import { endpointsOffered, readParticipants } from "../src/prompt-bar/offer.mjs";
 import { defaultSnapshot } from "../src/prompt-bar/send.mjs";
@@ -201,34 +203,32 @@ test("a spawn given the instance's snapshot the bar read does not read it again"
 
 // ---------------------------------------------------------------- a hand-over that works on an item, and one that works on none
 
+// What changed: this test expected a hand-over that works on a backlog item to be checked by MOD-work-plans' startable on the product's facts, which listed the pull requests. The start rules of the product's process do not apply to the prompt bar (UC-049 4a.2, as accepted): it now expects the hand-over on ITM-005, which no sprint selects, to read none of the facts.
 // TST-1300003 · level: unit · module: MOD-prompt-bar
-// guards: NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED; A JOB GOES ONLY TO A HOLDER OF ITS ROLE; UC-049
-// given: the Scrum product, whose sprint selects ITM-004 and not ITM-005; dev-ci, a Developer of team1, proposes a hand-over; known positive: ITM-004 may start (no reason)
-// input: assess of { kind: "implement", works_on: ["ITM-005"] }, and of { kind: "implement", works_on: ["ITM-004"] }
-// expect: ITM-005 is refused with a reason that names it — startable checked it on the product's facts, which listed the pull requests —; ITM-004 has no reason
-test("a hand-over that works on a backlog item is still checked by startable on the product's facts", async () => {
+// guards: UC-049
+// given: the Scrum product, whose sprint selects ITM-004 and not ITM-005; dev-ci proposes a hand-over that works on ITM-005
+// input: assess of { kind: "implement", works_on: ["ITM-005"] }
+// expect: a route on CI, and none of the product's facts read: no pull request listed, none of the files the facts read
+test("a hand-over that works on a backlog item reads none of the product's facts", async () => {
   const it = open();
   const participant = (await readParticipants(await defaultSnapshot(it.instance.host))).find((each) => each.name === "dev-ci");
-  const ready = await assess({ handOver: { kind: "implement", works_on: ["ITM-004"], task: TASK }, participant, instance: it.instanceSetup, page: it.page });
-  assert.deepEqual(ready.reasons, [], "known positive: ITM-004 may start");
   it.product.calls.length = 0;
-  const unselected = await assess({ handOver: { kind: "implement", works_on: ["ITM-005"], task: TASK }, participant, instance: it.instanceSetup, page: it.page });
-  assert.ok(unselected.reasons.length > 0 && unselected.reasons.every((reason) => typeof reason === "string"), JSON.stringify(unselected.reasons));
-  assert.ok(unselected.reasons.some((reason) => reason.includes("ITM-005")), JSON.stringify(unselected.reasons));
-  assert.equal(count(it.product.calls, "listPullRequests"), 1, "the facts were read");
+  const assessed = await assess({ handOver: { kind: "implement", works_on: ["ITM-005"], task: TASK }, participant, instance: it.instanceSetup, page: it.page });
+  assert.equal(assessed.route?.kind, "ci");
+  assert.equal(count(it.product.calls, "listPullRequests"), 0, it.product.calls.join(", "));
+  assert.deepEqual(readsOf(it.product.calls).filter((path) => FACT_FILES.test(path)), [], it.product.calls.join(", "));
 });
 
 // TST-1300004 · level: unit · module: MOD-prompt-bar
 // guards: UC-049
-// given: the Scrum product; dev-ci proposes a hand-over that works on the use case UC-001, which is no item of the backlog and no step of the plan; known positive: the hand-over on ITM-005 reads the facts (TST-1300003)
+// given: the Scrum product; dev-ci proposes a hand-over that works on the use case UC-001, which is no item of the backlog and no step of the plan; known positive: the counting host sees each file that is read (TST-1300001)
 // input: assess of { kind: "converse", works_on: ["UC-001"] }
-// expect: no reason, a route, and none of the product's facts read: no pull request listed, none of the files the facts read
+// expect: a route, and none of the product's facts read: no pull request listed, none of the files the facts read
 test("a hand-over that works on no item or step reads none of the product's facts", async () => {
   const it = open();
   const participant = (await readParticipants(await defaultSnapshot(it.instance.host))).find((each) => each.name === "dev-ci");
   it.product.calls.length = 0;
   const assessed = await assess({ handOver: { kind: "converse", works_on: ["UC-001"], task: TASK }, participant, instance: it.instanceSetup, page: it.page });
-  assert.deepEqual(assessed.reasons, []);
   assert.equal(assessed.route?.kind, "ci");
   assert.equal(count(it.product.calls, "listPullRequests"), 0, it.product.calls.join(", "));
   assert.deepEqual(readsOf(it.product.calls).filter((path) => FACT_FILES.test(path)), [], it.product.calls.join(", "));

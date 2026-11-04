@@ -59,7 +59,7 @@ test("MOD-repository-hosts webLinks — GitHub's new-file page holds the path an
   assert.deepEqual([page.hash, page.username, page.password], ["", "", ""], "no fragment, no user name, no password");
 });
 
-// TST-472541 · level: unit · module: MOD-repository-hosts
+// TST-1302016 · level: unit · module: MOD-repository-hosts
 // guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; A CREDENTIAL IS NEVER PLACED IN A URL
 // given: the GitHub repository alice/agent-m, connected without a token; the repository default branch the server reports, once `master` and once `main`; the approval record of a module file, three lines, and a path with spaces
 // input: webLinks().newFile(path, record) and webLinks().editFile(path)

@@ -1,5 +1,5 @@
 # MOD-workflow-entries' entry onMainChanged, run on every push to the default branch: it adds the graph of the pushed commit and the impact lists of its
-# decision and module files that are not accepted to the branch trace-cache, and the overview of the main page of that commit and the facts its files alone give to the branch overview-cache,
+# decision and module files that are not accepted to the branch trace-cache, and the overview of the main page of that commit to the branch overview-cache,
 # where the pages read them once instead of deriving them at every load. This file does nothing but run the entry. Each branch's first commit is made
 # here, once, as an orphan commit.
 name: main changed

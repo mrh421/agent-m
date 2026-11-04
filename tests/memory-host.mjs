@@ -1,5 +1,5 @@
 // A host held in memory — the part of MOD-repository-hosts' Host (docs/architecture/MOD-repository-hosts.md, Interfaces) that a
-// writer of the review layout calls: repositoryInfo, readSnapshot, readHistory and commitFiles, on one repository whose default branch is
+// writer of the review layout calls: repositoryInfo, readSnapshot, readHistory, readFileAt and commitFiles, on one repository whose default branch is
 // `main`. readHistory lists, newest first, the commits that added, changed or deleted a path, each a second after the one before it. A commit of all its files together is made only while the branch still stands at the expected head, else it fails with
 // Moved { head }. It holds no test and no expected result; the tests that write a product through MOD-approvals, MOD-spec-changes
 // and MOD-artifact-edits use it, and so do the Python checks through tests/spec_apply.py. Nothing reaches the network.
@@ -48,6 +48,7 @@ export function memoryHost(files, repository = { server: "github", origin: "http
       }
       return limit ? found.slice(0, limit) : found;
     },
+    readFileAt: async (path, commits) => new Map(commits.map((commit) => [commit, trees.get(commit)?.get(path) ?? null])),
     commitFiles: async ({ branch, expectedHead, files: written, message }) => {
       calls.push({ branch, expectedHead, files: written, message });
       if (branch !== "main" || expectedHead !== head) {

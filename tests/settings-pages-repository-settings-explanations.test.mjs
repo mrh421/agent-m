@@ -77,8 +77,7 @@ test("the instance's and the product's section of repository settings each carry
 // guards: UC-042; EVERY STEP EXPLAINS ITSELF
 // given: the same page
 // input: the ten lines of the two sections are looked at
-// expect: counter-proof — a line whose topic the explanations file does not hold has an empty explanation and fails: each of the ten lines has exactly one folded What is this? with a body of
-//   text, and no two of the ten bodies are the same
+// expect: counter-proof — a line whose topic the explanations file does not hold has an empty explanation and fails: each of the ten lines has exactly one folded What is this? with a body of text, and no two of the ten bodies are the same
 test("each of the ten repository settings' lines carries its own folded explanation", async () => {
   const page = await open();
   const lines = byClass(page, "settings-repository-setting");

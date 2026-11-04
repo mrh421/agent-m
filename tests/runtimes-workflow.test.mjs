@@ -35,14 +35,17 @@
 // (given / input / expect). A name the module does not provide yet is undefined here, so that each test fails by itself. Nothing reaches
 // the network. The counter-proofs are recorded in the pull request.
 //
-// The templates are files beside the module (workflow/github.yml, workflow/gitlab.yml). The repository's check NO SERVER (tests/
-// test_no_backend.py) lets a module fetch its own data files only where it lists the module, and it does not list MOD-runtimes: so
-// the templates are read from the disk, in Node, and in a browser, where there is none, jobWorkflowFiles fails by name — an Error that
-// says the templates are read in Node — and the rest of the module stays usable. The last test shows that, on a copy of the module
-// loaded without the disk.
+// The templates are files beside the module (workflow/github.yml, workflow/gitlab.yml; MOD-runtimes, Parts), and the page uses the
+// module in a browser (MOD-runtimes, Responsibility: "The page uses it in a browser; its writer and its workflow files are used in Node
+// as well"). So the module reads them once, as it is loaded, as the modules that read their own data files do (MOD-test-schedule's
+// templates/ among them): from the disk in Node, from its own address in a browser (ITM-1202); the repository's check NO SERVER (tests/
+// test_no_backend.py) lists MOD-runtimes among those modules. The last two tests load a copy of the module without the disk, as a
+// browser loads it, whose fetch answers the module's own addresses with the real files there, or with 404.
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import * as runtimes from "../src/runtimes/index.mjs";
 import { ciEnvironment } from "../src/workflow-entries/compose.mjs";
 
@@ -81,15 +84,16 @@ const rulesOf = (job) => job.text.split(/\n(?=    - if:)/).slice(1);
 // guards: UC-010; AGENT M WORKS WITHOUT A LOCAL INSTALLATION
 // given: an instance alice/agent-m at a commit, two secret names for keys and one for the token, and the runner label gpu
 // input: jobWorkflowFiles("github", …) and jobWorkflowFiles("gitlab", …)
-// expect: for GitHub one file, .github/workflows/agent-m-jobs.yml; for GitLab .gitlab/agent-m-jobs.yml first and then the file the product's .gitlab-ci.yml needs, at the path .gitlab-ci.yml, whose text is exactly: a `spec:` header with `inputs:` job, task and endpoint, each with `default: ""`, then a line `---`, then `include:` of the local file ".gitlab/agent-m-jobs.yml" with `inputs:` job, task and endpoint, each passed as the whole value `$[[ inputs.<name> ]]`; each file's text is not empty
+// expect: for GitHub .github/workflows/agent-m-jobs.yml, then the file beside it, .github/workflows/agent-m-main-changed.yml; for GitLab .gitlab/agent-m-jobs.yml first, then the file the product's .gitlab-ci.yml needs, at the path .gitlab-ci.yml, then the file beside the job workflow, .gitlab/agent-m-main-changed.yml; the .gitlab-ci.yml's text is exactly: a `spec:` header with `inputs:` job, task and endpoint, each with `default: ""`, then a line `---`, then `include:` of the local file ".gitlab/agent-m-jobs.yml" with `inputs:` job, task and endpoint, each passed as the whole value `$[[ inputs.<name> ]]`, and of the local file ".gitlab/agent-m-main-changed.yml"; each file's text is not empty
 test("jobWorkflowFiles — the file of GitHub, and the file of GitLab with the spec and include its .gitlab-ci.yml needs", () => {
   const github = files("github"), gitlab = files("gitlab");
 
-  assert.deepEqual(github.map((file) => file.path), [".github/workflows/agent-m-jobs.yml"]);
-  assert.deepEqual(gitlab.map((file) => file.path), [".gitlab/agent-m-jobs.yml", ".gitlab-ci.yml"]);
+  assert.deepEqual(github.map((file) => file.path), [".github/workflows/agent-m-jobs.yml", ".github/workflows/agent-m-main-changed.yml"]);
+  assert.deepEqual(gitlab.map((file) => file.path), [".gitlab/agent-m-jobs.yml", ".gitlab-ci.yml", ".gitlab/agent-m-main-changed.yml"]);
   for (const file of [...github, ...gitlab]) assert.match(file.text, /\S/, file.path);
   assert.equal(gitlab[1].text, 'spec:\n  inputs:\n    job:\n      default: ""\n    task:\n      default: ""\n    endpoint:\n      default: ""\n    secret:\n      default: ""\n---\n'
-    + 'include:\n  - local: ".gitlab/agent-m-jobs.yml"\n    inputs:\n      job: $[[ inputs.job ]]\n      task: $[[ inputs.task ]]\n      endpoint: $[[ inputs.endpoint ]]\n      secret: $[[ inputs.secret ]]\n');
+    + 'include:\n  - local: ".gitlab/agent-m-jobs.yml"\n    inputs:\n      job: $[[ inputs.job ]]\n      task: $[[ inputs.task ]]\n      endpoint: $[[ inputs.endpoint ]]\n      secret: $[[ inputs.secret ]]\n'
+    + '  - local: ".gitlab/agent-m-main-changed.yml"\n');
 });
 
 // ---------------------------------------------------------------- the events
@@ -98,7 +102,7 @@ test("jobWorkflowFiles — the file of GitHub, and the file of GitLab with the s
 // guards: UC-010
 // given: the two files for the instance, the secrets and the runner above
 // input: the triggers and the steps of the GitHub file; the rules of each job of the GitLab file
-// expect: GitHub — a push that changes docs/jobs/ or docs/gates/, a pull request closed, a check run completed, a schedule once a day, and a start by hand with the job's identifier as its input; the entries that run an agent — push onRecordsChanged, dispatch onDispatch — in each agent's job, each once, after the plan, which runs only on a dispatch or a push to the default branch; the entries that run none — pull request onPullRequestClosed, check onCheckCompleted, schedule onSchedule — and writeResult, on a dispatch or a push to the default branch, in the job that writes, each once; every step that runs an entry runs `node src/workflow-entries/main.mjs <entry>` on its event. GitLab — the plan and each agent's job have a rule for a push to the default branch that changes docs/jobs/ or docs/gates/ and one for a start from the page or the API, the agent's jobs setting AGENT_M_ENTRY to onRecordsChanged and onDispatch; the job that writes has the push rule, then merge_request_event, pipeline and schedule, then the start, setting writeResult, onPullRequestClosed, onCheckCompleted, onSchedule and writeResult; the plan's script runs chooseAgentKey, every other job's the entry its rule sets
+// expect: GitHub — a push that changes docs/jobs/ or docs/gates/, a pull request closed, a check run completed, a schedule once a day, and a start by hand with the job's identifier as its input; the entries that run an agent — push onRecordsChanged, dispatch onDispatch — in each agent's job, each once, after the plan, which runs only on a dispatch or a push to the default branch; the entries that run none — pull request onPullRequestClosed, check onCheckCompleted, schedule onSchedule — and writeResult, on a dispatch or a push to the default branch, in the job that writes, each once; every step that runs an entry runs `node src/workflow-entries/main.mjs <entry>` on its event. GitLab — the plan and each agent's job have a rule for a push to the default branch that changes docs/jobs/ or docs/gates/ and one for a start from the page or the API, the agent's jobs setting AGENT_M_ENTRY to onRecordsChanged and onDispatch; the job that writes has the push rule, a second push rule for a push of any branch, then pipeline and schedule, then the start, setting writeResult, onPullRequestClosed, onCheckCompleted, onSchedule and writeResult; the plan's script runs chooseAgentKey, every other job's the entry its rule sets
 test("jobWorkflowFiles — each event starts its entry, on GitHub and on GitLab", () => {
   const github = workflow("github");
   assert.match(github, /\n  push:\n(?:.*\n)*?    paths:\n(?:.*\n)*?      - ["']?docs\/jobs\/\*\*["']?\n(?:.*\n)*?      - ["']?docs\/gates\/\*\*["']?\n/);
@@ -126,13 +130,80 @@ test("jobWorkflowFiles — each event starts its entry, on GitHub and on GitLab"
   for (const job of gitlab) {
     const kind = job.id.endsWith("-plan") ? "plan" : /-agent-\d+$/.test(job.id) ? "agent" : "write";
     const sources = { plan: [PUSH, STARTED], agent: [PUSH, STARTED],
-      write: [PUSH, '$CI_PIPELINE_SOURCE == "merge_request_event"', '$CI_PIPELINE_SOURCE == "pipeline"', '$CI_PIPELINE_SOURCE == "schedule"', STARTED] }[kind];
+      write: [PUSH, '$CI_PIPELINE_SOURCE == "push"', '$CI_PIPELINE_SOURCE == "pipeline"', '$CI_PIPELINE_SOURCE == "schedule"', STARTED] }[kind];
     const entries = { plan: [], agent: ["onRecordsChanged", "onDispatch"], write: ["writeResult", "onPullRequestClosed", "onCheckCompleted", "onSchedule", "writeResult"] }[kind];
     assert.deepEqual(rulesOf(job).map((rule) => /^    - if: '(.*)'\n/.exec(rule)[1]), sources, `${job.id}: a rule for each event it runs on`);
     assert.deepEqual(rulesOf(job).flatMap((rule) => [...rule.matchAll(/AGENT_M_ENTRY: (\w+)/g)].map((m) => m[1])), entries, `${job.id}: the entry of each rule`);
     assert.match(rulesOf(job)[0], /changes:\n\s+- docs\/jobs\/\*\*\/\*\n\s+- docs\/gates\/\*\*\/\*/, `${job.id}: the push rule for a change of the records`);
     assert.ok(job.text.includes(kind === "plan" ? `${MAIN} chooseAgentKey` : `${MAIN} "$AGENT_M_ENTRY"`), `${job.id}: the script runs the entry`);
   }
+});
+
+// TST-1259001 · level: unit · module: MOD-runtimes
+// guards: GITLAB PRODUCTS ARE SUPPORTED; UC-012
+// given: the GitLab file for the instance, the secrets and the runner above; MOD-runtimes' table: the job workflow runs `onPullRequestClosed` on "a pull or merge request closed or merged"
+// input: the rules of each route's job that writes
+// expect: no rule runs on `merge_request_event`, a pipeline of an open merge request, which is not its merge; the rule that sets onPullRequestClosed is a push of any branch with no `changes:`, the pipeline that GitLab starts on the target branch, whichever it is, when a merge request is merged, and it comes after the rule that sets writeResult for a push to the default branch that changes docs/jobs/ or docs/gates/; counter-proof: the plan's and the agent's jobs have no such rule
+test("jobWorkflowFiles — on GitLab the job that writes runs onPullRequestClosed on the push that merges a merge request, not on a merge request's own pipeline", () => {
+  const PUSH = '$CI_PIPELINE_SOURCE == "push"';
+  for (const job of gitlabJobs(workflow("gitlab"))) {
+    const rules = rulesOf(job);
+    const closing = rules.filter((rule) => rule.includes("AGENT_M_ENTRY: onPullRequestClosed"));
+    if (!/-(?:plan|agent-\d+)$/.test(job.id)) {
+      assert.ok(!job.text.includes("merge_request_event"), `${job.id}: no rule runs on a merge request's own pipeline`);
+      assert.equal(closing.length, 1, job.id);
+      assert.ok(closing[0].startsWith(`    - if: '${PUSH}'\n`), `${job.id}: a push of any branch: ${closing[0]}`);
+      assert.ok(!closing[0].includes("changes:"), `${job.id}: any push, whatever it changes`);
+      const entries = rules.flatMap((rule) => [...rule.matchAll(/AGENT_M_ENTRY: (\w+)/g)].map((m) => m[1]));
+      assert.ok(entries.indexOf("writeResult") < entries.indexOf("onPullRequestClosed"), `${job.id}: the records' push rule comes first`);
+    } else assert.equal(closing.length, 0, `counter-proof: ${job.id} runs no such entry`);
+  }
+});
+
+// GitLab's start of a pipeline, read from the generated file ("rules:", docs.gitlab.com): a job is in the pipeline when one of its rules holds — its `if:`, and, where it
+// has `changes:`, a changed path below one of them —, and the first rule that holds sets its variables. The `if:` expressions of the file are comparisons with `==`,
+// joined by `&&` and `||`. What the job then runs is its script's lines that run an entry, run by `sh` with those variables and with `node` standing in for Node, which
+// only names the entry it is given; nothing else of the script runs, and nothing reaches the network.
+const valueOf = (side, variables) => (side.startsWith("$") ? variables[side.slice(1)] ?? null : JSON.parse(side));
+const holds = (expression, variables) => expression.split("||").some((any) => any.split("&&").every((comparison) => {
+  const [left, right] = comparison.split("==").map((side) => side.trim());
+  return valueOf(left, variables) === valueOf(right, variables);
+}));
+const changesOf = (rule) => [...(/\n      changes:\n((?:        - .*\n?)+)/.exec(rule)?.[1] ?? "").matchAll(/- (.+)/g)].map((match) => match[1]);
+const below = (glob, path) => path.startsWith(glob.replace(/\*\*\/\*$/, ""));
+/** The jobs of the GitLab file GitLab starts for a pipeline of these variables whose push changed these paths, each with the entries its script runs: [{ id, entries }]. */
+function pipelineOf(text, variables, changed) {
+  return gitlabJobs(text).flatMap((job) => {
+    const rule = rulesOf(job).find((each) => holds(/^    - if: '(.*)'\n/.exec(each)[1], variables)
+      && (changesOf(each).length === 0 || changed.some((path) => changesOf(each).some((glob) => below(glob, path)))));
+    if (!rule) return [];
+    const set = Object.fromEntries([...rule.matchAll(/^ {8}(AGENT_M_[A-Z_]+): (\S+)$/gm)].map((match) => [match[1], match[2]]));
+    const lines = job.text.slice(job.text.indexOf("\n  script:\n")).split("\n").filter((line) => /^    - .*main\.mjs/.test(line)).map((line) => line.slice(6));
+    const run = spawnSync("sh", ["-c", `node() { printf '%s\\n' "$2"; }\n${lines.join("\n")}`], { env: { PATH: process.env.PATH, ...variables, ...set }, encoding: "utf8" });
+    return [{ id: job.id, entries: run.stdout.split("\n").filter(Boolean) }];
+  });
+}
+const PIPELINE = (source, branch) => ({ CI_PIPELINE_SOURCE: source, CI_COMMIT_BRANCH: branch, CI_DEFAULT_BRANCH: "main", CI_PROJECT_DIR: "/builds/product" });
+
+// TST-1289001 · level: unit · module: MOD-runtimes
+// guards: GITLAB PRODUCTS ARE SUPPORTED; UC-012
+// given: the GitLab file for the instance, the secrets and the runner gpu above; MOD-runtimes' table: `onPullRequestClosed` for "a pull or merge request closed or merged"; GitLab starts, for the merge of a merge request, the push pipeline of its target branch, and of a push the first rule of a job that holds sets its variables; the default branch main
+// input: the pipeline of (1) the push to main that merges a merge request whose commit changes docs/jobs/JOB-20261029-0900-a1b2.md and src/store/read.mjs, (2) the push to sprint/team1/120 that merges one into that sprint branch, changing src/store/read.mjs; known positive: (3) a push to main that changes src/store/read.mjs; counter-proofs: (4) a merge request's own pipeline (merge_request_event) and (5) the schedule
+// expect: (1) each route's job that writes runs writeResult and then onPullRequestClosed; (2) only the jobs that write start, agent-m-hosted and agent-m-runner-gpu, each running onPullRequestClosed and nothing else; (3) the same two jobs, each running onPullRequestClosed once; (4) no job starts; (5) the jobs that write run onSchedule alone
+test("jobWorkflowFiles — on GitLab every merged merge request runs onPullRequestClosed, one whose commit changes the records and one into another branch than the default one", () => {
+  const text = workflow("gitlab");
+  const writing = (pipeline) => pipeline.filter((job) => !/-(?:plan|agent-\d+)$/.test(job.id));
+  const WRITE_JOBS = ["agent-m-hosted", "agent-m-runner-gpu"];
+
+  const records = pipelineOf(text, PIPELINE("push", "main"), ["docs/jobs/JOB-20261029-0900-a1b2.md", "src/store/read.mjs"]);
+  assert.deepEqual(writing(records), WRITE_JOBS.map((id) => ({ id, entries: ["writeResult", "onPullRequestClosed"] })), "(1) a merge whose commit changes docs/jobs/ runs both entries");
+
+  const sprint = pipelineOf(text, PIPELINE("push", "sprint/team1/120"), ["src/store/read.mjs"]);
+  assert.deepEqual(sprint, WRITE_JOBS.map((id) => ({ id, entries: ["onPullRequestClosed"] })), "(2) a merge into a sprint branch runs onPullRequestClosed");
+
+  assert.deepEqual(pipelineOf(text, PIPELINE("push", "main"), ["src/store/read.mjs"]), WRITE_JOBS.map((id) => ({ id, entries: ["onPullRequestClosed"] })), "(3) known positive: a merge into main");
+  assert.deepEqual(pipelineOf(text, { ...PIPELINE("merge_request_event", null), CI_MERGE_REQUEST_IID: "7" }, ["src/store/read.mjs"]), [], "(4) an open merge request's pipeline starts no job");
+  assert.deepEqual(writing(pipelineOf(text, PIPELINE("schedule", "main"), [])), WRITE_JOBS.map((id) => ({ id, entries: ["onSchedule"] })), "(5) the schedule closes no merge request");
 });
 
 // ---------------------------------------------------------------- the routes
@@ -343,27 +414,68 @@ test("jobWorkflowFiles — a task with quotes and line breaks is one value, held
 
 // ---------------------------------------------------------------- without a disk
 
-// TST-472728 · level: unit · module: MOD-runtimes
-// guards: AGENT M WORKS WITHOUT A LOCAL INSTALLATION; UC-010
-// given: the module loaded as a browser loads it, where `process.getBuiltinModule` gives no disk — a second copy of ci.mjs, loaded under another address, with that function taken away while it loads — and, as the known positive, the copy loaded as it is
-// input: jobWorkflowFiles on each server, from each copy; and queueJob's other export, RuntimeError, from the copy
-// expect: the copy with the disk gives the files; the copy without it throws an Error, not a TypeError, that says the templates are read in Node, for each server; and the copy loads, so that the rest of the module stays usable
-test("jobWorkflowFiles — in a browser, where the templates cannot be read yet, it fails by name and the module still loads", async () => {
-  const load = async (tag, withDisk) => {
-    const getBuiltinModule = process.getBuiltinModule;
-    if (!withDisk) process.getBuiltinModule = undefined;
-    try {
-      return await import(`../src/runtimes/ci.mjs?${tag}`);
-    } finally {
-      process.getBuiltinModule = getBuiltinModule;
-    }
-  };
-  const withDisk = await load("with-disk", true), without = await load("without-disk", false);
-
-  assert.equal(withDisk.jobWorkflowFiles("github", INSTANCE, SECRETS, RUNNERS).length, 1, "known positive");
-  for (const server of ["github", "gitlab"]) {
-    assert.throws(() => without.jobWorkflowFiles(server, INSTANCE, SECRETS, RUNNERS),
-      (error) => error.constructor === Error && /read in Node/.test(error.message), server);
+// One load of ci.mjs, anew under an address of its own, `ci.mjs?load=<n>`, as tests/product-process.test.mjs loads MOD-product-process:
+// `disk` is what process.getBuiltinModule("node:fs") gives it — undefined, as in a browser —, `fetch` the browser's fetch. Both are put
+// back after the load. -> { module, error, reads } — the module's namespace, or the error its load failed with; and every read of its own
+// templates, as "disk <address>" or "fetch <address>". Only ci.mjs is loaded anew; the modules it imports are this file's.
+const CI_MODULE = new URL("../src/runtimes/ci.mjs", import.meta.url);
+const TEMPLATE_FILES = ["github.yml", "gitlab.yml", "github-main-changed.yml", "gitlab-main-changed.yml"].map((name) => new URL(`../src/runtimes/workflow/${name}`, import.meta.url).href);
+let loads = 0;
+async function loadCi({ disk, fetch }) {
+  const saved = { getBuiltinModule: process.getBuiltinModule, fetch: globalThis.fetch };
+  const reads = [];
+  process.getBuiltinModule = (name) => (name === "node:fs" ? disk?.(reads) : saved.getBuiltinModule.call(process, name));
+  globalThis.fetch = fetch ? (url) => { reads.push(`fetch ${url}`); return fetch(url); } : undefined;
+  try {
+    loads += 1;
+    return { module: await import(new URL(`?load=${loads}`, CI_MODULE)), error: null, reads };
+  } catch (error) {
+    return { module: null, error, reads };
+  } finally {
+    process.getBuiltinModule = saved.getBuiltinModule;
+    globalThis.fetch = saved.fetch;
   }
-  assert.equal(typeof without.RuntimeError, "function");
+}
+// A disk that gives the real file's text for a read, noting each read; a browser's fetch that answers each address with the real file there.
+const realDisk = (reads) => ({ readFileSync: (url, encoding) => { reads.push(`disk ${url}`); return readFileSync(url, encoding); } });
+const servedFetch = async (url) => new Response(readFileSync(new URL(url), "utf8"), { status: 200 });
+
+// The product's own .gitlab-ci.yml of the fixture: its include: a list of one entry of its own.
+const OWN_GITLAB_CI = 'include:\n  - local: ".gitlab/own.yml"\n';
+
+// TST-472728 · level: unit · module: MOD-runtimes
+// guards: AGENT M WORKS WITHOUT A LOCAL INSTALLATION; ONE CLICK PER DECISION; UC-010
+// given: ci.mjs loaded anew twice — as in Node, with a disk that gives the real templates, and as a browser loads it, without a disk, whose fetch answers each of the module's own addresses with the text of the real file there; one fixture: the instance alice/agent-m at COMMIT, the secrets AGENT_M_TOKEN, CLAUDE_KEY and OPENAI_KEY, the runner gpu, and on GitLab a product without a .gitlab-ci.yml and one with its own
+// input: jobWorkflowFiles on GitHub, and on GitLab for each .gitlab-ci.yml, from each copy
+// expect: each copy loads and reads workflow/github.yml, workflow/gitlab.yml, workflow/github-main-changed.yml and workflow/gitlab-main-changed.yml beside ci.mjs, once each, as it is loaded — the Node copy from the disk, the browser's copy from those addresses with fetch; the files of the browser's copy are deep-equal to those of the Node copy for each server and each .gitlab-ci.yml; the GitHub file is .github/workflows/agent-m-jobs.yml and names the instance's commit
+test("jobWorkflowFiles — in a browser the templates are read from the module's own address, and the files equal those given in Node", async () => {
+  const inNode = await loadCi({ disk: realDisk });
+  const inBrowser = await loadCi({ disk: undefined, fetch: servedFetch });
+  for (const [where, loaded, read] of [["Node", inNode, "disk"], ["browser", inBrowser, "fetch"]]) {
+    assert.equal(loaded.error, null, `${where}: the module loads: ${loaded.error?.message}`);
+    assert.deepEqual(loaded.reads, TEMPLATE_FILES.map((address) => `${read} ${address}`), `${where}: the templates are read once each, as the module is loaded`);
+  }
+  const cases = [["github", undefined], ["gitlab", null], ["gitlab", OWN_GITLAB_CI]];
+  for (const [server, gitlabCi] of cases) {
+    const node = inNode.module.jobWorkflowFiles(server, INSTANCE, SECRETS, RUNNERS, gitlabCi);
+    assert.ok(node.length >= 1, `known positive: Node gives the ${server} files`);
+    assert.deepEqual(inBrowser.module.jobWorkflowFiles(server, INSTANCE, SECRETS, RUNNERS, gitlabCi), node, `${server}, .gitlab-ci.yml ${JSON.stringify(gitlabCi)}`);
+  }
+  const [github] = inBrowser.module.jobWorkflowFiles("github", INSTANCE, SECRETS, RUNNERS);
+  assert.equal(github.path, ".github/workflows/agent-m-jobs.yml");
+  assert.ok(github.text.includes(COMMIT), "the GitHub file names the instance's commit");
+});
+
+// TST-1202101 · level: unit · module: MOD-runtimes
+// guards: AGENT M WORKS WITHOUT A LOCAL INSTALLATION; UC-010
+// given: ci.mjs loaded anew as a browser loads it, without a disk, whose fetch answers every address with 404 Not Found
+// input: the load of the module
+// expect: the module does not load — a template that is not served stops its module, as an own data file that is not served stops the modules that read theirs — and the error names the module, a template workflow/<name>.yml, and 404
+test("jobWorkflowFiles — a template that is not served stops the module, and the error names it and the server's status", async () => {
+  const notServed = await loadCi({ disk: undefined, fetch: async () => new Response("Not Found", { status: 404 }) });
+  assert.ok(notServed.reads.length >= 1 && notServed.reads.every((read) => TEMPLATE_FILES.some((address) => read === `fetch ${address}`)),
+    `only the templates are asked for: ${notServed.reads.join(", ")}`);
+  assert.equal(notServed.module, null, "a template that cannot be read stops the module");
+  assert.ok(notServed.error instanceof Error && /MOD-runtimes/.test(notServed.error.message) && /workflow\/(github|gitlab)\.yml/.test(notServed.error.message)
+    && notServed.error.message.includes("404"), `the error names the module, the template and 404: ${notServed.error?.message}`);
 });

@@ -173,14 +173,15 @@ test("setup — with the notice already acknowledged the page opens with its box
 // guards: UC-014; CONFIGURATION LIVES IN THE BROWSER; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; A TOKEN IS SCOPED TO WHAT IT WRITES
 // given: a fresh store, the notice ticked, a public repository akmaier/agent-m that the server answers with its default branch main
 // input: paste the token github_pat_MINE0123456789abcdefghijkl, set the expiry 2027-01-15, press Store and check
-// expect: localStorage holds exactly the acknowledgement and github-token, the latter { value: the pasted token, name: "Agent M · akmaier/agent-m", expires: "2027-01-15", stored: today }; the token field is emptied; exactly one request is sent, a GET of https://api.github.com/repos/akmaier/agent-m carrying "Bearer " and the token; the check line reads "✓ akmaier/agent-m reachable — public, so write access is confirmed only by the first write"; the page offers "Your instance is ready →" and "+ Add a product"; nothing is written to the server
+// expect: localStorage holds exactly the acknowledgement and github-token, the latter { value: the pasted token, name: "Agent M · akmaier/agent-m", expires: "2027-01-15", stored: today }; the token field is emptied; exactly two requests are sent, the read-only POST of https://api.github.com/graphql for greenToMerge (ITM-1170) and, with it, a GET of https://api.github.com/repos/akmaier/agent-m, each carrying "Bearer " and the token; the check line reads "✓ akmaier/agent-m reachable — public, so write access is confirmed only by the first write"; the page offers "Your instance is ready →" and "+ Add a product"; nothing is written to the server
 test("setup — Store and check keeps the token and its expiry in this browser, reads the instance with it, and shows the instance ready", async () => {
   const page = await open();
   const requests = await storeAs(page, KEY, "2027-01-15", reachable(false));
   assert.deepEqual(storedKeys(), [ACK_KEY, TOKEN_KEY]);
   assert.deepEqual(JSON.parse(globalThis.localStorage.getItem(TOKEN_KEY)), { value: KEY, name: TOKEN_NAME, expires: "2027-01-15", stored: today() });
   assert.equal(field(page.target, "token").value, "");
-  assert.deepEqual(requests, [{ url: API_REPO, method: "GET", authorization: `Bearer ${KEY}` }]);
+  // ITM-1170: beside the repository's record, the read-only GraphQL request of greenToMerge, to the same server with the same token.
+  assert.deepEqual(requests, [{ url: "https://api.github.com/graphql", method: "POST", authorization: `Bearer ${KEY}` }, { url: API_REPO, method: "GET", authorization: `Bearer ${KEY}` }]);
   assert.equal(field(page.target, "check").textContent, "✓ akmaier/agent-m reachable — public, so write access is confirmed only by the first write");
   assert.deepEqual(byTag(field(page.target, "done"), "button").map((button) => button.textContent), ["Your instance is ready →", "+ Add a product"]);
 });

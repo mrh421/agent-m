@@ -16,7 +16,8 @@ import "./site-frame-dom.mjs";
 
 const { view } = await import("../src/settings-pages/index.mjs");
 const { openStore, writeSetting } = await import("../src/browser-store/index.mjs");
-const route = view.routes.find((candidate) => candidate.name === "settings");
+// The route as the frame asks it for its subject: the one its `module` gives (MOD-site-frame's Route).
+const route = await view.routes.find((candidate) => candidate.name === "settings").module();
 
 const storage = () => {
   const values = new Map();

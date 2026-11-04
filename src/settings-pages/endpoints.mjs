@@ -7,6 +7,7 @@ import { bridgeAt, probe, settingsOf } from "../bridge-client/index.mjs";
 import { clearSetting, listSettings, readSetting, writeSetting } from "../browser-store/index.mjs";
 import { explain } from "../site-frame/index.mjs";
 import { endpointLacks, endpointsOffered, followJob, spawnEndpointJob } from "../prompt-bar/index.mjs";
+import { heads } from "./routes.mjs";
 
 function el(name, className, ...children) {
   const node = document.createElement(name);
@@ -25,6 +26,8 @@ function option(value, label) {
 export const namesNoBridge = (setting) => setting?.throughBridge === true && !(typeof setting.bridge === "string" && setting.bridge);
 export const CHOOSE_BRIDGE_DISCLOSURE = "This endpoint was stored as going through a Bridge, and no Bridge is named. Choose the Bridge that reaches it; nothing is sent until you do.";
 export const CHOOSE_BRIDGE_TEXT = "This endpoint was stored for a Bridge without naming it. Choose the Bridge that reaches it before testing; nothing was sent. ";
+// What a Clear of an endpoint says, in its form and on its line of the Settings page (UC-003 2b).
+export const CLEARED_TEXT = "The endpoint configuration is cleared from this browser.";
 
 function endpointKey(name) {
   return name ? `endpoint:${name}` : null;
@@ -258,13 +261,11 @@ function applySetting(fields, name, setting) {
   fields.bridge.value = setting?.bridge ?? "";
 }
 
-// What the participants page and this page say of the prompt bar (UC-049 1a): when it appears.
-export const PROMPT_BAR_NOTE = "The prompt bar appears once a model endpoint, a CLI agent or a sandboxed agent is configured and reachable from this browser.";
+// What this page says of the prompt bar (UC-049 1a): when it appears.
+export const PROMPT_BAR_NOTE = "The prompt bar appears once an endpoint is configured in this browser or a Bridge it keeps offers a CLI session.";
 
 export const route = {
-  name: "endpoints",
-  entry: "settings",
-  title: "Model endpoint",
+  ...heads.endpoints,
   async render(target, context, params = {}) {
     const requestedName = typeof params.name === "string" ? params.name : "";
     const loadedSetting = readSetting(context.store, endpointKey(requestedName));
@@ -407,14 +408,14 @@ export const route = {
         clearSetting(context.store, `last-test:${endpointKey(chosenName)}`);
       }
       applySetting(fields, "", null);
-      result.textContent = "The endpoint configuration is cleared from this browser.";
+      result.textContent = CLEARED_TEXT;
       await context.endpointsChanged?.();
     });
 
     target.replaceChildren(
-      el("h2", null, "Configure a model endpoint"),
+      el("section", "head", el("h2", null, "Configure a model endpoint")),
       el("p", "muted", "Store an endpoint in this browser, then make one short test request."),
-      el("p", "muted prompt-bar-note", PROMPT_BAR_NOTE),
+      el("details", "explain", el("summary", null, "What is this?"), el("p", "muted prompt-bar-note", PROMPT_BAR_NOTE)),
       // A stored endpoint names what it lacks for the prompt bar to offer it (UC-049 1b).
       ...(loadedSetting && endpointLacks(loadedSetting).length
         ? [el("p", "notice endpoint-lacks", `The prompt bar does not offer ${requestedName}: it lacks ${endpointLacks(loadedSetting).join(" and ")}. Enter ${endpointLacks(loadedSetting).length === 1 ? "it" : "them"} below and save.`)] : []),

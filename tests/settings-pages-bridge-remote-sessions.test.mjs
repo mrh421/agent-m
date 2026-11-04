@@ -43,8 +43,7 @@ async function renderBridge(store) { const target = document.createElement("div"
 // guards: UC-011; UC-042; UC-044; EACH REMOTE SESSION HAS ITS OWN PORT FROM THE CONFIGURED RANGE; THE DASHBOARD WRITES THE TUNNEL COMMANDS; THE JUMP HOST AND THE REMOTE SESSIONS ARE SETTINGS; A REVERSE TUNNEL LISTENS ONLY ON THE JUMP HOST'S LOOPBACK; A STORED SECRET IS HIDDEN UNTIL SHOWN
 // given: canonical jump-host storage has 40100–40102 and its first remote session occupies 40100.
 // input: the public Bridge route saves the named second session with its copied token, copies its written commands, and is reopened.
-// expect: it stores remote-session:lab-pc at lowest free port 40101, reloads its hidden token, copies the public reverse,
-//   forward and service commands only on the person's click, and renders Apache and nginx setup text without a request or process start.
+// expect: it stores remote-session:lab-pc at lowest free port 40101, reloads its hidden token, copies the public reverse, forward and service commands only on the person's click, and renders Apache and nginx setup text without a request or process start.
 test("TST-287001: the public Bridge route persists a distinct remote session and renders canonical setup text", async () => {
   const store = freshStore();
   const priorNavigator = globalThis.navigator;

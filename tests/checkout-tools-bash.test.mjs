@@ -19,6 +19,27 @@ function checkout(t) {
 }
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const bash = checkoutStrategies({ hidden: [] }).tools.bash;
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// How long a case waits for a state of the process tree: well above the 3 s between SIGTERM and SIGKILL.
+const DEADLINE = 10000;
+
+// The process id a command wrote to `file`, once the file holds the whole line `echo $!` writes; the shell creates the file before it writes it.
+async function pidIn(file) {
+  const until = Date.now() + DEADLINE;
+  let text = "";
+  for (; Date.now() < until; await pause(10)) {
+    text = existsSync(file) ? readFileSync(file, "utf8") : "";
+    if (/^[1-9]\d*\n$/.test(text)) return Number(text);
+  }
+  assert.fail(`${file} holds no process id after ${DEADLINE} ms: ${JSON.stringify(text)}`);
+}
+
+// Whether the process `pid` has ended within DEADLINE ms.
+async function ends(pid) {
+  const until = Date.now() + DEADLINE;
+  while (alive(pid) && Date.now() < until) await pause(20);
+  return !alive(pid);
+}
 
 // TST-1240030 · level: unit · module: MOD-checkout-tools
 // guards: UC-049
@@ -39,35 +60,29 @@ test("TST-1240030: the exit code and the combined output are in the text the mod
 
 // TST-1240031 · level: unit · module: MOD-checkout-tools
 // guards: UC-049
-// given: two commands that each start a background sleep of 30 s and write its process id to a file, then wait; the second ignores SIGTERM
+// given: two commands that each start a background sleep of 30 s and write its process id to a file, then wait; the second ignores SIGTERM; each id is read once its file holds the whole id
 // input: bash of each with timeout 500 ms
-// expect: each text holds "shell tool terminated command after exceeding timeout 500 ms. If this command is expected to take longer and is not waiting for
-//   interactive input, retry with a larger timeout value in milliseconds."; afterwards neither sleep is alive; the second took at least 3 s, the time
-//   SIGTERM is given before SIGKILL; known positive: the first sleep is alive while its command runs
+// expect: each text holds "shell tool terminated command after exceeding timeout 500 ms. If this command is expected to take longer and is not waiting for interactive input, retry with a larger timeout value in milliseconds."; afterwards neither sleep is alive, each awaited for up to 10 s; the second took at least 3 s, the time SIGTERM is given before SIGKILL; known positive: the first sleep is alive while its command runs
 test("TST-1240031: a timeout ends the command's whole process tree, SIGKILL 3 s after SIGTERM", async (t) => {
   const { root, context } = checkout(t);
   const message = "shell tool terminated command after exceeding timeout 500 ms. If this command is expected to take longer and is not waiting for interactive input, retry with a larger timeout value in milliseconds.";
   const running = bash({ command: "sleep 30 & echo $! > pid1; wait", timeout: 500 }, context);
-  for (let i = 0; i < 100 && !existsSync(join(root, "pid1")); i++) await new Promise((resolve) => setTimeout(resolve, 10));
-  const first = Number(readFileSync(join(root, "pid1"), "utf8"));
+  const first = await pidIn(join(root, "pid1"));
   assert.equal(alive(first), true, "known positive: the background sleep runs while its command runs");
   assert.ok((await running).includes(message));
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  assert.equal(alive(first), false, "the background sleep is ended with its command");
+  assert.equal(await ends(first), true, "the background sleep is ended with its command");
   const started = Date.now();
   const stubborn = await bash({ command: "trap '' TERM; sleep 30 & echo $! > pid2; wait", timeout: 500 }, context);
   assert.ok(stubborn.includes(message));
   assert.ok(Date.now() - started >= 3000, "SIGKILL follows SIGTERM after 3 s");
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  assert.equal(alive(Number(readFileSync(join(root, "pid2"), "utf8"))), false, "a sleep that ignores SIGTERM is killed");
+  assert.equal(await ends(await pidIn(join(root, "pid2"))), true, "a sleep that ignores SIGTERM is killed");
 });
 
 // TST-1240032 · level: unit · module: MOD-checkout-tools
 // guards: UC-049
 // given: a command that prints the numbers 1 to 3000, one per line
 // input: bash "seq 1 3000"
-// expect: the text begins "...output truncated...\n\nFull output saved to: <file>\n\n" with <file> outside the checkout; it holds the last 2000 lines, "1001" to
-//   "3000", and not the line "1000"; the saved file holds all 3000 lines
+// expect: the text begins "...output truncated...\n\nFull output saved to: <file>\n\n" with <file> outside the checkout; it holds the last 2000 lines, "1001" to "3000", and not the line "1000"; the saved file holds all 3000 lines
 test("TST-1240032: a long output is cut to its tail, the whole saved outside the checkout", async (t) => {
   const { root, context } = checkout(t);
   const text = await bash({ command: "seq 1 3000" }, context);

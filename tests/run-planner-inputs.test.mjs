@@ -82,33 +82,41 @@ const recipe = (params, contents) => offline(() => runPlanner.runStrategies.reci
 const namesOf = (parts) => parts.map((part) => part.name);
 
 const READER_INTERFACES = "docs/architecture/MOD-writer.md ## Interfaces";
-const ITM_001 = [
+// The inputs of the two modules, as a job that names them (and no item) gets them.
+const MODULES_001 = [
   "docs/architecture/MOD-reader.md", "docs/architecture/ARC-002-sub.md", "docs/architecture/ARC-001-whole.md", "SPEC.md", READER_INTERFACES,
   "src/reader/index.mjs", "tests/reader.test.mjs",
   "docs/architecture/MOD-writer.md", "src/writer/helper.mjs", "src/writer/index.mjs", "tests/writer.test.mjs",
+];
+// An item gives first its file, the use case it realises (UC-001) and the tests that guard UC-001, which tests/run-planner-item-inputs.test.mjs guards; then the modules' inputs, each part once.
+const ITEM_PARTS = ["docs/use-cases/UC-001-load.md", "tests/other.test.mjs", "tests/reader.test.mjs", "tests/writer.test.mjs"];
+const ITM_001 = [
+  "docs/backlog/ITM-001-two-modules.md", ...ITEM_PARTS,
+  "docs/architecture/MOD-reader.md", "docs/architecture/ARC-002-sub.md", "docs/architecture/ARC-001-whole.md", "SPEC.md", READER_INTERFACES,
+  "src/reader/index.mjs",
+  "docs/architecture/MOD-writer.md", "src/writer/helper.mjs", "src/writer/index.mjs",
 ];
 
 // TST-568001 · level: unit · module: MOD-run-planner
 // guards: UC-024; DEVELOP AGAINST INTERFACES
 // given: the fixture product and a backlog item ITM-001 naming MOD-reader, which uses MOD-writer.write, and MOD-writer
 // input: the recipe with params.items = ["ITM-001"]
-// expect: for MOD-reader its file, the decision it follows (ARC-002), the decision that refines no other (ARC-001), SPEC.md, the interfaces of MOD-writer, its code and the test that names it
-// (tests/reader.test.mjs, not tests/writer.test.mjs or tests/other.test.mjs); then for MOD-writer its file, its two code files and its test; the decisions and the SPEC given once
+// expect: first the item's file, the use case it realises (UC-001) and the tests that guard UC-001 (tests/other.test.mjs, tests/reader.test.mjs, tests/writer.test.mjs); then for MOD-reader its file, the decision it follows (ARC-002), the decision that refines no other (ARC-001), SPEC.md, the interfaces of MOD-writer and its code; then for MOD-writer its file and its two code files; the decisions, the SPEC and the tests given once
 test("an item with two modules gives, per module, its file, its decisions, the SPEC, the used interfaces, its code and the tests that name it — MOD-run-planner", async () => {
   const parts = await recipe({ items: ["ITM-001"] });
   assert.deepEqual(namesOf(parts), ITM_001);
   assert.ok(parts.every((part) => part.required === true && typeof part.text === "string" && Array.isArray(part.sources)));
-  assert.equal(parts[0].text, FILES["docs/architecture/MOD-reader.md"], "a file is given whole");
-  assert.equal(parts[3].text, FILES["SPEC.md"]);
-  assert.equal(parts[6].text, FILES["tests/reader.test.mjs"]);
+  assert.equal(parts[0].text, FILES["docs/backlog/ITM-001-two-modules.md"], "a file is given whole");
+  assert.equal(parts[5].text, FILES["docs/architecture/MOD-reader.md"]);
+  assert.equal(parts[8].text, FILES["SPEC.md"]);
+  assert.equal(parts[3].text, FILES["tests/reader.test.mjs"]);
 });
 
 // TST-568002 · level: unit · module: MOD-run-planner
 // guards: UC-024; DEVELOP AGAINST INTERFACES
 // given: the fixture product, where MOD-writer's file has a Responsibility, an Interfaces and a Files section
 // input: the recipe with params.items = ["ITM-001"]
-// expect: the part of MOD-writer's interfaces holds exactly the `## Interfaces` section — its heading and its bullet — and nothing of the Responsibility or the Files; the code of MOD-writer is
-// not part of it
+// expect: the part of MOD-writer's interfaces holds exactly the `## Interfaces` section — its heading and its bullet — and nothing of the Responsibility or the Files; the code of MOD-writer is not part of it
 test("the interfaces of a used module are its ## Interfaces section alone — MOD-run-planner", async () => {
   const parts = await recipe({ items: ["ITM-001"] });
   const interfaces = parts.find((part) => part.name === READER_INTERFACES);
@@ -120,11 +128,11 @@ test("the interfaces of a used module are its ## Interfaces section alone — MO
 // guards: UC-024
 // given: the fixture product and a backlog item ITM-003 naming MOD-writer, which uses no module
 // input: the recipe with params.items = ["ITM-003"]
-// expect: MOD-writer's file, ARC-002, ARC-001, SPEC.md, its code and its test, and no interfaces part
+// expect: the item's file, UC-001 and the tests that guard it, then MOD-writer's file, ARC-002, ARC-001, SPEC.md and its code, and no interfaces part
 test("a module that uses none gives no interfaces part — MOD-run-planner", async () => {
   const parts = await recipe({ items: ["ITM-003"] });
-  assert.deepEqual(namesOf(parts), ["docs/architecture/MOD-writer.md", "docs/architecture/ARC-002-sub.md", "docs/architecture/ARC-001-whole.md", "SPEC.md", "src/writer/helper.mjs",
-    "src/writer/index.mjs", "tests/writer.test.mjs"]);
+  assert.deepEqual(namesOf(parts), ["docs/backlog/ITM-003-one-module.md", ...ITEM_PARTS, "docs/architecture/MOD-writer.md", "docs/architecture/ARC-002-sub.md", "docs/architecture/ARC-001-whole.md", "SPEC.md",
+    "src/writer/helper.mjs", "src/writer/index.mjs"]);
 });
 
 // TST-568004 · level: unit · module: MOD-run-planner
@@ -152,13 +160,13 @@ test("the system step gives the decision that states it, the subsystems' decisio
 // guards: RESTRICTED CONTENT GOES ONLY WHERE ITS SOURCE PERMITS
 // given: the fixture product, and places.contents naming SRC-secret for `src/writer` and for MOD-writer's file, and SRC-other for the one file tests/reader.test.mjs
 // input: the recipe with params.items = ["ITM-001"]
-// expect: the parts under src/writer, MOD-writer's file and its interfaces part carry ["SRC-secret"]; tests/reader.test.mjs carries ["SRC-other"]; every other part carries none; with
-// places.contents empty no part carries any source
+// expect: the parts under src/writer, MOD-writer's file and its interfaces part carry ["SRC-secret"]; tests/reader.test.mjs carries ["SRC-other"]; every other part, the item's file and its use case included, carries none; with places.contents empty no part carries any source
 test("a part carries a source only where places.contents puts its path under that source — MOD-run-planner", async () => {
   const contents = [{ source: "SRC-secret", paths: ["src/writer", "docs/architecture/MOD-writer.md"] }, { source: "SRC-other", paths: ["tests/reader.test.mjs"] }];
   const parts = await recipe({ items: ["ITM-001"] }, contents);
   const sources = Object.fromEntries(parts.map((part) => [part.name, part.sources]));
   assert.deepEqual(sources, {
+    "docs/backlog/ITM-001-two-modules.md": [], "docs/use-cases/UC-001-load.md": [], "tests/other.test.mjs": [],
     "docs/architecture/MOD-reader.md": [], "docs/architecture/ARC-002-sub.md": [], "docs/architecture/ARC-001-whole.md": [], "SPEC.md": [],
     [READER_INTERFACES]: ["SRC-secret"], "src/reader/index.mjs": [], "tests/reader.test.mjs": ["SRC-other"],
     "docs/architecture/MOD-writer.md": ["SRC-secret"], "src/writer/helper.mjs": ["SRC-secret"], "src/writer/index.mjs": ["SRC-secret"], "tests/writer.test.mjs": [],
@@ -182,7 +190,7 @@ test("work that no file holds, or no work, is refused by name — MOD-run-planne
 // guards: UC-024
 // given: the fixture product, the recipe registered under the owner MOD-run-planner with stand-ins for the other strategies the kind `implement` names (`rests-on-accepted`, `chapters-for-implementation`, `resource-pins` and the writer `branch-and-pull-request`; `instruction` is the runner's own)
 // input: prepareJob("implement", context with params.items = ["ITM-001"], no drafter)
-// expect: it does not throw UnknownStrategy, and its parts of the recipe `implementation-inputs` are the 11 parts of the item, in the order of the first test
+// expect: it does not throw UnknownStrategy, and its parts of the recipe `implementation-inputs` are the 13 parts of the item, in the order of the first test
 test("the kind implement prepares with the recipe registered — MOD-run-planner", async () => {
   registerStrategies("MOD-run-planner", runPlanner.runStrategies);
   registerStrategies("tests/run-planner-inputs.test.mjs", {
@@ -198,11 +206,12 @@ test("the kind implement prepares with the recipe registered — MOD-run-planner
 // guards: UC-012
 // given: the fixture product and a job whose parameters name only the modules MOD-reader and MOD-writer (as a bug's fix does), no step and no item
 // input: the recipe with params.modules = ["MOD-reader", "MOD-writer"]
-// expect: the same parts as for the item ITM-001 naming those modules — per module its file, its decisions, the SPEC, the interfaces of the modules it uses, its code and its tests
+// expect: per module its file, its decisions, the SPEC, the interfaces of the modules it uses, its code and its tests, and no item's file, use case or process requirements; known positive: the item ITM-001 naming those modules gives every one of these parts, with the same texts, after its own
 test("a job naming only modules gets, per module, the inputs of a module step — MOD-run-planner", async () => {
   const parts = await recipe({ modules: ["MOD-reader", "MOD-writer"] });
-  assert.deepEqual(namesOf(parts), ITM_001);
-  assert.deepEqual(parts, await recipe({ items: ["ITM-001"] }), "known positive: the item naming the same modules gives the same parts");
+  assert.deepEqual(namesOf(parts), MODULES_001);
+  const ofItem = await recipe({ items: ["ITM-001"] });
+  for (const part of parts) assert.deepEqual(ofItem.find((each) => each.name === part.name), part, `known positive: the item gives ${part.name}`);
 });
 
 // TST-1248102 · level: unit · module: MOD-run-planner
@@ -242,9 +251,9 @@ test("params naming no step, no item and no module are NoWorkNamed — MOD-run-p
 // guards: UC-012
 // given: the fixture product and a job naming the item ITM-003 (MOD-writer) and the module MOD-reader
 // input: the recipe with params.items = ["ITM-003"], params.modules = ["MOD-reader"]
-// expect: the parts of the item first, then those of MOD-reader not yet given; each part once
+// expect: the parts of the item first — its file, UC-001, the tests that guard UC-001, the inputs of MOD-writer —, then those of MOD-reader not yet given; each part once
 test("modules are given after the items and each part once — MOD-run-planner", async () => {
   const parts = await recipe({ items: ["ITM-003"], modules: ["MOD-reader"] });
-  assert.deepEqual(namesOf(parts), ["docs/architecture/MOD-writer.md", "docs/architecture/ARC-002-sub.md", "docs/architecture/ARC-001-whole.md", "SPEC.md", "src/writer/helper.mjs",
-    "src/writer/index.mjs", "tests/writer.test.mjs", "docs/architecture/MOD-reader.md", READER_INTERFACES, "src/reader/index.mjs", "tests/reader.test.mjs"]);
+  assert.deepEqual(namesOf(parts), ["docs/backlog/ITM-003-one-module.md", ...ITEM_PARTS, "docs/architecture/MOD-writer.md", "docs/architecture/ARC-002-sub.md", "docs/architecture/ARC-001-whole.md", "SPEC.md",
+    "src/writer/helper.mjs", "src/writer/index.mjs", "docs/architecture/MOD-reader.md", READER_INTERFACES, "src/reader/index.mjs"]);
 });

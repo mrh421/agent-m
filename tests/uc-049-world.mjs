@@ -1,7 +1,9 @@
 // The world of the system and release tests of UC-049 "Talk to an agent in the prompt bar" (tests/system-uc-049-talk-to-an-agent-in-the-prompt-bar.test.mjs, tests/release-uc-049-talk-to-an-agent-in-the-prompt-bar.test.mjs) — a helper, no test of
 // its own, and it holds no expected result. The page is MOD-site-frame's real `startPage` on the review page with the prompt bar, as tests/uc-019-prompt-bar-harness.mjs opens it (the product akmaier/lending-tool and the instance
 // akmaier/agent-m served in memory, the global `fetch` answering only the fixtures); this file adds what UC-049 needs beyond that harness:
-//   - a register of the participants a test names (`registerOf`) and the rows it uses (a model endpoint, a model endpoint that can use tools, a CLI agent on the Bridge, a subagent, a CI agent);
+//   - what this browser declares for the bar to offer (`declared`): the endpoints and CLI sessions a test names (a model endpoint, a model endpoint that can use tools, a CLI session of the Bridge, an endpoint called
+//     through the Bridge that names a CI secret), each as the settings that declare it (UC-049 1); the bar reads no participant list, so a test that names one puts it in the instance's list with `registerOf` and the rows
+//     LISTED_SUBAGENT and LISTED_CI_AGENT and shows that the bar does not offer it;
 //   - `watch(s)`: a layer over the page's `fetch` that keeps every request with its headers and body, answers the model endpoint from a script of replies (a text answer, or the tool calls of a model that can use
 //     tools), can hold an answer back until the test lets it go (a message that is still running), and answers a handed-over job's workflow dispatch and runs;
 //   - the person's actions the bar offers that the harness has not: Stop, Hand over, the conversation's text.
@@ -18,7 +20,9 @@ import assert from "node:assert/strict";
 import { click, until } from "./review-pages-draft-world.mjs";
 import { barOf, all, one, readOriginal, rest, trustedClick } from "./uc-019-prompt-bar-harness.mjs";
 import { registerStrategies } from "../src/job-runner/index.mjs";
-import { handOverStrategies } from "../src/prompt-bar/index.mjs";
+import { loadHandOverStrategies } from "../src/prompt-bar/index.mjs";
+
+const handOverStrategies = await loadHandOverStrategies();
 
 const PARTICIPANTS = readOriginal("docs/participants.md").split("\n");
 const HEADER = PARTICIPANTS.slice(0, PARTICIPANTS.findIndex((line) => line.startsWith("|---")) + 1).join("\n");
@@ -26,11 +30,21 @@ const HEADER = PARTICIPANTS.slice(0, PARTICIPANTS.findIndex((line) => line.start
 /** The register of the instance with the rows given. */
 export const registerOf = (...rows) => `${HEADER}\n${rows.join("\n")}\n`;
 const ROW = (name, type, capabilities, place, route, context = 200000) => `| ${name} | ${type} | ${name}-model | ${context} | - | ${capabilities} | ${place} | ${route} |`;
-export const DRAFTER = ROW("drafter", "model endpoint", "draft text", "this machine", "endpoint fixture");
-export const TOOLER = ROW("tooler", "model endpoint", "draft text, read the repository, use tools", "Anthropic, USA", "endpoint fixture");
-export const AGENT = ROW("agent-cli", "CLI agent", "draft text, read the repository, write to the repository, run code and tests, use tools", "this machine", "bridge release-bridge agent claude");
-export const SUBAGENT = ROW("sub-cli", "CLI agent", "draft text", "this machine", "through agent-cli");
-export const CI_AGENT = ROW("ci-agent", "CI agent", "draft text, read the repository, write to the repository, run code and tests", "GitHub Actions in the USA", "ci hosted secret CI_KEY");
+export const LISTED_SUBAGENT = ROW("sub-cli", "CLI agent", "draft text", "this machine", "through agent-cli");
+export const LISTED_CI_AGENT = ROW("ci-agent", "CI agent", "draft text, read the repository, write to the repository, run code and tests", "GitHub Actions in the USA", "ci hosted secret CI_KEY");
+
+// What this browser declares (UC-049 1): an endpoint is the setting `endpoint:<name>`, a CLI session the setting `session:<bridge>:<agent>` of an agent the Bridge lists ready. The model of each is `<name>-model`.
+export const endpointOf = (name, place, context = 200000, extra = {}) => ({ kind: "openai-compatible", url: "https://fixture-endpoint.example.test/v1", model: `${name}-model`, key: "sk-fixture-KEY", place, context, ...extra });
+export const DRAFTER = { settings: { "endpoint:drafter": endpointOf("drafter", "this machine") } };
+export const TOOLER = { settings: { "endpoint:tooler": endpointOf("tooler", "Anthropic, USA"), "last-test:endpoint:tooler": { at: "2026-10-19T12:00:00Z", outcome: "ok", tools: true } } };
+/** The CLI session release-bridge:claude, offered by the paired Bridge release-bridge, at "this machine", with every capability a coding agent declares. */
+export const AGENT = { agents: ["claude"], settings: { "session:release-bridge:claude": { place: "this machine", context: 200000, model: "agent-cli-model",
+  capabilities: ["draft text", "read the repository", "write to the repository", "run code and tests", "use tools"] } } };
+/** handy: an endpoint at "GitHub Actions in the USA" called through the Bridge release-bridge and naming the CI secret CI_KEY, so that a hand-over it proposes is spawned as its own job. */
+export const HANDY = { settings: { "endpoint:handy": endpointOf("handy", "GitHub Actions in the USA", 200000, { secret: "CI_KEY", bridge: "release-bridge" }) } };
+/** declared(...declarations) -> the scenario options that make this browser declare exactly those endpoints and sessions (and the Bridge's agents they need). */
+export const declared = (...declarations) => ({ drafting: false, agents: ["observer", ...declarations.flatMap((each) => each.agents ?? [])],
+  settings: Object.assign({}, ...declarations.map((each) => each.settings ?? {})) });
 
 export const RUN_URL = "https://github.com/akmaier/lending-tool/actions/runs/7";
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -130,8 +144,6 @@ export const rulesOf = (path) => readFileSync(new URL(`../${path}`, import.meta.
 export { assert };
 
 // ---------------------------------------------------------------- the job workflow over fixture checkouts, and the clock of the following
-
-export const HANDY = "| handy | model endpoint | handy-model | 200000 | - | draft text, read the repository, write to the repository, run code and tests | GitHub Actions in the USA | endpoint fixture secret CI_KEY |";
 
 /**
  * The 15-second timers of the bar's following are held back and run by the test: `clock.tick()` runs those set so far. Other timers pass.

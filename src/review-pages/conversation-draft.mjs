@@ -15,11 +15,12 @@ import { provenanceLines } from "../job-runner/index.mjs";
 import { dropDraft, latestDraft } from "../prompt-bar/index.mjs";
 import { explain, readProblem } from "../site-frame/index.mjs";
 import { formatFinding } from "../text-tools/index.mjs";
-import { el, link, readPlace } from "./common.mjs";
+import { el, handedPlace, link, readPlace } from "./common.mjs";
 import { fileDrafts } from "./file-drafts.mjs";
 import { loadStage } from "./jobs.mjs";
 import { requirementsDraft } from "./requirements-draft.mjs";
 import { changeImpact, dueDiligenceSection, graphOnce, roundsSection, splitDueDiligence } from "./sections.mjs";
+import { heads } from "./routes.mjs";
 
 // The schema of the kind of reviewed file that owns a path, among those of MOD-documents.
 const OWNERS = [[/^docs\/use-cases\/UC-[^/]+\.md$/, "useCase"], [/^docs\/architecture\/ARC-[^/]+\.md$/, "decision"], [/^docs\/architecture\/MOD-[^/]+\.md$/, "module"]];
@@ -104,11 +105,13 @@ async function show(where, params, hold) {
 
 // What the route's `leave` and `unsaved` ask: the editors of the page drawn last, or null where it drew none. A render that started earlier and ends later is not that page.
 let held = null, latest = 0;
+// The snapshot the frame hands the route's `reads` before it calls `render` (common.mjs handedPlace).
+const place = handedPlace();
 
 async function render(target, context, params) {
   const mine = ++latest;
   held = null;
-  const where = await readPlace(target, context);
+  const where = await readPlace(target, context, place);
   if (where === null) return;
   try {
     await show(where, params, (editors) => { if (mine === latest) held = editors; });
@@ -144,4 +147,4 @@ function leave() {
   return closed;
 }
 
-export const draftRoute = { name: "draft", entry: null, title: "The draft of the conversation", render, subject, leave, unsaved: () => held !== null && held.unsaved() };
+export const draftRoute = { ...heads.draftRoute, render, subject, leave, unsaved: () => held !== null && held.unsaved(), reads: place.reads };

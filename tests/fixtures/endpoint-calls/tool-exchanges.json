@@ -30,7 +30,8 @@
       ],
       "tools": [{ "type": "function", "function": { "name": "read_file", "description": "Read one fixture path.", "parameters": {
         "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"]
-      } } }]
+      } } }],
+      "stream": false
     },
     "response": {
       "choices": [{ "message": { "role": "assistant", "content": "Inspecting.", "tool_calls": [

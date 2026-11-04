@@ -13,7 +13,8 @@
 // kind implement working on it. The pull request's facts come from a fake of GitHub's REST API (the pull request, its commits with their files and checks, its files, its
 // reviews, a file's text at a commit), which `fetch` is replaced with. The readings, named in the pull request:
 //   - The pull request's job is the job its title or description names (`Job: <id>`, as MOD-runtimes' writer branch-and-pull-request writes them); its modules are those of the
-//     items and plan steps the job works on. A pull request that names no job is no implementation job's: `nothing to do`.
+//     items and plan steps the job works on. A pull request that names no job is no implementation job's: `nothing to do`. Where the event's pull request holds its title,
+//     as GitHub's payload does, the job is read from it first, and a pull request that names none ends `nothing to do` before anything is read from the server (ITM-1382).
 //   - The CI result of the pull request's head is read from the run's own statuses (ITM-1216; MOD-workflow-entries, Data: The reports of a run), which the job `agent-m done`
 //     takes into the folder agent-m-reports/ of the checkout: green only when every shard AGENT_M_EXPECTED names (`<row>:<shards>`, separated by commas) left
 //     agent-m-reports/pull-request.<row>.<shard>.status holding `done` or `nothing to do`, and agent-m-reports/records.status holds `done`. The head's checks the server
@@ -87,8 +88,8 @@ const EXPECTED = "unit:2,component:1";
 const GREEN = { "pull-request.unit.1.status": "done\n", "pull-request.unit.2.status": "done\n", "pull-request.component.1.status": "nothing to do\n", "records.status": "done\n" };
 
 // The job `agent-m done`'s checkout of the pull request, with the instance in its folder .agent-m, the event's payload, and the run's statuses taken into agent-m-reports/ —
-// `statuses` maps each file's name in that folder to its text.
-async function withCheckout(run, { statuses = GREEN } = {}) {
+// `statuses` maps each file's name in that folder to its text; `pullRequest` is the event's pull request as GitHub's payload holds it.
+async function withCheckout(run, { statuses = GREEN, pullRequest = { number: 7 } } = {}) {
   const root = mkdtempSync(join(tmpdir(), "agent-m-done-check-"));
   const checkout = join(root, "product");
   try {
@@ -104,7 +105,7 @@ async function withCheckout(run, { statuses = GREEN } = {}) {
     git(checkout, "add", "README.md", "docs", "src", "tests");
     git(checkout, "commit", "-q", "-m", "the merge of the pull request");
     const event = join(root, "event.json"), summary = join(root, "summary.md");
-    writeFileSync(event, JSON.stringify({ action: "synchronize", number: 7, pull_request: { number: 7 } }));
+    writeFileSync(event, JSON.stringify({ action: "synchronize", number: 7, pull_request: pullRequest }));
     write(checkout, Object.fromEntries(Object.entries(statuses).map(([name, text]) => [`agent-m-reports/${name}`, text])));
     return await run({ checkout, event, summary });
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -268,4 +269,26 @@ test("onDoneCheck — without AGENT_M_EXPECTED the entry does not run", async ()
     assert.equal(status.outcome, "not run", status.summary);
     assert.match(status.summary, /AGENT_M_EXPECTED/);
   });
+});
+
+// TST-1382001 · level: unit · module: MOD-workflow-entries
+// guards: A PULL REQUEST IS MERGED ONLY WHEN THE DEFINITION OF DONE HOLDS; A PULL REQUEST'S CI RUNS WITHIN TWO MINUTES
+// given: the checkout of TST-1210101 with the run's green statuses; the event's pull request #7, as GitHub's payload holds it, titled "Merge sprint/team1/141 into main" with an empty description — it names no job —, and the server answering the same; counter-proof: the event's pull request titled "JOB-20261025-0900-a1b2: implement ITM-001" with the description "Job: JOB-20261025-0900-a1b2"
+// input: onDoneCheck on the event pull_request
+// expect: outcome `nothing to do`, the summary saying that the pull request names no job, and no request made to the server — neither the pull request nor its commits read; counter-proof: outcome `done`, the pull request's commits read from the server
+test("onDoneCheck — a pull request whose event names no job ends with nothing to do before its commits are read", async () => {
+  const sprint = { number: 7, title: "Merge sprint/team1/141 into main", body: "" };
+  await withCheckout(async (w) => {
+    const server = fakeGitHub({ title: sprint.title, body: sprint.body });
+    const status = await onDoneCheck(w, server);
+    assert.equal(status.outcome, "nothing to do", status.summary);
+    assert.match(status.summary, /no job/);
+    assert.deepEqual(server.calls, [], "nothing is read from the server");
+  }, { pullRequest: sprint });
+  await withCheckout(async (w) => {
+    const server = fakeGitHub();
+    const status = await onDoneCheck(w, server);
+    assert.equal(status.outcome, "done", `${status.summary} ${JSON.stringify(status.findings)}`);
+    assert.ok(server.calls.includes(`${API}/pulls/7/commits`), "the commits of the pull request were read");
+  }, { pullRequest: { number: 7, title: `${JOB}: implement ITM-001`, body: `Job: ${JOB}` } });
 });

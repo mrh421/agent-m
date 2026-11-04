@@ -1,5 +1,5 @@
 // The items a team's sprints hold, and what keeps an item from a team's selection (docs/architecture/MOD-work-plans.md,
-// Interfaces: Held, heldItems, conflicts; EVERY TEAM RUNS SPRINTS OF ITS OWN, A SPRINT HOLDS ITS ITEMS UNTIL THEY REACH THE
+// Interfaces: Held, heldItems, conflicts, targetBranch; EVERY TEAM RUNS SPRINTS OF ITS OWN, A SPRINT HOLDS ITS ITEMS UNTIL THEY REACH THE
 // DEFAULT BRANCH, SPRINTS OF DIFFERENT TEAMS CHANGE NO MODULE THE OTHER CHANGES OR USES). Pure: nothing is read or written
 // here; the sprint records, the items, the architecture's module files and the pull requests are handed in.
 //
@@ -16,8 +16,8 @@
 const SPRINT_PATH = /^docs\/backlog\/sprints\/([^/]+)\/([^/]+)\.md$/;
 
 const text = (value) => (typeof value === "string" ? value : value === null || value === undefined ? "" : String(value));
-// A list as a Document holds it — or as a comma-separated line, where a field was read as text.
-const list = (value) => (Array.isArray(value) ? value.map(text)
+// A list as a Document holds it — or as a comma-separated line, where a field was read as text. The module's one reader of a list-valued field: states.mjs and saves.mjs take it from here.
+export const list = (value) => (Array.isArray(value) ? value.map(text)
   : text(value).split(",").map((part) => part.trim()).filter(Boolean));
 const idOf = (document) => text(document?.id ?? document?.fields?.id);
 const modulesOf = (document) => list(document?.fields?.modules);
@@ -71,6 +71,21 @@ export function sprintsToClose(sprints, states, today) {
     if (because) due.push({ sprint: named.name, closer: text(record.fields?.closer), because });
   }
   return due;
+}
+
+/**
+ * targetBranch(item: string, context: { sprints: Document[], order: Document | null, branches: Record<string, string>, defaultBranch: string }) -> string — the branch a plan
+ * step's or backlog item's work is merged into: the `branch` of the sprint whose current selection names it (selectionOf) and whose record holds neither ## Review nor
+ * ## Increment given up, where that record names one; else the branch `branches` gives the step's phase in `order` (its table's `Phase` of the row whose `Step` is the
+ * item), as written; else `defaultBranch` (A PHASE OR A TIME BOX MAY HAVE A BRANCH OF ITS OWN, WORK MERGES INTO THE DEFAULT BRANCH UNLESS A BRANCH IS SET). `branches` is
+ * the declaration's ## Branches as MOD-product-process' branchesOf gives it. Reads nothing.
+ */
+export function targetBranch(item, { sprints, order, branches, defaultBranch }) {
+  const sprint = (sprints ?? []).find((record) => sprintOf(record) && !closedRecord(record) && !givenUpRecord(record) && selectionOf(record).includes(item));
+  const own = text(sprint?.fields?.branch).trim();
+  if (own) return own;
+  const row = (order?.sections ?? []).flatMap((section) => section?.rows ?? []).find((each) => text(each?.cells?.Step) === item);
+  return text(branches?.[text(row?.cells?.Phase)]).trim() || defaultBranch;
 }
 
 // The modules whose interfaces `modules` use, by the architecture's module files, in the order of their identifiers.

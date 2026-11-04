@@ -179,7 +179,7 @@ def result(case: dict) -> dict:
 
 
 class TestDerivationClasses(unittest.TestCase):
-    # TST-415100 - level: release - module: system
+    # TST-415100 · level: release · module: system
     # guards: A CANDIDATE IS NEW, A CHANGE, A DUPLICATE OR A CONFLICT; EXACT DUPLICATES ARE FOUND WITHOUT A MODEL; A CHANGE IS PROPOSED UNDER THE EXISTING NAME; A DUPLICATE ADDS A SOURCE, NOT A REQUIREMENT; A CONFLICT IS DECIDED BY A PERSON; CANDIDATES ARE DEDUPLICATED AMONG THEMSELVES
     # given: Markdown fixture cases that state their preconditions, inputs and expected results
     # input: each case checked through MOD-documents, MOD-job-runner or MOD-spec-changes
@@ -191,7 +191,7 @@ class TestDerivationClasses(unittest.TestCase):
             with self.subTest(case=item["name"]):
                 self.assertEqual(result(item["case"]), item["case"]["expected"])
 
-    # TST-415101 - level: release - module: system
+    # TST-415101 · level: release · module: system
     # guards: A CANDIDATE IS NEW, A CHANGE, A DUPLICATE OR A CONFLICT; EXACT DUPLICATES ARE FOUND WITHOUT A MODEL; A CHANGE IS PROPOSED UNDER THE EXISTING NAME; A DUPLICATE ADDS A SOURCE, NOT A REQUIREMENT; A CONFLICT IS DECIDED BY A PERSON; CANDIDATES ARE DEDUPLICATED AMONG THEMSELVES
     # given: the expected results in the Markdown fixture cases
     # input: the stated expected class list and written queue sections

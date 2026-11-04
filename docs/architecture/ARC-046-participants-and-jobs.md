@@ -62,7 +62,6 @@ forced_by:
   - EVERY USE CASE IS CHECKED AGAINST THE ARCHITECTURE
   - A SUBSYSTEM IS CHECKED AGAINST THE SYSTEM
   - A MODULE IS CHECKED AGAINST ITS SUBSYSTEM
-  - NO MODULE IS CHECKED AGAINST THE USE CASES
   - A REVIEW FINDING IS WEIGHED BEFORE IT IS ACTED ON
   - AN ARCHITECTURE DRAFT IS CHECKED BEFORE A PERSON SEES IT
   - TEST GENERATION SEES THE EXISTING TESTS
@@ -137,7 +136,7 @@ every subsystem and both programs, that interprets every kind of job from data**
   (Vibe Coding, ch. 11), proposing calls that the runner carries out and answers — an endpoint behind a Bridge too, each
   request of its loop through the Bridge —; a coding agent works with its own tools. A proposed edit and a proposed
   hand-over are held for a person; nothing a tool of the tab does writes to a repository, and a hand-over is queued only
-  on the person's click, where Process's start rules let it start (`THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK`). A
+  on the person's click, where its kind's preconditions let it start (`THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK`). A
   model endpoint that works in the checkout of a job's product — in CI — works in that same loop with the tools a coding
   agent has, ported from opencode: reading, writing and editing files, running commands, searching, and fetching a page
   (MOD-checkout-tools). Those tools run in Node only, so only the Workflows register them; the tab keeps its tools that
@@ -156,7 +155,7 @@ every subsystem and both programs, that interprets every kind of job from data**
   kind its page names, with every rule on jobs — and leaves no job record (`A JOB IS RECORDED IN ITS PRODUCT
   REPOSITORY`). Work it cannot do in the tab — running code or tests, changing code, reaching the web — is proposed
   through the tool `hand-over` as a job of an existing kind, and queued on the person's click, prepared with that kind's
-  preconditions and checked by Process's start rules, on the participant's route to CI or a Bridge. That job is recorded; its task travels with the hand-over — as an input of the
+  preconditions, as a job of the endpoint or CLI session itself, on its route to CI or a Bridge. That job is recorded; its task travels with the hand-over — as an input of the
   job workflow's start, or in the request to the Bridge — and stands in no file (`A CONVERSATION IS WRITTEN TO A
   REPOSITORY ONLY WHEN RECORDING IS ON`). A model endpoint's handed-over work is done in Agent M's own loop with the
   tools of MOD-checkout-tools in the job's checkout — in CI with the endpoint's key from a CI secret —; a CLI session on

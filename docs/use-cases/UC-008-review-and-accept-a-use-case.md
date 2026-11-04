@@ -21,6 +21,7 @@ realises:
   - A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT
   - A PROPOSAL IS REJECTED WITH A REASON
   - A REJECTION REMOVES THE PROPOSAL
+  - ACCEPTING A USE CASE PUTS THE MODULES IT CHANGES INTO THE BACKLOG
 ---
 # UC-008 Review and accept a use case
 
@@ -45,6 +46,9 @@ exactly the text they read — by a commit in GitHub.
 4. The dashboard computes the git blob SHA of the text it shows and commits
    `docs/approvals/UC-<nnn>-<sha>.md`, a three-line record, under the reviewer's own account.
 5. The dashboard shows the use case as accepted, because a record now names its current SHA.
+6. In a model that pulls its work from a backlog, the same click has Agent M check which modules the accepted text
+   changes — by the participant that the page named, with its processing place, beside **Accept** — and add one backlog
+   item for each of them that no item not yet done names, realising the use case (UC-032), under the reviewer's account.
 
 ```mermaid
 sequenceDiagram
@@ -57,6 +61,7 @@ sequenceDiagram
     D->>D: blob SHA of the shown text
     D->>G: commit record (reviewer's token)
     D-->>R: status accepted
+    D->>G: backlog items of the modules it changes (reviewer's token)
 ```
 
 ## Alternative flows
@@ -74,9 +79,10 @@ sequenceDiagram
   to the step that stores the project's token instead.
 - **4a. The reviewer has no write access.** The commit is refused; the dashboard says so and offers
   the GitHub path, where the commit becomes a pull request that counts once a maintainer merges it.
-- **3d. The reviewer has read several use cases.** Each one read gets a tick; **Accept ticked** writes
-  one commit with one record per ticked file, each naming the text that was shown. A file that changed
-  after it was shown is left out and named.
+- **3d. The reviewer wants to accept several use cases at once.** Each use case not accepted has an
+  empty tick box on the list, read or not; the reviewer ticks the ones to accept. **Accept ticked**
+  writes one commit with one record per ticked file, each naming the text the page read of it. A file
+  that changed after the page read it is left out and named.
 - **3e. The reviewer wants to accept every open use case at once.** **Review all** opens one page with
   every open or changed use case in sequence — a changed one as its difference to the last accepted text
   (2a), a new one in full. Below them, **Accept all N shown** — one click — writes one commit with one

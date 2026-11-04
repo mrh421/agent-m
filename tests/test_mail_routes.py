@@ -171,7 +171,7 @@ def result(case: dict) -> dict:
 
 
 class TestMailRoutes(unittest.TestCase):
-    # TST-532001 - level: release - module: system
+    # TST-532001 · level: release · module: system
     # guards: A MAILBOX IS REACHED THROUGH ITS PROVIDER'S WEB API OR THROUGH THE BRIDGE; AN API MAILBOX IS OPENED BY THE PROVIDER'S SIGN-IN; THE MAIL SIGN-IN ASKS ONLY FOR READING, DRAFTING AND SENDING
     # given: the mailbox route, mailbox test and Microsoft sign-in cases in the Markdown file beside this one
     # input: each case run through MOD-mail-routes and, for IMAP, MOD-bridge-client
@@ -181,7 +181,7 @@ class TestMailRoutes(unittest.TestCase):
             with self.subTest(case=loaded["name"]):
                 self.assertEqual(result(loaded["case"]), loaded["case"]["expected"])
 
-    # TST-532002 - level: release - module: system
+    # TST-532002 · level: release · module: system
     # guards: A MAILBOX IS REACHED THROUGH ITS PROVIDER'S WEB API OR THROUGH THE BRIDGE; AN API MAILBOX IS OPENED BY THE PROVIDER'S SIGN-IN; THE MAIL SIGN-IN ASKS ONLY FOR READING, DRAFTING AND SENDING
     # given: the loaded release cases
     # input: their preconditions, inputs and expected traces

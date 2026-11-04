@@ -1,7 +1,7 @@
 // What this module's routes of Tests share of the site's one look (ITM-1223; EVERY PAGE SHARES ONE LOOK AND WORKS ON A PHONE), as
 // docs/architecture/MOD-test-pages.md states it: the frame's head — the route's heading and the line of where it reads, the address, the ref read and how —
 // with the Tests entry's views of views.mjs under it; and the frame's table (class list) whose cells carry their column's title as data-label, the one rule
-// by which the frame's style sheet reflows a table on a phone (MOD-site-frame, look.css).
+// by which the frame's style sheet reflows a table on a phone (MOD-site-frame, look.css); and the frame's button, which answers a person's click only.
 //
 // Module: MOD-test-pages
 
@@ -36,6 +36,15 @@ export function readsAt(address, ref, what = "read now from the repository; noth
 export function column(label, ...children) {
   const node = el("td", null, ...children);
   node.setAttribute("data-label", label);
+  return node;
+}
+
+// button(className, text, listener) -> <button type="button"> — the frame's button (btn) of a route, which answers only a click the browser marks as a
+// person's (THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK): a click a script makes calls no `listener`.
+export function button(className, text, listener) {
+  const node = el("button", className, text);
+  node.type = "button";
+  node.addEventListener("click", (event) => (event?.isTrusted === true ? listener(event) : undefined));
   return node;
 }
 

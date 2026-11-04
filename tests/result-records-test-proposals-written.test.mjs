@@ -5,7 +5,7 @@
 // Run: node --test tests/result-records-test-proposals-written.test.mjs
 //
 // Module: MOD-result-records
-// Guards: UC-026; A NEW TEST IS SHOWN TO FAIL ON A PLANTED FAULT; A TEST STATES ITS EXPECTED RESULT BEFORE IT RUNS
+// Guards: UC-026; A NEW TEST IS SHOWN TO FAIL ON A PLANTED FAULT; A TEST STATES ITS EXPECTED RESULT BEFORE IT RUNS; EVERY ARTIFACT NAMES ITS ORIGIN
 // Level: unit
 //
 // Where the file leaves a reading open, the tests state the one they take, and the pull request names it:
@@ -18,6 +18,9 @@
 //   - The reviewed cases are `context.params.draft`: an array of cases, or `{ cases }`, each `{ identifier, level, guards, expected }`. A written test differs from its case when its level,
 //     its guarded identifiers (as a set) or its expected result (equal after trimming and collapsing white space and ignoring case) differ. A new test whose identifier no case has differs
 //     in its identifier. A case with no written test is not judged here.
+//   - A test names the requirement it guards and the module it exercises as two fields (EVERY ARTIFACT NAMES ITS ORIGIN), so a case's guards are read as MOD-test-document reads a test's: an
+//     entry `MOD-<slug>` is the case's module, compared with the test's `module`, and the others are its guards, compared with the test's `guards`. Each is compared when the case names it:
+//     a case that names only a module leaves the test's guards to the test, which must name one (MOD-test-document's testFindings), and a case that names no module leaves its module.
 //   - A finding's `artifact` is the test file's path and its `line` the test's declaration line; `what` names the test. Level and guards and identifier mismatches are under A NEW TEST IS SHOWN TO
 //     FAIL ON A PLANTED FAULT, an expected-result mismatch under A TEST STATES ITS EXPECTED RESULT BEFORE IT RUNS.
 // Each test states its input and its expected result before it runs (given / input / expect). The counter-proofs are recorded in the pull request.
@@ -30,8 +33,8 @@ const NEW = "A NEW TEST IS SHOWN TO FAIL ON A PLANTED FAULT";
 const EXPECTED = "A TEST STATES ITS EXPECTED RESULT BEFORE IT RUNS";
 
 const snapshotOf = (files) => ({ paths: Object.keys(files), read: async (path) => (Object.hasOwn(files, path) ? files[path] : null), blob: (path) => (Object.hasOwn(files, path) ? `blob:${files[path]}` : null) });
-const declared = ({ id, level = "unit", guards = "A RULE", expect = "round" }) =>
-  [`// ${id} · level: ${level} · module: MOD-widgets`, `// guards: ${guards}`, "// given: a widget", "// input: its shape", `// expect: ${expect}`, `test("${id}", () => {});`, ""].join("\n");
+const declared = ({ id, level = "unit", module = "MOD-widgets", guards = "A RULE", expect = "round" }) =>
+  [`// ${id} · level: ${level} · module: ${module}`, `// guards: ${guards}`, "// given: a widget", "// input: its shape", `// expect: ${expect}`, `test("${id}", () => {});`, ""].join("\n");
 const PATH = "tests/widgets.test.mjs";
 const proof = (id, { outcome = "failed", fault = "- a\n+ b", result = "fails with the fault, passes without" } = {}) =>
   `---\ntest: ${id}\ncommit: ${"a".repeat(40)}\nparticipant: dev\ndate: 2026-10-18T08:00:00Z\noutcome: ${outcome}\n---\n## Fault\n\n${fault}\n\n## Result\n\n${result}\n`;
@@ -137,4 +140,21 @@ test("test-proposals (write-tests) — an existing test is not new, and a branch
   assert.equal(lost.length, 1);
   assert.equal(lost[0].kind, "error");
   assert.match(lost[0].what, /not-pushed/);
+});
+
+// TST-1425001 · level: unit · module: MOD-result-records
+// guards: EVERY ARTIFACT NAMES ITS ORIGIN; A NEW TEST IS SHOWN TO FAIL ON A PLANTED FAULT; UC-026
+// given: reviewed cases that name a module among their guards, and a branch with their tests and valid counter-proofs, each test naming its module in `module` and only requirements in `guards`: TST-754001 (case A RULE and MOD-widgets; test MOD-widgets, A RULE), TST-754002 (case MOD-widgets alone; test MOD-widgets, A RULE), TST-754003 (case A RULE and MOD-widgets; test MOD-widgets, ANOTHER RULE), TST-754004 (case A RULE and MOD-gadgets; test MOD-widgets, A RULE)
+// input: the check test-proposals on the report, with the cases in the job's parameters
+// expect: known positive — TST-754003's guards differ and stay an error under A NEW TEST IS SHOWN TO FAIL ON A PLANTED FAULT; TST-754004's module differs from its case's and is an error under the same rule, naming MOD-gadgets; no finding for TST-754001 or TST-754002, whose module is its case's and whose guards are its case's without the module
+test("TST-1425001: test-proposals (write-tests) — a case's module is the test's module, not one of its guards", async () => {
+  const ids = ["TST-754001", "TST-754002", "TST-754003", "TST-754004"];
+  const files = { [PATH]: declared({ id: "TST-754001" }) + declared({ id: "TST-754002" }) + declared({ id: "TST-754003", guards: "ANOTHER RULE" }) + declared({ id: "TST-754004" }),
+    ...Object.fromEntries(ids.map((id) => [proofPath(id), proof(id)])) };
+  const cases = [{ ...CASE, guards: ["A RULE", "MOD-widgets"] }, { ...CASE, identifier: "TST-754002", guards: ["MOD-widgets"] },
+    { ...CASE, identifier: "TST-754003", guards: ["A RULE", "MOD-widgets"] }, { ...CASE, identifier: "TST-754004", guards: ["A RULE", "MOD-gadgets"] }];
+  const found = await check(report(ids.map((identifier) => ({ identifier, outcome: "passed" }))), files, { cases });
+  assert.deepEqual(summary(found), [[PATH, "error", NEW], [PATH, "error", NEW]]);
+  assert.deepEqual(found.map((one) => /TST-75400(\d)/.exec(one.what)[1]), ["3", "4"]);
+  assert.match(found[1].what, /MOD-gadgets/);
 });

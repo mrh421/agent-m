@@ -1,28 +1,26 @@
-// A SPEC edit saved as an entry of the person's open queue (ITM-341) — MOD-spec-changes' `openQueueOf` and `proposeSection`, as docs/architecture/MOD-spec-changes.md states them:
-// openQueueOf gives the person's newest queue of the day, by the author of the commit that created its index, that has no entry in SPEC yet; proposeSection writes one commit: the entry,
-// its rationale — the change, the Why, the impact list, the origin — and its index row, into that queue or a new one, `trailers` ending the commit's message; a second edit of the same
-// section in that queue replaces its entry; a rename is proposed as the old name withdrawn and the new one added; the target is never touched; when the section changed meanwhile it refuses
-// and returns the newer text; `alsoReplacing` names other open entries that replace the same section; without a token on GitHub it writes nothing and returns GitHub's pages for each file
-// of the entry, each page's `differs` saying whether its file exists on the default branch otherwise than at `openedHead`, the commit the edit was opened on; on GitLab it fails with
-// TokenRequired.
+// A SPEC edit saved as an entry of its section's queue — MOD-spec-changes' `proposeSection`, as docs/architecture/MOD-spec-changes.md states it: proposeSection writes one commit: the
+// entry, its rationale — the change, the Why, the impact list, the origin — and its index row, into its section's queue docs/spec-freigaben/<package>/, or the queue started with entry 01,
+// `trailers` ending the commit's message; an entry's number is one more than any the queue's index or decisions name; a second edit of the same section adds another entry; a rename is
+// proposed as the old name withdrawn and the new one added; the target is never touched; when the section changed meanwhile it refuses and returns the newer text; `alsoReplacing` names
+// other open entries that replace the same section; without a token on GitHub it writes nothing and returns GitHub's pages for each file of the entry, each page's `differs` saying whether
+// its file exists on the default branch otherwise than at `openedHead`, the commit the edit was opened on; on GitLab it fails with TokenRequired.
 // Run: node --test tests/spec-changes-propose-section.test.mjs
 //
 // Module: MOD-spec-changes
 // Guards: UC-018
-// Guards: A SPEC EDIT IS SAVED AS A PROPOSAL; A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE; A SAVE IS REFUSED WHEN THE TEXT CHANGED MEANWHILE; A REFUSED SAVE KEEPS THE EDIT
+// Guards: A SPEC EDIT IS SAVED AS A PROPOSAL; A SAVE IS REFUSED WHEN THE TEXT CHANGED MEANWHILE; A REFUSED SAVE KEEPS THE EDIT
 // Guards: A RENAMED REQUIREMENT IS WITHDRAWN AND ADDED; A REQUIREMENT IS NOT CHANGED WITHOUT AN IMPACT LIST; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // Guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; A GITLAB PRODUCT IS WRITTEN WITH A TOKEN
 // Level: unit
 //
-// The repository is a fixture this file builds, never Agent M's own: a SPEC of two sections, a use case that realises one requirement, and queues of the day and of another day written by
-// two people, as a snapshot (paths, blob SHAs, a read of the texts) beside a host that answers repositoryInfo, readSnapshot and readHistory and records every commit. The host's token is
+// The repository is a fixture this file builds, never Agent M's own: a SPEC of two sections, a use case that realises one requirement, and queues of its sections,
+// as a snapshot (paths, blob SHAs, a read of the texts) beside a host that answers repositoryInfo and readSnapshot and records every commit. The host's token is
 // `canWrite`. Where the module file leaves a reading open, the test states the reading it takes, and the pull request names it:
-//   - The queue of a day is a folder `docs/spec-freigaben/<day><letter>_<slug>/` whose day is the day of the call; the folder given back is that path, as Queue.folder is. The person of a
-//     queue is the `author.account` of the oldest commit of its index.md's history that adds it; a queue none of whose entries is `in SPEC` has no entry in SPEC yet.
+//   - The queue of a section is the folder `docs/spec-freigaben/<package>/` (MOD-spec-changes, Data): `reading` for `## 1. Reading`, `fixture-specification` for the preamble, whose anchor is
+//     the title line `# Fixture — Specification`; the folder given back is that path, as Queue.folder is.
 //   - The section's blob is the git blob SHA of the section's exact bytes (MOD-spec-document's sectionText), as the approval records name it; `current` of a refusal is that section's text.
 //   - A host with no token is one whose repositoryInfo says `canWrite: false`; the server is the snapshot's repository.server.
-//   - The files of an entry are its proposal, its rationale and the index (and, in a new queue, entscheidungen.md); the fallback gives one page for each, existing or new.
-//   - A new queue is named `<day><letter>_edits-of-<person>`, the letter the first, none, b, c …, that no queue of the day has.
+//   - The files of an entry are the queue's index (and, in a new queue, entscheidungen.md), its proposal and its rationale; the fallback gives one page for each, existing or new.
 //   - The commit the edit was opened on is OPENED. The host answers readSnapshot(OPENED) with the repository as it stood then (`opened`: the paths it lacked and the paths it had besides),
 //     readSnapshot("main") with the default branch now, and records every ref it was asked for in `reads`.
 // A name the module does not provide yet fails each test by itself. The counter-proofs are in the pull request.
@@ -35,55 +33,52 @@ import * as specChanges from "../src/spec-changes/index.mjs";
 import { documentFindings, loadSchema, readDocument } from "../src/documents/index.mjs";
 import { withStoredGraph } from "./stored-graph-fake.mjs";
 
-const { openQueueOf, proposeSection, queues, entryView } = specChanges;
+const { proposeSection, queues, entryView } = specChanges;
 
 const text = (...lines) => `${lines.join("\n")}\n`;
 const gitBlob = (body) => { const bytes = Buffer.from(body, "utf8"); return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex"); };
-const TODAY = new Date().toISOString().slice(0, 10);
-const OTHER_DAY = "2020-01-01";
 
 const READING = text("## 1. Reading", "", "**A SAMPLE RULE** *(Product Owner)*", "A reader reads a file whole.", "*Check:* `tests/sample.test.mjs`", "",
   "**ANOTHER SAMPLE RULE** *(Product Owner)*", "A reader sees the name of a file.", "*Check:* no automatic check; at review", "");
 const WRITING = text("## 2. Writing", "", "**A WRITE RULE** *(Product Owner)*", "A writer writes a file whole.", "*Check:* no automatic check; at review");
-const SPEC = text("# Fixture — Specification", "") + READING + WRITING;
+const PREAMBLE = text("# Fixture — Specification", "");
+const SPEC = PREAMBLE + READING + WRITING;
 const useCase = text("---", "id: UC-001", "title: Read a file", "area: reading", "actors:", "  - Reader", "realises:", "  - A SAMPLE RULE", "---", "# UC-001 Read a file", "", "**Goal.** Read a file.");
 const READING_EDITED = READING.replace("A reader reads a file whole.", "A reader reads a file whole, or says why not.");
 const READING_RENAMED = READING.replace("**A SAMPLE RULE**", "**A READING RULE**");
 
-const indexOf = (day, title, anchors) => text(`# SPEC approvals — queue ${day} · ${title}`, "", "**Zieldatei aller Einträge:** `SPEC.md`", "", "| Nr | Datei | Anker (Überschrift, wortgetreu) | bis (exklusiv) | Commits |", "|---|---|---|---|---|",
-  ...anchors.map((anchor, at) => `| ${String(at + 1).padStart(2, "0")} | \`SPEC.md\` | ${anchor} | — | — |`));
-const slugOf = (anchor) => anchor.replace(/^#+\s*\d+\.\s*/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+const indexOf = (folder, heading, rows) => text(`# SPEC approvals — queue ${folder} · ${heading}`, "", "**Zieldatei aller Einträge:** `SPEC.md`", "", "| Nr | Datei | Anker (Überschrift, wortgetreu) | bis (exklusiv) | Commits |", "|---|---|---|---|---|",
+  ...rows.map(([n, anchor]) => `| ${String(n).padStart(2, "0")} | \`SPEC.md\` | ${anchor} | — | — |`));
 
-// A queue's files: its index, its decisions, an open entry for each anchor with its proposal.
-function queueFiles(folder, day, anchors, { inSpec = [] } = {}) {
+// A queue's files: its index, its decisions, an entry for each anchor with its proposal; `inSpec` the numbers a decision row names, `decidedOnly` numbers a decision row names that the
+// index no longer lists.
+function queueFiles(folder, anchors, { inSpec = [], decidedOnly = [] } = {}) {
   const base = `docs/spec-freigaben/${folder}`;
-  const files = { [`${base}/index.md`]: indexOf(day, "an earlier edit", anchors),
-    [`${base}/entscheidungen.md`]: text("# Decisions — queue " + folder, "", "Append-only.", ...inSpec.map((n) => `| ${day} 10:00 UTC | ${n} | uebernommen | approval:spec-${folder}-0${n}-aaaaaaaaaaaa.md |`)) };
-  anchors.forEach((anchor, at) => {
-    const n = String(at + 1).padStart(2, "0");
-    files[`${base}/${n}-${slugOf(anchor)}.md`] = anchor.includes("Reading") ? READING_EDITED : WRITING.replace("writes a file whole", "writes a file whole, or says why not");
-    files[`${base}/${n}-${slugOf(anchor)}.begruendung.md`] = "# an earlier rationale\n";
+  const rows = anchors.map((anchor, at) => [at + 1, anchor]);
+  const files = { [`${base}/index.md`]: indexOf(folder, "an earlier edit", rows),
+    [`${base}/entscheidungen.md`]: text("# Decisions — queue " + folder, "", "Append-only.", ...[...inSpec, ...decidedOnly].map((n) => `| 2026-10-12 10:00 UTC | ${n} | uebernommen | approval:spec-${folder}-0${n}-aaaaaaaaaaaa.md |`)) };
+  rows.forEach(([number, anchor]) => {
+    const n = String(number).padStart(2, "0");
+    files[`${base}/${n}-${folder}.md`] = anchor.includes("Reading") ? READING_EDITED : WRITING.replace("writes a file whole", "writes a file whole, or says why not");
+    files[`${base}/${n}-${folder}.begruendung.md`] = "# an earlier rationale\n";
   });
   return files;
 }
-const historyOf = (folder, account, later = []) => ({ [`docs/spec-freigaben/${folder}/index.md`]: [
-  ...later.map((who, at) => ({ commit: `${at}`.padEnd(40, "1"), parents: [], author: { account: who, name: who }, date: "2026-10-12T10:00:00Z", message: "a later edit", changes: [{ path: `docs/spec-freigaben/${folder}/index.md`, change: "modified" }] })),
-  { commit: "c".repeat(40), parents: [], author: { account, name: account }, date: "2026-10-12T09:00:00Z", message: "queue", changes: [{ path: `docs/spec-freigaben/${folder}/index.md`, change: "added" }] }] });
 
 const OPENED = "o".repeat(40);
-function repository({ files = {}, history = {}, canWrite = true, server = "github", opened = {}, refuse = null } = {}) {
+// `stored` false: the head's graph is not stored yet, as for the head a job has just committed on.
+function repository({ files = {}, canWrite = true, server = "github", opened = {}, refuse = null, stored = true } = {}) {
   const all = { "SPEC.md": SPEC, "docs/use-cases/UC-001-read-a-file.md": useCase, ...files };
   const commits = [];
   const web = server === "github" ? "https://github.com/alice/product" : "https://gitlab.example.test/alice/product";
   // The snapshot of the default branch, whose graph is stored on trace-cache as the workflow "main changed" stores it (tests/stored-graph-fake.mjs).
-  const snapshot = withStoredGraph({ repository: { server, origin: server === "github" ? "https://github.com" : "https://gitlab.example.test", path: "alice/product", web }, ref: "main", commit: "h".repeat(40),
+  const snapshot = (stored ? withStoredGraph : (bare) => bare)({ repository: { server, origin: server === "github" ? "https://github.com" : "https://gitlab.example.test", path: "alice/product", web }, ref: "main", commit: (stored ? "h" : "u").repeat(40),
     paths: Object.keys(all), blob: (path) => (Object.hasOwn(all, path) ? gitBlob(all[path]) : null), read: async (path) => (Object.hasOwn(all, path) ? all[path] : null) });
   const reads = [];
   const began = { ...snapshot, ref: OPENED, commit: OPENED, paths: [...Object.keys(all).filter((path) => !(opened.lacking ?? []).includes(path)), ...(opened.extra ?? [])] };
   const host = { commits, reads,
     repositoryInfo: async () => ({ defaultBranch: "main", visibility: "private", canWrite, archived: false, description: "" }),
     readSnapshot: async (ref) => { reads.push(ref); return ref === OPENED ? began : snapshot; },
-    readHistory: async (path) => history[path] ?? [],
     // `refuse`: the name of the failure the server answers a commit with ("PermissionMissing": the token may not write); nothing is committed then.
     commitFiles: async (change) => { if (refuse) throw Object.assign(new Error(`the server refused the commit: ${refuse}`), { name: refuse }); commits.push(change); return { commit: "i".repeat(40), url: "https://example.test/commit" }; } };
   return { host, snapshot, commits, all };
@@ -93,42 +88,43 @@ const CHANGE = { target: "SPEC.md", anchor: "## 1. Reading", until: null, text: 
 const written = (commit) => Object.fromEntries(commit.files.map((file) => [file.path, file.text]));
 const schemaText = readFileSync(new URL("../src/spec-changes/queue-rationale.schema.md", import.meta.url), "utf8");
 
-// TST-472983 · level: unit · module: MOD-spec-changes
-// guards: A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE; UC-018
-// given: queues of the day: 'mine' by alice, all open; 'mine-b' by alice with an entry in SPEC; 'bobs' by bob, open; a queue of another day by alice; and alice's 'mine' touched later by bob
-// input: openQueueOf for alice and for bob and for carol, on the day and on a day with none
-// expect: alice's newest queue of the day with no entry in SPEC — 'mine', since 'mine-b' has one —, bob's his own, carol none, the day with none none; the person is the author of the commit that created the index, not of a later one
-test("openQueueOf — the person's newest queue of the day with no entry in SPEC", async () => {
-  assert.ok(openQueueOf, "openQueueOf is offered");
-  const files = { ...queueFiles(`${TODAY}_mine`, TODAY, ["## 1. Reading"]), ...queueFiles(`${TODAY}b_mine-b`, TODAY, ["## 1. Reading"], { inSpec: [1] }),
-    ...queueFiles(`${TODAY}c_bobs`, TODAY, ["## 2. Writing"]), ...queueFiles(`${OTHER_DAY}_old`, OTHER_DAY, ["## 1. Reading"]) };
-  const history = { ...historyOf(`${TODAY}_mine`, "alice", ["bob"]), ...historyOf(`${TODAY}b_mine-b`, "alice"), ...historyOf(`${TODAY}c_bobs`, "bob"), ...historyOf(`${OTHER_DAY}_old`, "alice") };
-  const { host } = repository({ files, history });
-  assert.equal(await openQueueOf("alice", TODAY, host), `docs/spec-freigaben/${TODAY}_mine`);
-  assert.equal(await openQueueOf("bob", TODAY, host), `docs/spec-freigaben/${TODAY}c_bobs`);
-  assert.equal(await openQueueOf("carol", TODAY, host), null);
-  assert.equal(await openQueueOf("alice", "2021-02-02", host), null);
-  assert.equal(await openQueueOf("alice", OTHER_DAY, host), `docs/spec-freigaben/${OTHER_DAY}_old`);
+
+const READING_QUEUE = "docs/spec-freigaben/reading";
+
+// TST-1397002 · level: unit · module: MOD-spec-changes
+// guards: A SPEC EDIT IS SAVED AS A PROPOSAL; THE NAME IS THE ID AND IT SURVIVES; UC-018
+// given: the queue `reading`, whose index lists entry 01 and whose decisions name entry 01 and entry 03, which has left the index
+// input: proposeSection of an edit of the section Reading
+// expect: the new entry is 04, one more than any number the index or the decisions name: 04-reading.md and its rationale, and the index row `| 04 |`; known positive: without the decision of 03 it is 02
+test("proposeSection — a new entry's number is one more than any its queue's index or decisions name", async () => {
+  const f = repository({ files: queueFiles("reading", ["## 1. Reading"], { inSpec: [1], decidedOnly: [3] }) });
+  const result = await proposeSection(f.host, CHANGE);
+  assert.deepEqual([result.queue, result.entry], [READING_QUEUE, 4]);
+  const out = written(f.commits[0]);
+  assert.deepEqual(Object.keys(out).sort(), [`${READING_QUEUE}/04-reading.begruendung.md`, `${READING_QUEUE}/04-reading.md`, `${READING_QUEUE}/index.md`]);
+  assert.match(out[`${READING_QUEUE}/index.md`], /\| 04 \| `SPEC\.md` \| ## 1\. Reading \| — \| — \|\n$/);
+  const g = repository({ files: queueFiles("reading", ["## 1. Reading"], { inSpec: [1] }) });
+  assert.equal((await proposeSection(g.host, CHANGE)).entry, 2, "known positive: without the decision of 03");
 });
 
 // TST-472984 · level: unit · module: MOD-spec-changes
-// guards: A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE; UC-018
-// given: a person with no open queue of the day
+// guards: A SPEC EDIT IS SAVED AS A PROPOSAL; UC-018
+// given: no queue of the section Reading
 // input: proposeSection of an edit of the section Reading
-// expect: one commit on the default branch at the head read, holding a new queue of the day — index.md, entscheidungen.md, the entry 01-reading.md with the section as edited, its rationale — and nothing else; the index's row for the entry; the SPEC untouched; the result names the commit, the queue, the entry 1 and no other entry it replaces
-test("proposeSection — an edit of a section is one commit holding a new queue with the entry, its rationale and its index row", async () => {
+// expect: one commit on the default branch at the head read, starting the section's queue docs/spec-freigaben/reading — index.md titled `# SPEC approvals — queue reading · Reading`, entscheidungen.md titled `# Decisions — queue reading Reading`, the entry 01-reading.md with the section as edited, its rationale — and nothing else; the index's row for the entry; the SPEC untouched; the result names the commit, the queue, the entry 1 and no other entry it replaces
+test("proposeSection — an edit of a section with no queue is one commit starting the section's queue with entry 01", async () => {
   assert.ok(proposeSection, "proposeSection is offered");
   const f = repository();
   const result = await proposeSection(f.host, CHANGE);
   assert.equal(f.commits.length, 1);
   const files = written(f.commits[0]);
-  const folder = `docs/spec-freigaben/${TODAY}_edits-of-alice`;
+  const folder = READING_QUEUE;
   assert.deepEqual(Object.keys(files).sort(), [`${folder}/01-reading.begruendung.md`, `${folder}/01-reading.md`, `${folder}/entscheidungen.md`, `${folder}/index.md`]);
   assert.equal(files[`${folder}/01-reading.md`], READING_EDITED);
-  assert.match(files[`${folder}/index.md`], new RegExp(`^# SPEC approvals — queue ${TODAY} · `));
+  assert.match(files[`${folder}/index.md`], /^# SPEC approvals — queue reading · Reading\n/);
   assert.match(files[`${folder}/index.md`], /\*\*Zieldatei aller Einträge:\*\* `SPEC\.md`/);
   assert.match(files[`${folder}/index.md`], /\| 01 \| `SPEC\.md` \| ## 1\. Reading \| — \| — \|/);
-  assert.match(files[`${folder}/entscheidungen.md`], /^# Decisions — queue /);
+  assert.equal(files[`${folder}/entscheidungen.md`], "# Decisions — queue reading Reading\n\nAppend-only.\n");
   assert.deepEqual([f.commits[0].branch, f.commits[0].expectedHead], ["main", "h".repeat(40)]);
   assert.deepEqual(result, { commit: "i".repeat(40), queue: folder, entry: 1, alsoReplacing: [] });
   assert.ok(!Object.keys(files).includes("SPEC.md"), "the target is not touched");
@@ -143,7 +139,7 @@ test("proposeSection — the rationale holds the change, the Why, the impact lis
   const f = repository();
   await proposeSection(f.host, CHANGE);
   const files = written(f.commits[0]);
-  const folder = `docs/spec-freigaben/${TODAY}_edits-of-alice`;
+  const folder = READING_QUEUE;
   const rationale = files[`${folder}/01-reading.begruendung.md`];
   const schema = loadSchema(schemaText, "MOD-spec-changes");
   assert.deepEqual(documentFindings(schema, readDocument(schema, `${folder}/01-reading.begruendung.md`, rationale)), []);
@@ -163,42 +159,34 @@ test("proposeSection — the rationale holds the change, the Why, the impact lis
 });
 
 // TST-472986 · level: unit · module: MOD-spec-changes
-// guards: A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE; UC-018
-// given: alice's open queue of the day, with an entry for Reading
-// input: proposeSection of an edit of the section Writing
-// expect: no new queue: the entry 02 and its rationale added to that queue, its index row appended to the index with every other byte of it as it was; the earlier entry's files untouched; the result names that queue and entry 2
-test("proposeSection — an edit of another section is added to the person's open queue", async () => {
-  const folder = `${TODAY}_mine`;
-  const files = queueFiles(folder, TODAY, ["## 1. Reading"]);
-  const f = repository({ files, history: historyOf(folder, "alice") });
-  const change = { ...CHANGE, anchor: "## 2. Writing", text: WRITING.replace("a file whole", "a file whole, or says why not"), openedBlob: gitBlob(WRITING) };
-  const result = await proposeSection(f.host, change);
-  const base = `docs/spec-freigaben/${folder}`;
-  assert.deepEqual(result, { commit: "i".repeat(40), queue: base, entry: 2, alsoReplacing: [] });
+// guards: A SPEC EDIT IS SAVED AS A PROPOSAL; UC-018
+// given: the queue `writing` of the section Writing, with an open entry
+// input: proposeSection of an edit of the section Reading
+// expect: the edit starts the queue `reading`; nothing of the queue `writing` is written; the result names docs/spec-freigaben/reading and entry 1
+test("proposeSection — an edit of another section goes to that section's queue, not to another queue", async () => {
+  const files = queueFiles("writing", ["## 2. Writing"]);
+  const f = repository({ files });
+  const result = await proposeSection(f.host, CHANGE);
+  assert.deepEqual(result, { commit: "i".repeat(40), queue: READING_QUEUE, entry: 1, alsoReplacing: [] });
   const out = written(f.commits[0]);
-  assert.deepEqual(Object.keys(out).sort(), [`${base}/02-writing.begruendung.md`, `${base}/02-writing.md`, `${base}/index.md`]);
-  assert.equal(out[`${base}/index.md`], files[`${base}/index.md`] + "| 02 | `SPEC.md` | ## 2. Writing | — | — |\n");
-  assert.equal(out[`${base}/02-writing.md`], change.text);
+  assert.ok(Object.keys(out).every((path) => path.startsWith(`${READING_QUEUE}/`)), Object.keys(out).join(" "));
 });
 
 // TST-472987 · level: unit · module: MOD-spec-changes
-// guards: A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE; UC-018
-// given: alice's open queue, whose entry 01 edits Reading, and a second edit of Reading
+// guards: A SPEC EDIT IS SAVED AS A PROPOSAL; UC-018
+// given: the queue `reading`, whose open entry 01 edits Reading, and a second edit of Reading
 // input: proposeSection
-// expect: the entry 01's proposal and rationale replaced in one commit; no second row in the index, which is not written again; no new entry; the result names entry 1
-test("proposeSection — a second edit of a section replaces the entry of that queue", async () => {
-  const folder = `${TODAY}_mine`;
-  const files = queueFiles(folder, TODAY, ["## 1. Reading", "## 2. Writing"]);
-  const f = repository({ files, history: historyOf(folder, "alice") });
+// expect: entry 02 and its rationale added to that queue in one commit, its index row appended to the index with every other byte of it as it was; entry 01's files untouched; the result names entry 2 and alsoReplacing entry 1
+test("proposeSection — a second edit of a section adds another entry to the section's queue", async () => {
+  const files = queueFiles("reading", ["## 1. Reading"]);
+  const f = repository({ files });
   const again = READING.replace("A reader reads a file whole.", "A reader reads a file whole and says why not.");
   const result = await proposeSection(f.host, { ...CHANGE, text: again });
-  const base = `docs/spec-freigaben/${folder}`;
-  assert.equal(result.entry, 1);
-  assert.equal(result.queue, base);
+  assert.deepEqual(result, { commit: "i".repeat(40), queue: READING_QUEUE, entry: 2, alsoReplacing: [{ queue: READING_QUEUE, entry: 1 }] });
   const out = written(f.commits[0]);
-  assert.deepEqual(Object.keys(out).sort(), [`${base}/01-reading.begruendung.md`, `${base}/01-reading.md`]);
-  assert.equal(out[`${base}/01-reading.md`], again);
-  assert.notEqual(out[`${base}/01-reading.begruendung.md`], "# an earlier rationale\n");
+  assert.deepEqual(Object.keys(out).sort(), [`${READING_QUEUE}/02-reading.begruendung.md`, `${READING_QUEUE}/02-reading.md`, `${READING_QUEUE}/index.md`]);
+  assert.equal(out[`${READING_QUEUE}/index.md`], files[`${READING_QUEUE}/index.md`] + "| 02 | `SPEC.md` | ## 1. Reading | — | — |\n");
+  assert.equal(out[`${READING_QUEUE}/02-reading.md`], again);
 });
 
 // TST-472988 · level: unit · module: MOD-spec-changes
@@ -210,7 +198,7 @@ test("proposeSection — a rename is proposed as the old name withdrawn and the 
   const f = repository();
   await proposeSection(f.host, { ...CHANGE, text: READING_RENAMED });
   const files = written(f.commits[0]);
-  const folder = `docs/spec-freigaben/${TODAY}_edits-of-alice`;
+  const folder = READING_QUEUE;
   const impact = files[`${folder}/01-reading.begruendung.md`].split("**Impact list.**")[1].split("**Origin.**")[0];
   assert.match(impact, /A SAMPLE RULE[^\n]*withdrawn[^\n]*UC-001/);
   assert.match(impact, /A READING RULE[^\n]*added/);
@@ -250,18 +238,35 @@ test("proposeSection — the trailers end the commit's message, and a person's o
 });
 
 // TST-472991 · level: unit · module: MOD-spec-changes
-// guards: A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE; UC-018
-// given: other open entries that replace Reading: bob's in his queue; and none that replace Writing but one in SPEC that replaced Reading
-// input: proposeSection of an edit of Reading in alice's own queue
-// expect: alsoReplacing names bob's queue and entry; an entry in SPEC and an entry of another section are not named; bob's files are untouched
+// guards: A SPEC EDIT IS SAVED AS A PROPOSAL; UC-018
+// given: other entries that replace Reading: in the queue `reading` entry 01 open and entry 02 in SPEC; in a queue of another name, `2026-10-01_bobs`, entry 01 open; and the queue `writing` open
+// input: proposeSection of an edit of Reading
+// expect: the edit is entry 03 of the queue `reading`; alsoReplacing names the open entry 01 of `reading` and of `2026-10-01_bobs`, in the order of the queues' folders; an entry in SPEC and an entry of another section are not named; only files of `reading` are written
 test("proposeSection — other open entries that replace the same section are named", async () => {
-  const mine = `${TODAY}_mine`, bobs = `${TODAY}b_bobs`, done = `${TODAY}c_done`;
-  const files = { ...queueFiles(mine, TODAY, ["## 2. Writing"]), ...queueFiles(bobs, TODAY, ["## 1. Reading"]), ...queueFiles(done, TODAY, ["## 1. Reading"], { inSpec: [1] }) };
-  const f = repository({ files, history: { ...historyOf(mine, "alice"), ...historyOf(bobs, "bob"), ...historyOf(done, "bob") } });
+  const bobs = "2026-10-01_bobs";
+  const files = { ...queueFiles("reading", ["## 1. Reading", "## 1. Reading"], { inSpec: [2] }), ...queueFiles(bobs, ["## 1. Reading"]), ...queueFiles("writing", ["## 2. Writing"]) };
+  const f = repository({ files });
   const result = await proposeSection(f.host, CHANGE);
-  assert.equal(result.queue, `docs/spec-freigaben/${mine}`);
-  assert.deepEqual(result.alsoReplacing, [{ queue: `docs/spec-freigaben/${bobs}`, entry: 1 }]);
-  assert.ok(Object.keys(written(f.commits[0])).every((path) => path.startsWith(`docs/spec-freigaben/${mine}/`)));
+  assert.deepEqual([result.queue, result.entry], [READING_QUEUE, 3]);
+  assert.deepEqual(result.alsoReplacing, [{ queue: `docs/spec-freigaben/${bobs}`, entry: 1 }, { queue: READING_QUEUE, entry: 1 }]);
+  assert.ok(Object.keys(written(f.commits[0])).every((path) => path.startsWith(`${READING_QUEUE}/`)));
+});
+
+// TST-1397003 · level: unit · module: MOD-spec-changes
+// guards: A SPEC EDIT IS SAVED AS A PROPOSAL; UC-018
+// given: the SPEC's preamble, from its title line `# Fixture — Specification` up to `## 1. Reading`, and no queue
+// input: proposeSection of an edit of the preamble, anchor the title line, until `## 1. Reading`
+// expect: the queue of the preamble is named after the title: docs/spec-freigaben/fixture-specification, its index titled `# SPEC approvals — queue fixture-specification · Fixture — Specification` and its row naming the until; the entry 01-fixture-specification.md
+test("proposeSection — the preamble's queue is named after the SPEC's title", async () => {
+  const f = repository();
+  const edited = text("# Fixture — Specification", "", "The fixture's SPEC.", "");
+  const result = await proposeSection(f.host, { ...CHANGE, anchor: "# Fixture — Specification", until: "## 1. Reading", text: edited, openedBlob: gitBlob(PREAMBLE) });
+  const folder = "docs/spec-freigaben/fixture-specification";
+  assert.deepEqual([result.queue, result.entry], [folder, 1]);
+  const out = written(f.commits[0]);
+  assert.match(out[`${folder}/index.md`], /^# SPEC approvals — queue fixture-specification · Fixture — Specification\n/);
+  assert.match(out[`${folder}/index.md`], /\| 01 \| `SPEC\.md` \| # Fixture — Specification \| ## 1\. Reading \| — \|/);
+  assert.equal(out[`${folder}/01-fixture-specification.md`], edited);
 });
 
 // TST-472992 · level: unit · module: MOD-spec-changes
@@ -273,7 +278,7 @@ test("proposeSection — without a token on GitHub it writes nothing and returns
   const f = repository({ canWrite: false });
   const result = await proposeSection(f.host, CHANGE);
   assert.deepEqual(f.commits, []);
-  const folder = `docs/spec-freigaben/${TODAY}_edits-of-alice`;
+  const folder = READING_QUEUE;
   assert.deepEqual(result.fallback.map((page) => page.path).sort(), [`${folder}/01-reading.begruendung.md`, `${folder}/01-reading.md`, `${folder}/entscheidungen.md`, `${folder}/index.md`]);
   for (const page of result.fallback) {
     assert.match(page.url, /^https:\/\/github\.com\/alice\/product\/new\//);
@@ -297,44 +302,27 @@ test("proposeSection — without a token on GitLab it fails with TokenRequired",
   assert.deepEqual(f.commits, []);
 });
 
-// TST-472994 · level: unit · module: MOD-spec-changes
-// guards: A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE; UC-018
-// given: three open queues of alice on the day: one with no letter, one with the letter b, one with the letter c, and an edit of a section none of them holds
-// input: openQueueOf; proposeSection
-// expect: the newest is the one with the latest letter — c; the edit is added to it as entry 2
-test("openQueueOf — the newest of several open queues of the day is the one with the latest letter", async () => {
-  const names = [`${TODAY}_first`, `${TODAY}b_second`, `${TODAY}c_third`];
-  const files = Object.assign({}, ...names.map((name) => queueFiles(name, TODAY, ["## 2. Writing"])));
-  const history = Object.assign({}, ...names.map((name) => historyOf(name, "alice")));
-  const f = repository({ files, history });
-  assert.equal(await openQueueOf("alice", TODAY, f.host), `docs/spec-freigaben/${names[2]}`);
-  const result = await proposeSection(f.host, CHANGE);
-  assert.deepEqual([result.queue, result.entry], [`docs/spec-freigaben/${names[2]}`, 2]);
-});
-
 // TST-611001 · level: unit · module: MOD-spec-changes
 // guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; UC-018
-// given: a GitHub product, a host with no token, alice's open queue holding an entry for Reading, and a second edit of Reading, which replaces that entry's proposal and rationale; the proposal did not exist on the default branch at OPENED
+// given: a GitHub product, a host with no token, the queue `reading` holding entry 01 for Reading, and a second edit of Reading, which adds entry 02; the queue's index did not exist on the default branch at OPENED
 // input: proposeSection
-// expect: two pages in the order proposal, rationale; the proposal's page is GitHub's new-file page and differs is true — it exists now, and did not when the edit began; the rationale's page is GitHub's editor and differs is false
+// expect: three pages in the order index, proposal, rationale; the index's page is GitHub's new-file page and differs is true — it exists now, and did not when the edit began; the proposal's and the rationale's are new-file pages and differs is false
 test("proposeSection — without a token a file that appeared on the default branch since the edit began is marked as differing", async () => {
-  const folder = `${TODAY}_mine`;
-  const base = `docs/spec-freigaben/${folder}`;
-  const files = queueFiles(folder, TODAY, ["## 1. Reading", "## 2. Writing"]);
-  const f = repository({ files, history: historyOf(folder, "alice"), canWrite: false, opened: { lacking: [`${base}/01-reading.md`] } });
+  const base = READING_QUEUE;
+  const f = repository({ files: queueFiles("reading", ["## 1. Reading"]), canWrite: false, opened: { lacking: [`${base}/index.md`] } });
   const result = await proposeSection(f.host, CHANGE);
   assert.deepEqual(f.commits, []);
   assert.deepEqual(result.fallback.map((page) => [page.path, page.url.split("/").slice(3, 6).join("/"), page.differs]),
-    [[`${base}/01-reading.md`, "alice/product/new", true], [`${base}/01-reading.begruendung.md`, "alice/product/edit", false]]);
+    [[`${base}/index.md`, "alice/product/new", true], [`${base}/02-reading.md`, "alice/product/new", false], [`${base}/02-reading.begruendung.md`, "alice/product/new", false]]);
 });
 
 // TST-611002 · level: unit · module: MOD-spec-changes
 // guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; UC-018
-// given: a GitHub product, a host with no token and no queue of the person; at OPENED the repository held the index of the queue the edit now starts, which the default branch no longer holds
+// given: a GitHub product, a host with no token and no queue of the section; at OPENED the repository held the index of the queue the edit now starts, which the default branch no longer holds
 // input: proposeSection
 // expect: four pages; the index's is GitHub's editor, since the file existed when the edit began, and differs is true; the other three are new-file pages and differs is false
 test("proposeSection — without a token a file that disappeared from the default branch since the edit began is marked as differing", async () => {
-  const folder = `docs/spec-freigaben/${TODAY}_edits-of-alice`;
+  const folder = READING_QUEUE;
   const f = repository({ canWrite: false, opened: { extra: [`${folder}/index.md`] } });
   const result = await proposeSection(f.host, CHANGE);
   assert.deepEqual(result.fallback.map((page) => [page.path.replace(folder, "<queue>"), page.url.split("/").slice(3, 6).join("/"), page.differs]).sort(),
@@ -358,32 +346,30 @@ test("proposeSection — the repository at the commit the edit was opened on is 
 
 // TST-611013 · level: unit · module: MOD-spec-changes
 // guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; UC-018
-// given: the setting of TST-611001 (a second edit of Reading, whose proposal OPENED lacked), but the edit was opened on the commit of the snapshot the save reads, "h" repeated forty times
+// given: the setting of TST-611001 (a second edit of Reading, whose queue's index OPENED lacked), but the edit was opened on the commit of the snapshot the save reads, "h" repeated forty times
 // input: proposeSection without a token
-// expect: only "main" is read; the files are taken as that snapshot holds them, so both pages are GitHub's editor and differs is false for both, though OPENED lacked the proposal
+// expect: only "main" is read; the files are taken as that snapshot holds them, so the index's page is GitHub's editor and differs is false for all three, though OPENED lacked the index
 test("proposeSection — an edit opened on the commit the save already read reads no other snapshot", async () => {
-  const folder = `${TODAY}_mine`;
-  const base = `docs/spec-freigaben/${folder}`;
-  const f = repository({ files: queueFiles(folder, TODAY, ["## 1. Reading", "## 2. Writing"]), history: historyOf(folder, "alice"), canWrite: false, opened: { lacking: [`${base}/01-reading.md`] } });
+  const base = READING_QUEUE;
+  const f = repository({ files: queueFiles("reading", ["## 1. Reading"]), canWrite: false, opened: { lacking: [`${base}/index.md`] } });
   const result = await proposeSection(f.host, { ...CHANGE, openedHead: "h".repeat(40) });
   assert.deepEqual(f.host.reads, ["main"]);
   assert.deepEqual(result.fallback.map((page) => [page.path, page.url.split("/").slice(3, 6).join("/"), page.differs]),
-    [[`${base}/01-reading.md`, "alice/product/edit", false], [`${base}/01-reading.begruendung.md`, "alice/product/edit", false]]);
+    [[`${base}/index.md`, "alice/product/edit", false], [`${base}/02-reading.md`, "alice/product/new", false], [`${base}/02-reading.begruendung.md`, "alice/product/new", false]]);
 });
 
 // TST-611014 · level: unit · module: MOD-spec-changes
 // guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; UC-018
 // given: the setting of TST-611001, but the edit was opened on no commit (null, an empty repository)
 // input: proposeSection without a token
-// expect: only "main" is read; no file existed when the edit began, so both pages are GitHub's new-file pages and differs is true for both, since both exist now
+// expect: only "main" is read; no file existed when the edit began, so all three pages are GitHub's new-file pages, and differs is true for the index, which exists now, and false for the new entry's files
 test("proposeSection — an edit opened on no commit holds no file and reads no snapshot for it", async () => {
-  const folder = `${TODAY}_mine`;
-  const base = `docs/spec-freigaben/${folder}`;
-  const f = repository({ files: queueFiles(folder, TODAY, ["## 1. Reading", "## 2. Writing"]), history: historyOf(folder, "alice"), canWrite: false });
+  const base = READING_QUEUE;
+  const f = repository({ files: queueFiles("reading", ["## 1. Reading"]), canWrite: false });
   const result = await proposeSection(f.host, { ...CHANGE, openedHead: null });
   assert.deepEqual(f.host.reads, ["main"]);
   assert.deepEqual(result.fallback.map((page) => [page.path, page.url.split("/").slice(3, 6).join("/"), page.differs]),
-    [[`${base}/01-reading.md`, "alice/product/new", true], [`${base}/01-reading.begruendung.md`, "alice/product/new", true]]);
+    [[`${base}/index.md`, "alice/product/new", true], [`${base}/02-reading.md`, "alice/product/new", false], [`${base}/02-reading.begruendung.md`, "alice/product/new", false]]);
 });
 
 // TST-593001 · level: unit · module: MOD-spec-changes
@@ -411,4 +397,23 @@ test("proposeSection — a refused commit on GitLab, and any other refusal on Gi
   const github = repository({ refuse: "TokenRefused" });
   await assert.rejects(proposeSection(github.host, CHANGE), { name: "TokenRefused" });
   assert.deepEqual([...gitlab.commits, ...github.commits], []);
+});
+
+// TST-1406003 · level: unit · module: MOD-spec-changes
+// guards: A REQUIREMENT IS NOT CHANGED WITHOUT AN IMPACT LIST; AN AGENT'S RETROSPECTIVE CHANGES NO PROCESS BY ITSELF; UC-041
+// given: the fixture repository whose head has no stored trace graph, as the head a job has just committed on; UC-001 realises A SAMPLE RULE
+// input: proposeSection of the section Reading with A SAMPLE RULE changed and the requirement A NEW READING RULE ("A reader keeps a file open.") appended — a requirement added, as a retrospective's change is
+// expect: one commit of the queue reading, with no failure for the missing graph; its rationale's impact list names A SAMPLE RULE changed and named by UC-001, and A NEW READING RULE added and named by nothing; known positive: the same edit over the head with its graph stored gives the same impact list
+test("proposeSection — where no trace graph is stored for the head it reads, it builds the graph for the impact list", async () => {
+  const edit = { ...CHANGE, text: `${READING_EDITED}\n**A NEW READING RULE** *(Product Owner)*\nA reader keeps a file open.\n*Check:* no automatic check; at review\n` };
+  const impactOf = (rationale) => /\*\*Impact list\.\*\*\n([\s\S]*?)\n\n/.exec(rationale)?.[1] ?? "";
+  const bare = repository({ stored: false });
+  await proposeSection(bare.host, edit);
+  assert.equal(bare.commits.length, 1);
+  const built = impactOf(written(bare.commits[0])[`${READING_QUEUE}/01-reading.begruendung.md`]);
+  assert.match(built, /A SAMPLE RULE: changed; named by UC-001\./);
+  assert.match(built, /A NEW READING RULE: added; nothing names it\./);
+  const stored = repository();
+  await proposeSection(stored.host, edit);
+  assert.equal(impactOf(written(stored.commits[0])[`${READING_QUEUE}/01-reading.begruendung.md`]), built, "known positive: the stored graph gives the same impact list");
 });

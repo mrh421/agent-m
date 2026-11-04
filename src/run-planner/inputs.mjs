@@ -8,10 +8,16 @@
 // no request of its own; the snapshot reads what the host holds. Part, JobContext and Strategies are MOD-job-runner's types.
 //
 // The product's coding standards file is not part of it: the accepted text names no path for one.
+//
+// For a backlog item (`params.items`; UC-034 step 3) the recipe gives, before the item's modules, the item's file, the use cases it realises and the existing tests that guard what it
+// realises, and, after them, the process requirements. Readings the accepted text leaves open: the use cases an item realises are those its `realises` names and those that realise a
+// requirement it names; the existing tests are those with a `guards` edge to a name its `realises` lists; the process requirements are the instance's SPEC.md, whose requirements
+// constrain the development process, given under the name `SPEC.md process requirements` and left out where the product's own SPEC.md part has the same text.
 
 import { systemDecisions, traceGraph } from "../trace-graph/index.mjs";
 
 const SPEC = "SPEC.md";
+const PROCESS = "SPEC.md process requirements";
 const INTERFACES = "## Interfaces";
 
 // A failure of the module's own, by name.
@@ -38,12 +44,14 @@ function interfacesOf(text) {
  * - a module step or an item, and each module `params.modules` names (after the steps and items), for each of its modules (the item's `modules`): the module's file; the decisions it follows and then the decision that refines no other; SPEC.md; the
  *   `## Interfaces` section alone of the file of each module it uses; the files under its folder; the test files with an `exercises` edge to it;
  * - a subsystem's integration: the subsystem's decision (the one that designs the step's modules), then for each module it designs the module's file, its files and its tests;
- * - the system: the decision that refines no other, the decisions that refine it and design modules, and the use cases.
+ * - the system: the decision that refines no other, the decisions that refine it and design modules, and the use cases;
+ * - for a backlog item, first its file, the use cases it realises and the tests that guard what it realises, and last the instance's SPEC.md as the process requirements.
  * A part is one file, named by its path (the interfaces of a file: `<path> ## Interfaces`), given once; it carries the sources of every `context.places.contents` entry that names its
  * path or a folder above it. Throws NoWorkNamed for params naming no step, no item and no module, and UnknownWork { id } for a name that is no step, item or module of the product's files.
  */
 async function implementationInputs(context, params) {
-  const names = [params?.steps ?? [], params?.items ?? []].flat().map(String);
+  const items = (params?.items ?? []).map(String);
+  const names = [params?.steps ?? [], items].flat().map(String);
   const named = (params?.modules ?? []).map(String);
   if (names.length === 0 && named.length === 0) throw failure("NoWorkNamed", "an implementation job names the steps, the items or the modules it implements");
   const snapshot = context.product.snapshot;
@@ -86,7 +94,25 @@ async function implementationInputs(context, params) {
     await testsOf(module);
   };
 
+  // The item's file, the use cases it realises and the existing tests that guard what it realises (UC-034 step 3).
+  const itemInputs = async (name) => {
+    await file(name, "ITM");
+    const realised = from(name, "realises").map((edge) => edge.to);
+    const useCases = unique([...realised, ...graph.edges.filter((edge) => edge.via === "realises" && realised.includes(edge.to)).map((edge) => edge.from)]
+      .filter((id) => graph.nodes.get(id)?.kind === "UC")).sort();
+    for (const id of useCases) await file(id, "UC");
+    const guarding = unique(graph.edges.filter((edge) => edge.via === "guards" && realised.includes(edge.to)).map((edge) => edge.path)).sort();
+    for (const path of guarding) await give(path, path);
+  };
+  // The instance's SPEC.md, whose requirements are the process requirements; the instance's own file carries no source (as the job's `rules` carry none).
+  const processRequirements = async () => {
+    const text = await context.instance?.snapshot?.read(SPEC);
+    if (typeof text !== "string" || text === parts.get(SPEC)?.text) return;
+    parts.set(PROCESS, { name: PROCESS, text, size: 0, sources: [], required: true });
+  };
+
   for (const name of names) {
+    if (items.includes(name)) await itemInputs(name);
     const work = known(name, "ITM");
     const modules = from(name, "changes").map((edge) => edge.to);
     if (work.level === "system") {
@@ -107,6 +133,7 @@ async function implementationInputs(context, params) {
     }
   }
   for (const module of named) await moduleInputs(module);
+  if (items.length > 0) await processRequirements();
   return [...parts.values()];
 }
 

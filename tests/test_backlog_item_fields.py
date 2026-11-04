@@ -10,8 +10,7 @@ An item is a document of MOD-documents' item schema: documentFindings names an i
 names something that is neither a requirement's name nor a use case, whose modules are left out or empty, and one that names
 no origin. MOD-work-plans' backlogFindings(items, architecture) names an item that realises nothing, one that names no module
 the architecture describes, and, as a warning, one that restates another; its itemStates names what an item realises that
-is not accepted. docs/assets/jobs/propose-backlog-items/ is the job definition that drafts items for uncovered requirements
-(UC-032 step 2).
+is not accepted.
 
 Fixtures: tests/fixtures/backlog/ — the backlog of a small product, and the names it has accepted and the modules its
 architecture describes (known.json). Agent M's own backlog is checked as it stands, its use cases by their files, its
@@ -28,7 +27,6 @@ from jsrun import js
 FIX = Path(__file__).resolve().parent / "fixtures" / "backlog"
 BACKLOG = FIX / "docs" / "backlog"
 KNOWN = json.loads((FIX / "known.json").read_text(encoding="utf-8"))
-JOB = DOCS / "assets" / "jobs" / "propose-backlog-items"
 
 NAMES = "A BACKLOG ITEM NAMES WHAT IT REALISES"
 MODULES = "A BACKLOG ITEM NAMES THE MODULES IT CHANGES"
@@ -187,29 +185,6 @@ class TestAnItemThatRestatesAnother(unittest.TestCase):
 class TestTheJobThatDraftsItems(unittest.TestCase):
     """UC-032 steps 2 and 3: a job definition drafts items for uncovered requirements; a draft that realises nothing is
     rejected and one that restates an existing item flagged."""
-
-    def definition(self) -> dict:
-        return json.loads(read(JOB / "job.json"))
-
-    def test_the_definition_takes_the_requirements_the_use_cases_and_the_existing_items(self):
-        job = self.definition()
-        self.assertEqual(job["kind"], "propose-backlog-items")
-        self.assertEqual(job["inputs"], ["requirements", "useCases", "items"])
-        self.assertEqual(job["capabilities"], ["draft text"])
-        self.assertIsInstance(job["rounds"], int)
-        self.assertGreater(job["rounds"], 0)
-
-    def test_the_prompt_fills_every_input_and_nothing_else(self):
-        prompt = read(JOB / "prompt.md")
-        self.assertEqual(sorted(set(re.findall(r"\{\{(\w+)\}\}", prompt))), sorted(self.definition()["inputs"]))
-
-    def test_a_drafted_item_must_realise_something_and_may_carry_acceptance_criteria(self):
-        draft = self.definition()["output"]["properties"]["items"]
-        self.assertEqual(draft["type"], "array")
-        fields = draft["items"]
-        self.assertEqual(sorted(fields["required"]), ["outcome", "realises", "title"])
-        self.assertEqual((fields["properties"]["realises"]["type"], fields["properties"]["realises"]["minItems"]), ("array", 1))
-        self.assertIn("acceptance", fields["properties"])
 
     def test_counter_proof_a_draft_that_realises_nothing_is_rejected_and_one_restating_an_item_flagged(self):
         nothing = edited(edited(TEXT, REALISES, "realises: []\n"), "title: Export the thesis as PDF\n", "title: Export faster\n")

@@ -35,7 +35,8 @@
 import { parseAddress, connect } from "../repository-hosts/index.mjs";
 import { reviewLayoutCommit } from "../artifact-edits/index.mjs";
 import { readSetting, secretValues, writeSetting } from "../browser-store/index.mjs";
-import { explain } from "../site-frame/index.mjs";
+import { explain, tokenKeyOf } from "../site-frame/index.mjs";
+import { heads } from "./routes.mjs";
 
 export const TOKEN_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -113,12 +114,8 @@ export const gitlabNoProjectTokens = (host, reason) =>
   "or substitute a personal token.";
 
 // The key MOD-browser-store keeps a product's own token under (A GITHUB PRODUCT USES A TOKEN OF ITS OWN, A GITLAB
-// PRODUCT USES A PROJECT ACCESS TOKEN; MOD-browser-store, Data).
-export function tokenSettingKey(address) {
-  return address.server === "gitlab"
-    ? `gitlab-token:${new URL(address.origin).host}/${address.path}`
-    : `github-token:${address.path}`;
-}
+// PRODUCT USES A PROJECT ACCESS TOKEN; MOD-browser-store, Data), computed by MOD-site-frame's tokenKeyOf.
+export const tokenSettingKey = (address) => tokenKeyOf(address);
 
 // The repository a token's key is for, the step back from tokenSettingKey: `github-token` is the instance's, `github-token:<owner>/<repository>`
 // a GitHub product's, `gitlab-token:<server>/<project>` a GitLab project's. null for a key that is no token's, or that names no readable repository.
@@ -488,9 +485,7 @@ function renderSteps(container, context, text) {
 }
 
 export const route = {
-  name: "add-product",
-  entry: "settings",
-  title: "Add a product",
+  ...heads.addProduct,
   // params: unused — add-product takes none (the route's own fragment is just "add-product"); kept for the Route's
   // contract, render(target, context, params).
   async render(target, context, params) {
@@ -500,7 +495,7 @@ export const route = {
     addressInput.spellcheck = false;
     const stepsContainer = el("div", "steps");
     target.append(
-      el("h2", null, "Add a product"),
+      el("section", "head", el("h2", null, "Add a product")),
       el("p", "muted", "The product gets a key of its own — on GitHub a fine-grained token for it alone, on a " +
         "GitLab server a project access token, sent only to that server's own API. Your instance's key stays as it " +
         "is."),

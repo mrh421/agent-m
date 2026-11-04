@@ -10,7 +10,7 @@ export const storedOnce = (snapshot) => {
   return () => (held ??= snapshot.commit ? storedImpacts(snapshot, snapshot.commit).catch(() => null) : Promise.resolve(null));
 };
 
-// { last: { text }, shown } for a file whose entry's blob is the file's blob: the text at the entry's `before` commit, by one readFileAt, and the stored list drawn;
+// { last: { text }, shown, impact } for a file whose entry's blob is the file's blob: the text at the entry's `before` commit, by one readFileAt, and the stored list drawn and as it is stored;
 // null where no entry fits, where the file was never accepted, or where that text cannot be read.
 export async function fromStored(file, snapshot, host, storedOf) {
   const entry = (await storedOf())?.get(file.path);
@@ -20,5 +20,5 @@ export async function fromStored(file, snapshot, host, storedOf) {
   if (typeof text !== "string") return null;
   const shown = impactSection(entry.impact, null);
   shown.append(explain("impact-of-a-change"));
-  return { last: { text }, shown };
+  return { last: { text }, shown, impact: entry.impact };
 }

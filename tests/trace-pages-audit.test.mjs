@@ -35,6 +35,14 @@
 // - "Its row says no test; it is counted, not hidden" (UC-030 2c): `audit-no-test` reads `no test`.
 // - "only the link to the server's log is marked unavailable" (UC-030 2d): where the host offers no run page, `audit-run-unavailable` reads `unavailable` in place of the link.
 // - "Agent M says which parts cannot be derived for this tag and shows the rest" (UC-030 1a): the limitations name `cannot be derived`, every outcome reads so, and the rows stand.
+// - "The limitations stand at the top of the summary, each linked to the rows it concerns" (UC-030 2b): a limitation is a line `<TST-<nnn> or rate> — <reason>` (MOD-approvals' `limitation`);
+//   it concerns the rows that hold the test it names, and its item is one link `a.audit-limitation` with the line as its text, to the first of them, which, pressed, opens the rows it concerns as a
+//   number does. A line that names no test of a row stays text.
+// - "the acceptance of the release test report: who, when, and the blob SHA of the accepted text" (UC-030 2): each row's detail names in `audit-accepted-blob` the blob that the approval names,
+//   beside `audit-evidence`, which keeps reading who and when.
+// - "only the link to the server's log is marked unavailable" (UC-030 2d), where the server no longer keeps the logs: the runs a row's tests' records of the release commit cite (their `run`
+//   address) are asked of ciRunLog, each once and all at once, and a row whose every cited run gives null reads `unavailable` in place of the link; a failed asking, and a row whose records cite no
+//   run, keep the link.
 // Each test states its input and its expected result before it runs (given / input / expect). The counter-proofs are recorded in the pull request.
 
 import test from "node:test";
@@ -91,8 +99,9 @@ const jobRecord = ({ id, kind, worksOn, participant, results }) => ["---", `id: 
   `participant: ${participant}`, "route: tab", "started_by: akmaier", "start: 2026-10-01 09:00 UTC", "agent_m: fixture, commit fixture", "limit: 1", "---",
   "## Destinations", "", "## Parameters", "", "```json", "{}", "```", "", "## End", "", "at: 2026-10-01 10:00 UTC", "state: done", `results: ${results}`, ""].join("\n");
 
-const run = (commit, rows) => ["---", `commit: ${commit}`, "levels:", "  - unit", "  - release", "occasion: release-candidate", "participant: ci",
-  "date: 2026-10-11 21:00 UTC", "---", "## Outcomes", "", "| Test | Level | Outcome | Runs |", "|---|---|---|---|",
+// A run record of the branch test-results; with `id`, it names the run on the server (`run: <address>/actions/runs/<id>`).
+const run = (commit, rows, id = null) => ["---", `commit: ${commit}`, "levels:", "  - unit", "  - release", "occasion: release-candidate", "participant: ci",
+  "date: 2026-10-11 21:00 UTC", ...(id ? [`run: ${ADDRESS}/actions/runs/${id}`] : []), "---", "## Outcomes", "", "| Test | Level | Outcome | Runs |", "|---|---|---|---|",
   ...rows.map((row) => `| ${row.join(" | ")} |`), ""].join("\n");
 
 const priorReport = ["---", "version: 2026.3.0", "candidate: v2026.3.0-rc.1", `commit: ${OLD}`, "date: 2026-10-01", "---", "## Limitations", "", "## Levels", "",
@@ -148,14 +157,15 @@ const resultFiles = () => ({
 const instanceFiles = () => ({ "SPEC.md": INSTANCE_SPEC, "docs/sources/SRC-vibe-coding.md": BOOK, "docs/sources/SRC-iec-62304.md": IEC });
 
 // The product's host: refs by name, the commit of a tag as COMMIT, the run page and the file page a server offers (`links` false: it offers none), and the history of the
-// approval record, which the commit ACCEPTING added.
+// approval record, which the commit ACCEPTING added. `ciRunLog`, where given, is the server's answer for a run's log (string, null or a throw); every run asked is noted in `log.logs`.
 const ACCEPTED_BY = { commit: ACCEPTING, parents: [], author: { account: "akmaier", name: "Andreas Maier" }, date: "2026-10-12 08:30 UTC", message: "", changes: [] };
-function productHost({ product = productFiles(), head = headFiles(), results = resultFiles(), tags = [TAG, OLDER, "nightly"], links = true, recordHistory = [ACCEPTED_BY] } = {}) {
+function productHost({ product = productFiles(), head = headFiles(), results = resultFiles(), tags = [TAG, OLDER, "nightly"], links = true, recordHistory = [ACCEPTED_BY], ciRunLog = null } = {}) {
   const base = treeHost({ trees: { [TAG]: product, main: head, "test-results": results }, tags });
   const commits = { [TAG]: COMMIT, main: HEAD };
-  const log = { runs: [], files: [], histories: [] };
+  const log = { runs: [], files: [], histories: [], logs: [] };
   return {
     ...base, log,
+    ...(ciRunLog ? { async ciRunLog(id) { log.logs.push(String(id)); return ciRunLog(String(id)); } } : {}),
     async readSnapshot(ref) { const snapshot = await base.readSnapshot(ref); return { ...snapshot, commit: commits[ref] ?? ref, repository: { path: "acme/product", web: ADDRESS } }; },
     async listTags() { return tags.map((name) => ({ name, commit: name === TAG ? COMMIT : `commit-of-${name}` })); },
     async readHistory(path, options = {}) {
@@ -278,6 +288,54 @@ test("TST-1163004 the implementer count keeps only the shared test's qualifying 
   assert.deepEqual(names(target), [R1]);
 });
 
+// TST-1430004 · level: component · module: MOD-trace-pages
+// guards: A MODEL-DEPENDENT TEST IS MEASURED AS A RATE; UC-030
+// given: the fixture, where the model-dependent TST-756105 of A FIFTH RULE passed 6 of 10 against 8 of 10 at the last release (worse); then the same with the last release's record at 5 of 10
+// input: Route.render with the key "audit"; the line of TST-756105 read, then the passing number pressed, over each
+// expect: known positive — the outcome reads 6 of 10 in both, and over the fixture passing opens A FIRST RULE alone and the line reads "against 8 of 10 at the last release" and "not passed"; with the last release at 5 of 10 the number reads 2, opens A FIRST RULE and A FIFTH RULE, and the line reads "against 5 of 10 at the last release" and "passed"
+// counter-proof: a page that counts passing from the outcome "passed" alone opens A FIRST RULE alone over the second fixture and fails its deepEqual
+test("TST-1430004 a model-dependent test's line shows its rate, the last release's rate and whether it passed, and passing counts it from passed", async () => {
+  const line = (target) => withClass(rowOf(target, R5), "audit-test-line")[0];
+  const shown = (target) => [textsOf(line(target), "audit-outcome")[0], textsOf(line(target), "audit-last-rate")[0], textsOf(line(target), "audit-passed")[0]];
+  const worse = await render();
+  assert.deepEqual(shown(worse), ["6 of 10", "against 8 of 10 at the last release", "not passed"]);
+  await press(countOf(worse, "passing"));
+  assert.deepEqual(names(worse), [R1], "known positive: a worse rate has not passed");
+  const results = { ...resultFiles(), [`runs/${OLD}/old.md`]: run(OLD, [["TST-756105", "unit", "passed", "5 of 10"]]) };
+  const better = await render(productHost({ results }));
+  assert.deepEqual(shown(better), ["6 of 10", "against 5 of 10 at the last release", "passed"]);
+  assert.equal(countOf(better, "passing").textContent, "2");
+  await press(countOf(better, "passing"));
+  assert.deepEqual(names(better), [R1, R5]);
+});
+
+// TST-1430005 · level: component · module: MOD-trace-pages
+// guards: A MODEL-DEPENDENT TEST IS MEASURED AS A RATE; UC-030
+// given: the fixture where TST-756105 of A FIFTH RULE did not complete its runs on the release commit — its record "not run", 3 of 10 — against 2 of 10 at the last release (not worse)
+// input: Route.render with the key "audit"; the not-passed number read and pressed, and only gaps ticked on a fresh page
+// expect: known positive — over the fixture not passed opens A SECOND RULE alone; here the number reads 2 and opens A SECOND RULE and A FIFTH RULE, the line reads 3 of 10 and "not passed", and only gaps keeps A FIFTH RULE
+// counter-proof: a page that counts not passed from the outcomes failed and not run alone opens A SECOND RULE alone and fails the second deepEqual
+test("TST-1430005 a model-dependent test that did not run is counted among those that did not pass", async () => {
+  const fixture = await render();
+  await press(countOf(fixture, "notPassed"));
+  assert.deepEqual(names(fixture), [R2], "known positive");
+  const results = { ...resultFiles(), [`runs/${OLD}/old.md`]: run(OLD, [["TST-756105", "unit", "passed", "2 of 10"]]) };
+  results[`runs/${COMMIT}/a.md`] = run(COMMIT, [["TST-756101", "unit", "passed", ""], ["TST-756102", "release", "passed", ""], ["TST-756103", "release", "passed", ""],
+    ["TST-756104", "unit", "passed", ""], ["TST-756105", "unit", "not run", "3 of 10"]]);
+  const target = await render(productHost({ results }));
+  assert.equal(countOf(target, "notPassed").textContent, "2");
+  const line = withClass(rowOf(target, R5), "audit-test-line")[0];
+  assert.deepEqual([textsOf(line, "audit-outcome")[0], textsOf(line, "audit-passed")[0]], ["3 of 10", "not passed"]);
+  await press(countOf(target, "notPassed"));
+  assert.deepEqual(names(target), [R2, R5]);
+  const gaps = await render(productHost({ results }));
+  const box = withClass(gaps, "audit-filter-gaps")[0];
+  box.checked = true;
+  box.dispatchEvent(new Event("change"));
+  await settle();
+  assert.ok(names(gaps).includes(R5), "a model-dependent test that did not run is a gap");
+});
+
 // TST-768005 · level: component · module: MOD-trace-pages
 // guards: UC-030; THE AUDIT VIEW LISTS EVERY REQUIREMENT OF THE RELEASE; THE TRACEABILITY MATRIX IS DERIVED
 // given: the fixture; A FIRST RULE cites the book and IEC 62304 (normative), is guarded by 756101 (unit, a counter-proof) and 756102 and 756103 (release); A FOURTH RULE by 756104, flaky
@@ -307,6 +365,45 @@ test("a process row shows that it constrains the process and the gate records it
   assert.deepEqual(textsOf(process, "audit-source"), ["SRC-vibe-coding"]);
   assert.deepEqual(textsOf(process, "audit-gate"), [GATE_PATH]);
   assert.deepEqual(textsOf(rowOf(target, R1), "audit-gate"), []);
+});
+
+// TST-1431003 · level: unit · module: MOD-trace-pages
+// guards: A PROCESS REQUIREMENT ADDS TO THE MODEL; UC-030
+// given: the fixture; the declaration docs/process.md adds the gate of A PROCESS RULE between Plan and Build with the artifact SPEC.md, and the gate record docs/gates/20261010-1000-a-process-rule-alic.md passed it
+// input: Route.render with the key "audit"; the rows of A PROCESS RULE and of A FIRST RULE read
+// expect: known positive — the process row's `audit-gate` still reads the record alone, [docs/gates/20261010-1000-a-process-rule-alic.md]; its `audit-gate-artifacts` reads ["SPEC.md"]; A FIRST RULE has no `audit-gate-artifacts`
+// counter-proof: a gatesOf that hands on the requirement, the gate and the record only leaves the process row without `audit-gate-artifacts` and fails the second deepEqual
+test("TST-1431003 a process row names the artifacts its gate asked for beside the gate record", async () => {
+  const target = await render();
+  const process = rowOf(target, PROCESS);
+  assert.deepEqual(textsOf(process, "audit-gate"), [GATE_PATH], "known positive: the gate record alone");
+  assert.deepEqual(textsOf(process, "audit-gate-artifacts"), ["SPEC.md"]);
+  assert.deepEqual(textsOf(rowOf(target, R1), "audit-gate-artifacts"), []);
+});
+
+// TST-1433003 · level: unit · module: MOD-trace-pages
+// guards: THE AUDIT VIEW LISTS EVERY REQUIREMENT OF THE RELEASE; UC-030
+// given: the fixture, whose declaration docs/process.md adds the gate of A PROCESS RULE; and the same product at the tag without the gate record docs/gates/20261010-1000-a-process-rule-alic.md
+// input: Route.render with the key "audit" over each; then Export of the second
+// expect: known positive — with the record, the process row's `audit-gate` reads [docs/gates/20261010-1000-a-process-rule-alic.md] and it has no `audit-gate-unrecorded`; without it, the rows are those of the release with A PROCESS RULE last, its row has no `audit-gate` and its `audit-gate-unrecorded` reads ["A PROCESS RULE: no record holds it"], and the number no test reads 2, as with the record (A THIRD RULE and A PROCESS RULE); the exported document's section of A PROCESS RULE names the gate and that no record holds it, and holds no "Gate record" line and no `null`
+// counter-proof: a gatesOf that drops the gates with no record leaves A PROCESS RULE without its row and fails the second assertion
+test("TST-1433003 a process requirement whose gate has no record at the tag has its row, which says no record holds the gate, on the page and in the export", async () => {
+  const recorded = rowOf(await render(), PROCESS);
+  assert.deepEqual([textsOf(recorded, "audit-gate"), textsOf(recorded, "audit-gate-unrecorded")], [[GATE_PATH], []], "known positive: the recorded gate");
+  const bare = Object.fromEntries(Object.entries(productFiles()).filter(([path]) => path !== GATE_PATH));
+  const target = await render(productHost({ product: bare }));
+  assert.deepEqual(names(target), [R1, R2, R3, R4, R5, PROCESS]);
+  const process = rowOf(target, PROCESS);
+  assert.deepEqual([textsOf(process, "audit-gate"), textsOf(process, "audit-gate-unrecorded")], [[], ["A PROCESS RULE: no record holds it"]]);
+  assert.equal(countOf(target, "noTest").textContent, "2");
+  const { target: page, press, downloads, restore } = await renderExportable(productHost({ product: bare }));
+  try {
+    await press(buttonNamed(page, "Export"));
+    const text = await downloads.blobs[0].text();
+    const section = text.slice(text.indexOf(`### ${PROCESS}`));
+    assert.match(section, /^- [^\n]*A PROCESS RULE[^\n]*no record holds/im);
+    assert.ok(!section.includes("Gate record") && !section.includes("null"), "no gate record and no null is written");
+  } finally { restore(); }
 });
 
 // TST-768007 · level: component · module: MOD-trace-pages
@@ -507,6 +604,76 @@ test("a row with no test links no run", async () => {
   assert.equal(withClass(rowOf(target, R3), "audit-run").length + withClass(rowOf(target, R3), "audit-run-unavailable").length, 0);
   const without = await render(productHost({ links: false }));
   assert.equal(withClass(rowOf(without, R3), "audit-run-unavailable").length, 0);
+});
+
+// TST-1432001 · level: unit · module: MOD-trace-pages
+// guards: UC-030; AN APPROVAL NAMES THE EXACT TEXT
+// given: the fixture, accepted by akmaier on 2026-10-12 08:30 UTC with the approval record naming the blob of the report's text; and the same fixture whose default branch holds no approval record
+// input: Route.render with the key "audit" over each; the rows read
+// expect: known positive — accepted, the acceptance of A FIRST RULE reads exactly "accepted by akmaier on 2026-10-12 08:30 UTC"; every one of the six rows names in `audit-accepted-blob` the full blob SHA of the report's text, the one the approval record names; not accepted, no row names one
+// counter-proof: a page that leaves the blob to the exported document (no `audit-accepted-blob` in a row) fails the deepEqual of the six rows
+test("TST-1432001 each row names the blob SHA of the accepted text beside who accepted it and when", async () => {
+  const target = await render();
+  assert.deepEqual(textsOf(rowOf(target, R1), "audit-evidence"), ["accepted by akmaier on 2026-10-12 08:30 UTC"], "known positive: who and when, unchanged");
+  assert.deepEqual(rows(target).map((row) => textsOf(row, "audit-accepted-blob")), ALL.map(() => [gitBlob(REPORT_TEXT)]));
+  const open = await render(productHost({ head: headFiles(false) }));
+  assert.deepEqual(withClass(open, "audit-accepted-blob").length, 0, "a report not accepted names no accepted text");
+});
+
+// TST-1432002 · level: unit · module: MOD-trace-pages
+// guards: UC-030; A RED RELEASE IS ACCEPTED ONLY WITH ITS LIMITATIONS RECORDED
+// given: the fixture, whose approval records "TST-756104 — flaky on the CI runner" (the test of A FOURTH RULE) and "TST-756105 — the model answers slower" (the test of A FIFTH RULE); and the fixture not accepted, whose one limitation names the missing approval record and no test
+// input: Route.render with the key "audit"; the limitations read; each limitation's link pressed on a fresh page, and the first pressed twice
+// expect: known positive — the list's items read exactly the two lines; each item is one link `a.audit-limitation` with the line as its text, whose href is "#" and the id of the row it concerns; pressing the first leaves A FOURTH RULE, the second A FIFTH RULE; pressing the first twice leaves all six rows; the missing approval record's line holds no link
+// counter-proof: a list of plain text items (no `a` in an item) fails the deepEqual of the links' texts
+test("TST-1432002 each limitation links the rows of the test it names, and pressing it opens them", async () => {
+  const target = await render();
+  const items = find(withClass(target, "audit-limitations")[0], (node) => node.localName === "li");
+  assert.deepEqual(items.map((item) => item.textContent), LIMITATIONS, "known positive: the two lines, unchanged");
+  assert.deepEqual(items.map((item) => textsOf(item, "audit-limitation")), LIMITATIONS.map((line) => [line]));
+  const hrefs = items.map((item) => withClass(item, "audit-limitation")[0].getAttribute("href"));
+  assert.deepEqual(hrefs, [R4, R5].map((name) => `#${rowOf(target, name).getAttribute("id")}`));
+  assert.ok(rowOf(target, R4).getAttribute("id") && rowOf(target, R4).getAttribute("id") !== rowOf(target, R5).getAttribute("id"), "each row has an id of its own");
+  for (const [index, expected] of [[0, [R4]], [1, [R5]]]) {
+    const fresh = await render();
+    await press(withClass(fresh, "audit-limitation")[index]);
+    assert.deepEqual(names(fresh), expected, LIMITATIONS[index]);
+  }
+  const twice = await render();
+  await press(withClass(twice, "audit-limitation")[0]);
+  await press(withClass(twice, "audit-limitation")[0]);
+  assert.deepEqual(names(twice), ALL, "pressed again, every row is back");
+  const open = await render(productHost({ head: headFiles(false) }));
+  assert.equal(withClass(open, "audit-limitation").length, 0, "a line that names no test links no row");
+});
+
+// TST-1432003 · level: unit · module: MOD-trace-pages
+// guards: UC-030; TEST RESULTS ARE KEPT IN THE REPOSITORY
+// given: the fixture on a server that offers the run page, whose records of the release commit cite the run 5001 (TST-756101 to 756105) and the run 5002 (TST-756104 and 756106); the server keeps both logs, then the log of 5002 alone, then neither, then fails when asked; and the fixture whose records cite no run
+// input: Route.render with the key "audit" over each; the rows of A FIRST, A SECOND, A FOURTH and A FIFTH RULE read
+// expect: known positive — with both logs kept every row with tests links the run and none reads unavailable, and the server was asked once for 5001 and once for 5002, both before either answered; with neither kept each of the four reads "unavailable" in place of the link and the outcomes stay (passed, failed, flaky, 6 of 10); with 5002's alone A SECOND and A FOURTH RULE link the run and A FIRST and A FIFTH RULE read unavailable; where the asking fails, and where the records cite no run (nothing asked), every row links the run
+// counter-proof: a page that never asks ciRunLog links the run with neither log kept and fails the deepEqual of the unavailable marks; one that asks the logs one after the other has at most one asking open at a time and fails the deepEqual of the open askings
+test("TST-1432003 a row whose run's log the server no longer keeps marks the link unavailable, and the outcomes stay", async () => {
+  const cited = { ...resultFiles(), [`runs/${COMMIT}/a.md`]: run(COMMIT, [["TST-756101", "unit", "passed", ""], ["TST-756102", "release", "passed", ""], ["TST-756103", "release", "passed", ""],
+    ["TST-756104", "unit", "passed", ""], ["TST-756105", "unit", "passed", "6 of 10"]], 5001), [`runs/${COMMIT}/b.md`]: run(COMMIT, [["TST-756104", "unit", "failed", ""], ["TST-756106", "unit", "failed", ""]], 5002) };
+  const tested = [R1, R2, R4, R5];
+  const marks = (target) => tested.map((name) => [withClass(rowOf(target, name), "audit-run").length, textsOf(rowOf(target, name), "audit-run-unavailable")]);
+  let open = 0, most = 0;
+  const kept = (gone) => async (id) => { open += 1; most = Math.max(most, open); await settle(); open -= 1; return gone.includes(id) ? null : `log of ${id}`; };
+  const keptHost = productHost({ results: cited, ciRunLog: kept([]) });
+  const both = await render(keptHost);
+  assert.deepEqual(marks(both), tested.map(() => [1, []]), "known positive: the logs are kept, the links stand");
+  assert.deepEqual([[...keptHost.log.logs].sort(), most], [["5001", "5002"], 2], "each run asked once, both at once");
+  const neither = await render(productHost({ results: cited, ciRunLog: kept(["5001", "5002"]) }));
+  assert.deepEqual(marks(neither), tested.map(() => [0, ["unavailable"]]));
+  assert.deepEqual(tested.map((name) => textsOf(rowOf(neither, name), "audit-outcome")[0]), ["passed", "failed", "flaky", "6 of 10"], "the outcomes stay from the records");
+  const one = await render(productHost({ results: cited, ciRunLog: kept(["5001"]) }));
+  assert.deepEqual(marks(one), [[0, ["unavailable"]], [1, []], [1, []], [0, ["unavailable"]]]);
+  const failing = await render(productHost({ results: cited, ciRunLog: async () => { throw new Error("Unreachable"); } }));
+  assert.deepEqual(marks(failing), tested.map(() => [1, []]), "an asking that fails leaves the link");
+  const uncitedHost = productHost({ ciRunLog: kept(["5001", "5002"]) });
+  assert.deepEqual(marks(await render(uncitedHost)), tested.map(() => [1, []]));
+  assert.deepEqual(uncitedHost.log.logs, [], "records that cite no run ask nothing");
 });
 
 // TST-658002 · level: component · module: MOD-trace-pages

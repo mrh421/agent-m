@@ -16,8 +16,7 @@ import { bridgeStrategyRegistrations, registerBridgeStrategiesOnce } from "../sr
 // guards: ONE DEFINITION, THREE DRIVERS; UC-045
 // given: the desktop composition module and nothing registered with the job runner yet; a probe that, before the Bridge registers, registers a recipe under a name no module offers
 // input: bridgeStrategyRegistrations(), then registerBridgeStrategiesOnce(), then registerStrategies("probe", { recipes: { "architecture-and-model": … } })
-// expect: the registrations list MOD-work-plans' workStrategies, whose strategies offer the recipe `architecture-and-model`; registering them all raises no DuplicateStrategy; afterwards registering the
-// recipe architecture-and-model throws DuplicateStrategy { strategy: "architecture-and-model", owners: ["MOD-work-plans", "probe"] }; no request is made
+// expect: the registrations list MOD-work-plans' workStrategies, whose strategies offer the recipe `architecture-and-model`; registering them all raises no DuplicateStrategy; afterwards registering the recipe architecture-and-model throws DuplicateStrategy { strategy: "architecture-and-model", owners: ["MOD-work-plans", "probe"] }; no request is made
 // Planted fault: leaving workStrategies out of the registered list makes the DuplicateStrategy assertion fail.
 test("the Bridge registers the recipe architecture-and-model under MOD-work-plans — MOD-desktop-shell", () => {
   const real = globalThis.fetch, calls = [];

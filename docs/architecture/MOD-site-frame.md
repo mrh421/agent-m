@@ -31,7 +31,7 @@ uses:
   - MOD-notifications.watchForAcceptance
   - MOD-prompt-bar.startPromptBar
   - MOD-prompt-bar.Subject
-  - MOD-prompt-bar.handOverStrategies
+  - MOD-prompt-bar.loadHandOverStrategies
   - MOD-source-register.registerPaths
   - MOD-progress-measures.storedOverview
 provides:
@@ -52,6 +52,7 @@ provides:
   - notice
   - schemaForm
   - readProblem
+  - routeProblem
 ---
 # MOD-site-frame The frame every page shares
 
@@ -73,11 +74,14 @@ It runs in a browser — the instance's pages, and the Bridge's window, which is
 
 - `index.mjs` — the interface.
 - `start.mjs` — the script both entry pages load: it reads the page's setup from its own script tag, loads the named
-  view modules from their folders, registers their strategies and MOD-prompt-bar's `handOverStrategies` with
-  `register.mjs`, and calls `startPage`. This is where the entry pages register strategies (ARC-038).
+  view modules (`routes.mjs` of each view's folder) from their folders, registers their strategies and MOD-prompt-bar's
+  hand-over strategies (`loadHandOverStrategies`) with `register.mjs`, and calls `startPage`. This is where the entry pages register strategies (ARC-038).
 - `register.mjs` — `registerViews`: every strategy set of a page's views, under its view's slug, and then
-  MOD-prompt-bar's `handOverStrategies` under `MOD-prompt-bar`, each set once per load, at load — so that a job any
-  route prepares, the test job of an endpoint on the Settings page among them, finds every recipe of the page's views.
+  MOD-prompt-bar's hand-over strategies (`loadHandOverStrategies`) under `MOD-prompt-bar`, each set once per load — a view's `strategies` at load,
+  its `loadStrategies` and the bar's through MOD-job-runner's `registerLater`, before the runner first looks a strategy up —,
+  so that a job any route prepares, the test job of an endpoint on the Settings page among them, finds every recipe of the
+  page's views, and a page that prepares no job loads none of their modules. The notifications' checks and the prompt bar
+  are imported once the page's route is drawn.
   `start.mjs` and the live page's app (`dashboard-app.mjs`) both register with it.
 - `attachPromptBar` (index.mjs) — MOD-prompt-bar's bar started in a footer fixed to the bottom of the window, which takes the
   bar's height: `startPage` attaches it on the main page, and `dashboard-app.mjs` on every review page once its load has read
@@ -87,7 +91,9 @@ It runs in a browser — the instance's pages, and the Bridge's window, which is
   `<link rel="modulepreload">` for each module of the static import closure of the page's module script and of the views its
   `data-views` names (a JSON module with `as="json"`), and a `<link rel="preload" as="fetch" crossorigin>` for each file those
   modules fetch as they are evaluated, found by evaluating them in a separate Node process as a browser runs them. A module a
-  route imports only when it is shown is not preloaded, so the main page preloads none of the review pages' views. Run in
+  route imports only when it is shown is not preloaded, so the main page preloads none of the review pages' views; for each
+  route `module`, the block names, as data, the modules and files that route loads beyond the block, which the frame asks
+  for at once when it first imports the route. Run in
   Node: `node src/site-frame/preloads.mjs` writes the blocks; `tests/site-frame-preloads.test.mjs` fails while a page's block
   differs from what it computes. No build stands between the repository and the page: the block is part of the page's text.
 - `menu.mjs` — the eight entries of the menu and the links they lead to, and the button that folds them on a narrow
@@ -148,15 +154,16 @@ It keeps nothing but what is on the screen. It owns these formats:
 
 ## Interfaces
 
-- `View` — what a view module provides to the frame: `{ routes: Route[], strategies: Strategies[] }` — its routes, and
-  the strategy sets of the services whose job kinds its routes prepare or run in the tab (MOD-job-runner's
-  `Strategies`).
+- `View` — what a view module provides to the frame: `{ routes: Route[], strategies?: Strategies[], loadStrategies?: () ->
+  Promise<Strategies[]> }` — its routes, and the strategy sets of the services whose job kinds its routes prepare or run in
+  the tab (MOD-job-runner's `Strategies`), or the function that imports them.
 - `Route` — `{ name: string, entry: "requirements" | "use-cases" | "architecture" | "implementation" | "tests" |
   "releases" | "maintenance" | "settings" | null, entryShown?: (params: Record<string, string>) -> Route["entry"],
   title: string, render(target: Element, context: ViewContext,
   params: Record<string, string>) -> Promise<void>, subject?: (params: Record<string, string>, context: ViewContext) ->
   Subject | null, leave?: () -> boolean, unsaved?: () -> boolean,
-  reads?: (params: Record<string, string>, snapshot: Snapshot) -> Promise<string[]> }`. Before the frame shows another route on a change of the address, it asks the
+  reads?: (params: Record<string, string>, snapshot: Snapshot) -> Promise<string[]>, folders?: (params: Record<string,
+  string>) -> string[], module?: () -> Promise<Route> }`. Before the frame shows another route on a change of the address, it asks the
   route shown with `leave`; `false` keeps that route and puts its address back. `unsaved` tells, without asking the
   person anything, whether the route shown holds changes that leaving it would discard; a route that gives none holds none. `reads` names the files the route will read, as paths of the `snapshot` it is given, the repository the route shows as the frame has read it for the page;
   the frame reads them with `readMany` before it calls `render`, a hundred to a batch (`A PAGE LOAD READS THE REPOSITORY IN BATCHES`), and keeps no list of files for any route. A route whose
@@ -174,6 +181,12 @@ It keeps nothing but what is on the screen. It owns these formats:
   no `page`, the frame's default `page` stands beside what it gives. A route that gives none, or whose
   `subject` gives `null` for these parameters, has the frame's default: the route's title, and as the page the route's title, the menu entry of the page shown, the product, and the text the route has drawn, which holds no stored secret, since a stored
   secret is shown only in a hidden field (`A STORED SECRET IS HIDDEN UNTIL SHOWN`).
+  `folders` names the folders of the repository the route shows, for these `params`: the frame reads the snapshot of
+  the page with them (MOD-repository-hosts' `readSnapshot`), so that its paths are the files of those folders; a route
+  that names none is given the whole tree. A route that names `module` is drawn from the route that `module` gives: its
+  `name`, `entry`, `entryShown` and `title` stand in the view module, and the frame imports the rest when the route is
+  first shown, embedded or asked for its subject, after it has asked for every module of it at once (the page's
+  preloads), never level by level.
 - `ViewContext` — what every route is given: `{ page: "main" | "review" | "bridge", instance: { repository: string,
   host: Host }, product: ProductContext | null, store: Store, go(route: string, params?: Record<string, string>) -> void }`
   — `Host` and `Store` as
@@ -185,7 +198,7 @@ It keeps nothing but what is on the screen. It owns these formats:
 - `PageSetup` — `{ page: "main" | "review" | "bridge", views: View[] }`.
 - `startPage(setup: PageSetup) -> Promise<void>` — draws the header, the menu, whose links carry the chosen product as
   `menuOf` gives them and in which the entry of the page shown is marked, and the product selector, shows the notices, connects the instance and the chosen product, and renders the route the fragment names, again on every
-  change of the fragment. A route whose rendering fails is replaced in its place by `readProblem` of that failure, except
+  change of the fragment. A route whose rendering fails is replaced in its place by `routeProblem` of that failure, except
   a refused token, which is shown as a notice. While the route shown reports `unsaved` true, closing or reloading the tab
   makes the browser ask first, in the words the browser gives that question. A fragment that names no loaded route shows the first route of its menu entry, or says that
   the entry is not built yet. On the main and the review pages, never in the Bridge's window, it starts MOD-notifications'
@@ -209,7 +222,9 @@ It keeps nothing but what is on the screen. It owns these formats:
   which say there when an entry is not built yet, so that the main page loads none of their views. With `product`, the
   address of a product this browser keeps, each `href` that is not null ends in `/product=` and the address percent-encoded,
   the form `chosenProduct` reads back; without it, or with null, it is the entry's alone. The entry Requirements leads
-  to MOD-trace-pages' view `specification`; the list of SPEC change entries and their history are opened from it.
+  to MOD-trace-pages' view `specification`; the list of SPEC change entries and their history are opened from it. The
+  entry Implementation leads to MOD-implementation-pages' route `progress`, what goes on now; the backlog is opened from
+  it.
 - `instanceOf(location: { hostname: string, pathname: string }) -> string` — the instance repository `owner/name` from
   the Pages address the page is served from (`AN INSTANCE IS A FORK OF AGENT M`), read with MOD-identifiers'
   `instanceOfPagesAddress`; on any other host, the upstream instance named in the frame's data.
@@ -239,7 +254,7 @@ It keeps nothing but what is on the screen. It owns these formats:
   from the `holds` and `fitting` of its `notFitting` entry (UC-019 4a); a part left
   out, with its reason; the findings that keep the job from starting; the limit of correction rounds fixed for it. *Run*
   is offered only when nothing keeps the job from starting and everything fits; pressing it is the decision and calls
-  `onRun`. What the panel of a use case names besides — the route, the gates the jobs will meet, a run's limits — the
+  `onRun`. What the panel of a use case names besides — the route, the gates the jobs will meet — the
   view shows beside it.
 - `confirmDecision(decision: { title: string, lines: string[], confirm: string, reason?: boolean }) -> Promise<{ confirmed:
   boolean, reason: string | null }>` — the one dialog of a decision: what will happen, in the given lines; with `reason`,
@@ -250,6 +265,11 @@ It keeps nothing but what is on the screen. It owns these formats:
   (`HostError`), the host's own message, and the link to store a token where none is stored; for an error that is no
   host's failure, a fault of the page itself: that this page could not be drawn, with the error's message, and no link
   to a token.
+- `routeProblem(failure: Error, tokenStored: boolean) -> Element` — what stands in the place of a route that could not be
+  drawn, in `startPage` and in the live page's app: for a host's failure (`HostError`), `readProblem` of it; for any
+  other error, a fault of the page itself, first the plain words of what happened and what the person can do — this page
+  cannot be shown, reload it, and report it with the message below if it happens again —, and below them `readProblem`
+  of it, with the error's message. It reads nothing and never throws.
 - `notice(kind: "token-expiring" | "token-refused" | "rate-limit" | "unreachable" | "setup" | "moved" | "info", detail:
   { text: string, link?: { label: string, href: string } }) -> void` — shows a notice in the page's one place for them;
   the frame itself shows a token's expiry from fourteen days before it (`A TOKEN'S EXPIRY IS WARNED OF IN ADVANCE`) with
@@ -290,11 +310,12 @@ It writes nothing.
 - MOD-notifications.watchForAcceptance — the checks of what waits for acceptance, started on the main and the review
   pages.
 - MOD-prompt-bar.startPromptBar, MOD-prompt-bar.Subject — the prompt bar, started on the main and the review pages, and
-  the type of a route's subject; MOD-prompt-bar.handOverStrategies — the strategies a hand-over of the bar is prepared
+  the type of a route's subject; MOD-prompt-bar.loadHandOverStrategies — the strategies a hand-over of the bar is prepared
   with.
 - MOD-source-register.registerPaths — the register's entries among a tree's paths, so that the first wave of a page load names them beside the files its
   route shows and `#spec` reads the register in the same batch as its other files (`A PAGE LOAD READS THE REPOSITORY IN BATCHES`); the frame keeps no copy
   of the register's path.
 - MOD-progress-measures.storedOverview — the change queues stored for the commit, read beside the first wave of `#spec`, so that
   its second wave names only the files of the queues with an entry not in the SPEC yet; where no overview is stored, the
-  index and decisions of every queue are read, then the proposals of those still open.
+  index and decisions of every queue are read, then the proposals of those still open and the rationales that
+  MOD-spec-changes' `queues` reads for their entries' issues.

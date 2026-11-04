@@ -3,8 +3,8 @@
 //
 // Module: MOD-repository-hosts
 //
-// Private to the module: index.mjs builds the host from what this returns — repositoryInfo(), snapshot(ref),
-// readFile(commit, path), history(path, { ref, limit, changes }), listTags(), issueCounts(), commitFiles(change), createTag(name, commit),
+// Private to the module: index.mjs builds the host from what this returns — repositoryInfo(), snapshot(ref, folders),
+// readFile(commit, path), history(path, { ref, limit, changes }), listTags(), issueCounts(), listIssues(filter), readIssue(number), commitFiles(change), createTag(name, commit),
 // createBranch(name, from), startWorkflow(workflow, ref, inputs), setCiSecret(name, value), listCiRuns(filter), cancelCiRun(id), jobLogs(id), jobLabels(id), listPullRequests(filter), openPullRequest(request), pullRequestFacts(number) — and adds what both adapters share.
 
 import { HostError, send, json, refusal } from "./failures.mjs";
@@ -72,6 +72,21 @@ function ciOf(checks) {
 const pullOf = (p) => ({ number: p.number, title: p.title, branch: p.head.ref, base: p.base.ref, head: p.head.sha, mergeCommit: p.state !== "open" && p.merged_at ? p.merge_commit_sha ?? null : null,
   state: p.state === "open" ? "open" : p.merged_at ? "merged" : "closed", draft: p.draft === true, url: p.html_url, opened: p.created_at, merged: p.merged_at ?? null, closed: p.closed_at ?? null, body: p.body ?? "" });
 
+// The field repositoryInfo asks the GraphQL API for, beside the repository's REST record (docs.github.com/en/graphql/reference/objects#ref). Whether the server refuses a merge into the
+// default branch until its required checks have passed is read from two fields of the default branch's Ref that a reader may see: `refUpdateRule`, the branch protection rule "viewable by
+// non-admins", with the contexts of its required status checks (`branchProtectionRule` is null to anyone but an administrator), and `rules`, the active rules of the rulesets that apply to
+// the branch, one of the type REQUIRED_STATUS_CHECKS where a ruleset requires checks. A ruleset with more than 100 rules is read for its first 100.
+const GREEN = ["defaultBranchRef{refUpdateRule{requiredStatusCheckContexts} rules(first:100){nodes{type}}}"];
+// greenToMerge from the default branch's Ref: true where its protection requires a status check or a ruleset's rule does; false where both were read and neither does; null where either
+// could not be read — an error of the answer names it — or the answer holds no default branch.
+function greenToMergeOf(ref, errors = []) {
+  if (!ref) return null;
+  const required = (ref.refUpdateRule?.requiredStatusCheckContexts ?? []).length > 0 || (ref.rules?.nodes ?? []).some((rule) => rule?.type === "REQUIRED_STATUS_CHECKS");
+  if (required) return true;
+  const unread = (errors ?? []).some((error) => (error?.path ?? []).some((part) => part === "refUpdateRule" || part === "rules"));
+  return unread ? null : false;
+}
+
 // The bytes of a file as base64, in pieces small enough for String.fromCharCode.
 function base64(bytes) {
   let s = "";
@@ -123,9 +138,9 @@ export function githubAdapter(address, { token, tokenName }, links) {
   // The blobs of many objects ("<commit>:<path>") in one request of GitHub's GraphQL API ("repository.object(expression:)" on a Blob; one aliased field for each, a call without connections costing 1 point):
   // the token alone reaches it. -> an array in the order given: { text, isTruncated } where the object is a blob, null where it is none. A used-up limit is told by the headers of the answer, which GraphQL gives
   // also on its 200 with the error type RATE_LIMITED.
-  const blobsOf = async (expressions) => {
-    const query = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){${expressions.map((e, i) =>
-      `f${i}:object(expression:${JSON.stringify(e)}){...on Blob{text isTruncated}}`).join(" ")}}}`;
+  // One query of the repository's objects (the aliased fields `fields`, one for each object) in one request of the GraphQL API -> its answer.
+  const objectsOf = async (fields) => {
+    const query = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){${fields.join(" ")}}}`;
     const [owner, name] = address.path.split("/");
     const answer = await call("POST", GRAPHQL, { body: { query, variables: { owner, name } }, write: false, permission: "Contents", what: address.web });
     const said = await json(answer, API);
@@ -133,8 +148,47 @@ export function githubAdapter(address, { token, tokenName }, links) {
       throw await refusal(new Response(null, { status: 403, headers: { ...Object.fromEntries(answer.headers), "x-ratelimit-remaining": "0" } }),
         { ...context, write: false });
     }
-    const found = said?.data?.repository;
+    return said;
+  };
+  const blobsOf = async (expressions) => {
+    const found = (await objectsOf(expressions.map((e, i) => `f${i}:object(expression:${JSON.stringify(e)}){...on Blob{text isTruncated}}`)))?.data?.repository;
     return expressions.map((_, i) => found?.[`f${i}`] ?? null);
+  };
+
+  // The files at every depth of the named folders, and the named files, of one commit -> Map(path -> blob SHA), from GitHub's REST API, its
+  // requests sent together: a named path whose last part has no extension is taken for a folder and read as its tree at every depth ("Get a
+  // tree" of "<commit>:<path>" with recursive); a named path with one is taken for a file and found in the entries of its folder ("Get a tree"
+  // of "<commit>:<folder>"), each such folder read once. Only a guess the answer proves wrong — a folder that is a file (422), a file that is a
+  // folder — is read again, in a second round. A path the commit does not hold gives nothing. A tree GitHub truncates is refused with
+  // Unreachable, naming it.
+  const NOT_A_TREE = Symbol("a file, not a folder");
+  const treeOf = (commit, path, recursive) => read(`${repo}/git/trees/${commit}${path ? `:${encPath(path)}` : ""}${recursive ? "?recursive=1" : ""}`,
+    { what: `${address.web} at ${commit}${path ? `:${path}` : ""}`, on: { 404: () => null, 422: () => NOT_A_TREE } });
+  const parentOf = (path) => (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
+  const nameOf = (path) => path.slice(parentOf(path) ? parentOf(path).length + 1 : 0);
+  const entriesOf = async (commit, named) => {
+    const asFolder = (path) => !nameOf(path).includes(".");
+    const listings = new Map();
+    const listingOf = (folder) => listings.get(folder) ?? listings.set(folder, treeOf(commit, folder, false)).get(folder);
+    const entryOf = async (path) => (await listingOf(parentOf(path)))?.tree?.find((each) => each.path === nameOf(path)) ?? null;
+    const first = named.map((path) => (asFolder(path) ? treeOf(commit, path, true) : entryOf(path)));
+    const found = await Promise.all(first.map(async (asked, i) => {
+      const path = named[i], answer = await asked;
+      if (asFolder(path)) return answer === NOT_A_TREE ? { entry: await entryOf(path) } : { tree: answer };
+      return answer?.type === "tree" ? { tree: await treeOf(commit, path, true) } : { entry: answer };
+    }));
+    const blobs = new Map();
+    named.forEach((path, i) => {
+      const { tree, entry } = found[i];
+      if (tree && tree !== NOT_A_TREE) {
+        if (tree.truncated) {
+          const reason = `GitHub truncated the tree of ${address.web} at ${commit}:${path}: it lists only part of the files of a tree that large.`;
+          throw new HostError("Unreachable", { reason }, reason);
+        }
+        for (const each of tree.tree ?? []) if (each.type === "blob") blobs.set(`${path}/${each.path}`, each.sha);
+      } else if (entry?.type === "blob") blobs.set(path, entry.sha);
+    });
+    return blobs;
   };
 
   // A branch's reference: read at git/ref/heads/…, moved at git/refs/heads/… ("Get a reference", "Update a reference").
@@ -178,6 +232,36 @@ export function githubAdapter(address, { token, tokenName }, links) {
     }
     return out;
   };
+  // Every item of a list the server pages, its pages asked for at once: page 1 first, then, once its Link header names the last page (rel="last", "Using pagination in the REST API"),
+  // every other page together, the items in the order of the pages. A server whose answer names no last page while the page is full is read on page after page, as everyPage reads.
+  const allPages = async (url, options = {}) => {
+    const at = (page) => `${url}${url.includes("?") ? "&" : "?"}per_page=${PAGE}&page=${page}`;
+    const first = await call("GET", at(1), options);
+    const items = await json(first, API);
+    const last = Number(/<[^>]*[?&]page=(\d+)[^>]*>;\s*rel="last"/.exec(first.headers.get("link") ?? "")?.[1] ?? 0);
+    if (last > 1) {
+      const rest = await Promise.all(Array.from({ length: Math.min(last, MAX_PAGES) - 1 }, (_, i) => read(at(i + 2), options)));
+      return [...items, ...rest.flat()];
+    }
+    if (items.length < PAGE) return items;
+    const more = [];
+    for (let page = 2; page <= MAX_PAGES; page++) {
+      const got = await read(at(page), options);
+      more.push(...got);
+      if (got.length < PAGE) break;
+    }
+    return [...items, ...more];
+  };
+  // The comments of an issue as the server lists it ("List issue comments", 100 to a page, page by page), none asked for where its count of comments is 0.
+  const commentsOf = async (i) => {
+    const comments = [];
+    for (let page = 1; i.comments > 0 && page <= MAX_PAGES; page++) {
+      const items = await read(`${repo}/issues/${i.number}/comments?per_page=${PAGE}&page=${page}`);
+      comments.push(...items.map((c) => ({ author: c.user?.login ?? "", body: c.body ?? "", date: c.created_at })));
+      if (items.length < PAGE) break;
+    }
+    return comments;
+  };
   // The checks of a commit: its check runs, then the latest commit status of each context ("List commit statuses for a reference" lists the latest first).
   const checksOf = async (sha) => {
     const options = { what: `${address.web} at ${sha}` };
@@ -190,20 +274,35 @@ export function githubAdapter(address, { token, tokenName }, links) {
   };
 
   return {
+    // The repository's REST record, and, with a token, together with it one request of the GraphQL API for greenToMerge alone (GREEN). An answer of that request that is refused, fails or does not come
+    // gives greenToMerge null and fails nothing; without a token the GraphQL API takes no request, and greenToMerge is null.
     async repositoryInfo() {
-      const r = await read(repo, { permission: "Metadata" });
+      const green = token ? objectsOf(GREEN).then((said) => greenToMergeOf(said?.data?.repository?.defaultBranchRef, said?.errors), () => null) : Promise.resolve(null);
+      const record = read(repo, { permission: "Metadata" });
+      // The two requests go out together; both are answered before repositoryInfo returns or fails, so a failed record leaves no request open.
+      const [answered, greenToMerge] = await Promise.all([record.then((r) => ({ r }), (failure) => ({ failure })), green]);
+      if (answered.failure) throw answered.failure;
+      const { r } = answered;
       return { defaultBranch: r.default_branch ?? null, visibility: r.visibility ?? (r.private ? "private" : "public"),
-        canWrite: Boolean(token) && r.permissions?.push === true, archived: r.archived === true, description: r.description ?? "" };
+        canWrite: Boolean(token) && r.permissions?.push === true, archived: r.archived === true, description: r.description ?? "", greenToMerge };
     },
 
-    // The branch, tag or commit resolved to one commit, then that commit's tree: every file, by its blob SHA.
-    async snapshot(name) {
+    // The branch, tag or commit resolved to one commit, then that commit's tree: every file, by its blob SHA. With `folders` and a token, only the
+    // files of those folders and the files named, from their own trees in one round of requests (entriesOf); without a token the whole tree, which
+    // index.mjs narrows. GitHub gives the recursive tree truncated above 100,000 entries or 7 MB ("Get a tree": `truncated`): such a tree is no
+    // list of every file, and is refused with Unreachable, naming it.
+    async snapshot(name, folders = null) {
       const what = `${address.web} at ${name}`;
       const notFound = () => { throw new HostError("NotFound", { what }, `${what} was not found.`); };
       const c = await read(`${repo}/commits/${encodeURIComponent(name)}`, { what, on: { 422: notFound, 409: emptyOr({ what }) } });
       // An empty repository is a snapshot without a commit and without a file (MOD-repository-hosts Snapshot).
       if (c === EMPTY) return { commit: null, blobs: new Map() };
+      if (folders && token) return { commit: c.sha, blobs: await entriesOf(c.sha, folders) };
       const t = await read(`${repo}/git/trees/${c.sha}?recursive=1`, { what });
+      if (t.truncated) {
+        const reason = `GitHub truncated the tree of ${what} (${c.sha}): it lists only part of the files of a tree that large; read the folders the page shows instead.`;
+        throw new HostError("Unreachable", { reason }, reason);
+      }
       return { commit: c.sha, blobs: new Map(t.tree.filter((e) => e.type === "blob").map((e) => [e.path, e.sha])) };
     },
 
@@ -268,8 +367,9 @@ export function githubAdapter(address, { token, tokenName }, links) {
     },
 
     // The issues of a state and labels ("List repository issues": state, labels as a comma-separated text, per_page 100, page by page), or those a text finds ("Search issues and pull requests" with
-    // repo:, is:issue, state: and label: qualifiers). The issue list holds pull requests too, each with a pull_request key: they are not issues. Each issue that has comments is given them ("List issue comments").
-    async listIssues({ state, labels, search }) {
+    // repo:, is:issue, state: and label: qualifiers). The issue list holds pull requests too, each with a pull_request key: they are not issues. Each issue that has comments is given them ("List issue comments"),
+    // unless `comments` is false: then no comment is asked for and each issue's comments are empty.
+    async listIssues({ state, labels, search, comments: withComments }) {
       const found = [];
       for (let page = 1; page <= MAX_PAGES; page++) {
         const items = search
@@ -279,16 +379,17 @@ export function githubAdapter(address, { token, tokenName }, links) {
         if (items.length < PAGE) break;
       }
       const issues = [];
-      for (const i of found.filter((each) => !each.pull_request)) {
-        const comments = [];
-        for (let page = 1; i.comments > 0 && page <= MAX_PAGES; page++) {
-          const items = await read(`${repo}/issues/${i.number}/comments?per_page=${PAGE}&page=${page}`);
-          comments.push(...items.map((c) => ({ author: c.user?.login ?? "", body: c.body ?? "", date: c.created_at })));
-          if (items.length < PAGE) break;
-        }
-        issues.push(issueOf(i, comments));
-      }
+      for (const i of found.filter((each) => !each.pull_request)) issues.push(issueOf(i, withComments ? await commentsOf(i) : []));
       return issues;
+    },
+
+    // One issue ("Get an issue") with its comments. GitHub answers a pull request's number too, with a pull_request key: that is no issue, NotFound, as a number nothing has (404) or a deleted issue (410).
+    async readIssue(number) {
+      const what = `issue #${number} of ${address.web}`;
+      const notFound = () => { throw new HostError("NotFound", { what }, `${what} was not found.`); };
+      const i = await read(`${repo}/issues/${number}`, { what, on: { 410: notFound } });
+      if (i.pull_request) notFound();
+      return issueOf(i, await commentsOf(i));
     },
 
     // A comment on an issue ("Create an issue comment").
@@ -447,12 +548,17 @@ export function githubAdapter(address, { token, tokenName }, links) {
     },
 
     // The runs ("List workflow runs for a workflow" where a workflow is given, else "List workflow runs for a repository"; branch and head_sha from the filter's branch and commit; the
-    // answer's workflow_runs, 100 to a page, read page by page).
-    async listCiRuns({ workflow, branch, commit } = {}) {
+    // answer's workflow_runs, 100 to a page, read page by page; the filter's event as `event`; with `newest`, only the first page, that many runs long, the newest first).
+    async listCiRuns({ workflow, branch, commit, event, newest } = {}) {
       const query = new URLSearchParams();
       if (branch) query.set("branch", branch);
       if (commit) query.set("head_sha", commit);
+      if (event) query.set("event", event);
       const list = workflow ? `${repo}/actions/workflows/${encodeURIComponent(workflow)}/runs` : `${repo}/actions/runs`;
+      if (newest) {
+        query.set("per_page", String(Math.min(newest, PAGE)));
+        return ((await read(`${list}?${query}`, { permission: "Actions" })).workflow_runs ?? []).slice(0, newest).map(ciRunOf);
+      }
       return (await everyPage(`${list}${query.size ? `?${query}` : ""}`, { permission: "Actions" }, (answer) => answer.workflow_runs)).map(ciRunOf);
     },
 
@@ -485,12 +591,13 @@ export function githubAdapter(address, { token, tokenName }, links) {
       return [...new Set(jobs.flatMap((job) => job.labels ?? []))];
     },
 
-    // The pull requests ("List pull requests": state open, closed or all — a merged one is a closed one with a merged_at —, head `<owner>:<branch>`, 100 to a page, read page by page).
+    // The pull requests ("List pull requests": state open, closed or all — a merged one is a closed one with a merged_at —, head `<owner>:<branch>`, 100 to a page, the pages asked for
+    // at once).
     async listPullRequests({ state = "all", branch } = {}) {
-      const ask = state === "open" ? "open" : state === "all" ? "all" : "closed";
+      const keep = (p) => state === "all" || state === "open" || p.state === state;
       const head = branch ? `&head=${encodeURIComponent(`${address.path.split("/")[0]}:${branch}`)}` : "";
-      const listed = await everyPage(`${repo}/pulls?state=${ask}${head}`);
-      return listed.map(pullOf).filter((p) => state === "all" || state === "open" || p.state === state);
+      const ask = state === "open" ? "open" : state === "all" ? "all" : "closed";
+      return (await allPages(`${repo}/pulls?state=${ask}${head}`)).map(pullOf).filter(keep);
     },
 
     // Opens a pull request ("Create a pull request": POST …/pulls, body title, head, base, body, draft; 201 with the pull request, read with pullOf as listPullRequests reads it). Every refusal is the host's own

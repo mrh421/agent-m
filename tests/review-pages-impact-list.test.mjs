@@ -93,6 +93,9 @@ function fakeProduct(changed) {
   return {
     host: {
       async repositoryInfo() { return { defaultBranch: "main", visibility: "public", canWrite: true, archived: false, description: "" }; },
+      async readFileAt(path, shas) {
+        return new Map(shas.map((sha) => [sha, commits.get(sha)?.tree.get(path) ?? null]));
+      },
       async readSnapshot(ref) {
         if (ref === "main") return snapshotAt(head, "main");
         if (commits.has(ref)) return snapshotAt(ref, ref);

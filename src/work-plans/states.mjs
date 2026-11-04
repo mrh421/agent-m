@@ -12,11 +12,9 @@
 // MOD, the modules' code. A reason is a sentence a person reads.
 
 import { holdsRole } from "../product-process/index.mjs";
-import { selectionOf, sprintOf } from "./sprints.mjs";
+import { list, selectionOf, sprintOf } from "./sprints.mjs";
 
 const text = (value) => (typeof value === "string" ? value : value === null || value === undefined ? "" : String(value));
-const list = (value) => (Array.isArray(value) ? value.map(text)
-  : text(value).split(",").map((part) => part.trim()).filter(Boolean));
 const listed = (names) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 const teamOf = (assignment) => text(assignment?.path).split("/").pop().replace(/\.md$/, "") || "the product";
 const fieldsOf = (document) => document?.fields ?? {};
@@ -110,6 +108,19 @@ function unfinishedPrerequisites(item, states) {
   return fieldList(item, "builds_on").filter((dependency) => states.get(dependency)?.state !== "done");
 }
 
+function prerequisiteReason(prerequisites) {
+  return `${listed(prerequisites)} ${prerequisites.length === 1 ? "is" : "are"} not done`;
+}
+
+// The mark of a done item: the reasons that keep an item not done waiting — a requirement or use case it realises that is withdrawn, changed or not accepted, an item it builds on
+// that is not done — joined; null without one. The state stays done.
+function doneMark(item, states, facts) {
+  const reasons = acceptanceReasons(item, facts);
+  const prerequisites = unfinishedPrerequisites(item, states);
+  if (prerequisites.length) reasons.push(prerequisiteReason(prerequisites));
+  return reasons.length ? reasons.join("; ") : null;
+}
+
 function gatesBefore(phase, facts) {
   if (!phase || !facts.workflow) return [];
   const byName = new Map((facts.gates ?? []).map((gate) => [gate?.gate, gate]));
@@ -129,6 +140,11 @@ function jobFor(item, jobs) {
 }
 
 const jobId = (job) => text(job?.record?.id) || text(job?.id) || "the job";
+
+// A job a rejected gate ended (UC-034 7a, UC-024 10a): its End is `failed` and its reason reads "the gate <gate> was rejected by <gate record>" and, when the record gave one, ": <the record's reason>" — the End that
+// ending a job at a rejected gate writes. A job that failed otherwise has another reason, or none.
+const REJECTED_END = /^the gate .+ was rejected by \S+\.md(?::|$)/;
+const endedAtRejectedGate = (job) => job?.state === "failed" && REJECTED_END.test(text(job.record?.end?.reason));
 
 function blockedJobReason(job) {
   const id = jobId(job);
@@ -173,22 +189,26 @@ function derivedState(item, phase, states, facts) {
   const named = job ? jobId(job) : null;
 
   // A merged pull request decides first: the item is done whatever else holds — a text it realises that changed since, an item it builds
-  // on that is not done, a gate, or a job or pull request of it after the merge. A change to it is a new item.
+  // on that is not done, a gate, or a job or pull request of it after the merge. A change to it is a new item. What holds of the texts and
+  // the prerequisites marks the done item with its reason.
   const merged = mergedPullRequest(item, facts);
-  if (merged) return { item: id, state: "done", reason: null, job: named, pullRequest: pullRequestRef(merged) };
+  if (merged) return { item: id, state: "done", reason: doneMark(item, states, facts), job: named, pullRequest: pullRequestRef(merged) };
 
   // An item no merged pull request names is done when its record names the commits that built it (built_by).
-  if (builtBy(item)) return { item: id, state: "done", reason: null, job: named, pullRequest: null };
+  if (builtBy(item)) return { item: id, state: "done", reason: doneMark(item, states, facts), job: named, pullRequest: null };
 
   const acceptance = acceptanceReasons(item, facts);
   if (acceptance.length) return { item: id, state: "waiting for acceptance", reason: acceptance.join("; "), job: named, pullRequest: null };
 
   const prerequisites = unfinishedPrerequisites(item, states);
   if (prerequisites.length) return { item: id, state: "waiting for an item it builds on",
-    reason: `${listed(prerequisites)} ${prerequisites.length === 1 ? "is" : "are"} not done`, job: named, pullRequest: null };
+    reason: prerequisiteReason(prerequisites), job: named, pullRequest: null };
 
   const gates = gatesBefore(phase, facts);
   if (gates.length) return { item: id, state: "waiting", reason: gates.map(gateReason).join("; "), job: named, pullRequest: null };
+
+  // A decision of the gate's decider ended the job: the item returns to ready with the End's reason, which names the gate, the gate record and the rejection's reason.
+  if (endedAtRejectedGate(job)) return { item: id, state: "ready", reason: job.record.end.reason, job: named, pullRequest: null };
 
   if (["failed", "waiting at a gate"].includes(job?.state)) {
     return { item: id, state: "blocked", reason: blockedJobReason(job), job: named, pullRequest: null };

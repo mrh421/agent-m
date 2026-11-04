@@ -193,9 +193,7 @@ const proposalsOf = (product) => product.writes().filter((files) => files.some((
 // guards: UC-005; ONE STATEMENT PER REQUIREMENT
 // given: the endpoint answers, in every round, a candidate whose rule says two things (A LOAN STATES TWO THINGS: "... due date and its return place.") and a clean one (A MEMBER CAN RENEW ONCE)
 // input: the route spec-entry/draft, drafter-a, Run; the correction loop ends "unchanged" with the warning of ONE STATEMENT PER REQUIREMENT left on the first candidate
-// expect: the panel reads "Correction rounds: 2"; its list of what is left holds the one finding `ONE STATEMENT PER REQUIREMENT: the rule contains "and" - split it into two requirements, or keep it and give a one-line reason`;
-//   exactly one button "Split" stands in the panel, inside the item of A LOAN STATES TWO THINGS,
-//   and the item of A MEMBER CAN RENEW ONCE holds none; nothing is written to docs/spec-freigaben
+// expect: the panel reads "Correction rounds: 2"; its list of what is left holds the one finding `ONE STATEMENT PER REQUIREMENT: the rule contains "and" - split it into two requirements, or keep it and give a one-line reason`; exactly one button "Split" stands in the panel, inside the item of A LOAN STATES TWO THINGS, and the item of A MEMBER CAN RENEW ONCE holds none; nothing is written to docs/spec-freigaben
 test("spec-entry/draft - a candidate a finding the loop left names offers Split, another does not", async () => {
   const { panel, product } = await panelOf(FLAGGED_DRAFT);
   assert.equal(byClass(panel, "p", "rounds")[0].textContent, "Correction rounds: 2");
@@ -223,8 +221,7 @@ test("spec-entry/draft - without a finding left, no candidate offers Split", asy
 // guards: UC-005; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // given: the flagged draft of TST-578001
 // input: Split on A LOAN STATES TWO THINGS
-// expect: the candidates stand in the order A LOAN STATES TWO THINGS, part of A LOAN STATES TWO THINGS, A MEMBER CAN RENEW ONCE; the part's class select reads "new", its "of" field is empty, its name
-//   field and its rule field are empty; the first keeps its name and holds its drafted rule in an editable field; nothing is written to docs/spec-freigaben
+// expect: the candidates stand in the order A LOAN STATES TWO THINGS, part of A LOAN STATES TWO THINGS, A MEMBER CAN RENEW ONCE; the part's class select reads "new", its "of" field is empty, its name field and its rule field are empty; the first keeps its name and holds its drafted rule in an editable field; nothing is written to docs/spec-freigaben
 test("spec-entry/draft - Split adds a part after the candidate, of the same class and of, with fields of its own", async () => {
   const { panel, product } = await panelOf(FLAGGED_DRAFT);
   click(splitOf(itemOf(panel, TWO))[0]);
@@ -254,8 +251,7 @@ test("spec-entry/draft - a second Split adds a second part after the first", asy
 // guards: UC-005; ONE STATEMENT PER REQUIREMENT; A GENERATED ARTIFACT IS A PROPOSAL
 // given: the flagged draft of TST-578001, split; the part named A LOAN SHOWS ITS DATE with the rule "Every loan states its due date."; the first's rule edited to "Every loan states its return place."
 // input: Write proposals
-// expect: one commit holds docs/spec-freigaben/<queue>/01-lending.md; its text holds, in this order, the blocks of A LOAN STATES TWO THINGS ("Every loan states its return place."), A LOAN SHOWS ITS DATE
-//   ("Every loan states its due date.") and A MEMBER CAN RENEW ONCE, each as "**<name>** *(SRC-policy, ch. 1)*", its rule, "*Check:* `tests/fixture.test.mjs`"; the old rule "Every loan states its due date and its return place." is in no written text; SPEC.md is not written
+// expect: one commit holds docs/spec-freigaben/<queue>/01-lending.md; its text holds, in this order, the blocks of A LOAN STATES TWO THINGS ("Every loan states its return place."), A LOAN SHOWS ITS DATE ("Every loan states its due date.") and A MEMBER CAN RENEW ONCE, each as "**<name>** *(SRC-policy, ch. 1)*", its rule, "*Check:* `tests/fixture.test.mjs`"; the old rule "Every loan states its due date and its return place." is in no written text; SPEC.md is not written
 test("spec-entry/draft - Write proposals writes each part as a requirement of its own", async () => {
   const { panel, product } = await panelOf(FLAGGED_DRAFT);
   click(splitOf(itemOf(panel, TWO))[0]);
@@ -385,8 +381,7 @@ const blockOf = (name, rule) => `**${name}** *(SRC-policy, ch. 1)*\n${rule}\n*Ch
 // guards: UC-005; ONE STATEMENT PER REQUIREMENT
 // given: the endpoint answers, in every round, a `change` of A LOAN HAS A DUE DATE named THE DUE DATE IS SHOWN, whose rule says two things
 // input: Split on THE DUE DATE IS SHOWN twice
-// expect: after the first Split the candidates stand in the order THE DUE DATE IS SHOWN, part of THE DUE DATE IS SHOWN; the candidate still reads `change` of A LOAN HAS A DUE DATE; the part reads `new` with an empty "of";
-//   after the second Split the second part reads `new` with an empty "of" as well; nothing is written to docs/spec-freigaben
+// expect: after the first Split the candidates stand in the order THE DUE DATE IS SHOWN, part of THE DUE DATE IS SHOWN; the candidate still reads `change` of A LOAN HAS A DUE DATE; the part reads `new` with an empty "of"; after the second Split the second part reads `new` with an empty "of" as well; nothing is written to docs/spec-freigaben
 test("spec-entry/draft - Split of a change candidate adds parts that show new with an empty of", async () => {
   const { panel, product } = await panelOf(changeDraft());
   click(splitOf(itemOf(panel, CHANGED))[0]);
@@ -420,8 +415,7 @@ for (const class_ of ["duplicate", "conflict"]) {
 // guards: UC-005; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // given: the `change` candidate of TST-634001, split; the part named THE RETURN PLACE IS SHOWN with the rule "Every loan shows its return place."; the person sets the part's class to `change` and its "of" to A LOAN HAS A DUE DATE
 // input: Write proposals; then the person sets the part back to `new` with an empty "of" and presses Write proposals again
-// expect: the first press shows a problem reading "TwoChanges: THE DUE DATE IS SHOWN and THE RETURN PLACE IS SHOWN change A LOAN HAS A DUE DATE: one block would replace the other. Nothing was composed. To go on, give one of the two the class new, or merge them into one."; nothing is written to docs/spec-freigaben; Write proposals is enabled again;
-//   the second press writes one commit whose entry 01-lending.md holds the block THE RETURN PLACE IS SHOWN with the rule "Every loan shows its return place."
+// expect: the first press shows a problem reading "TwoChanges: THE DUE DATE IS SHOWN and THE RETURN PLACE IS SHOWN change A LOAN HAS A DUE DATE: one block would replace the other. Nothing was composed. To go on, give one of the two the class new, or merge them into one."; nothing is written to docs/spec-freigaben; Write proposals is enabled again; the second press writes one commit whose entry 01-lending.md holds the block THE RETURN PLACE IS SHOWN with the rule "Every loan shows its return place."
 test("spec-entry/draft - a part set to change what its candidate changes is refused, nothing written", async () => {
   const { panel, product } = await panelOf(changeDraft());
   click(splitOf(itemOf(panel, CHANGED))[0]);
@@ -480,8 +474,7 @@ test("spec-entry/draft - a part that changes another requirement than its candid
 // guards: UC-005; ONE STATEMENT PER REQUIREMENT
 // given: the `change` candidate of TST-634001, split; the part named THE RETURN PLACE IS SHOWN with the rule "Every loan shows its return place." left as the split showed it (`new`, empty "of"); the first's rule edited to "Every loan shows its due date."
 // input: Write proposals
-// expect: one commit; the entry 01-lending.md holds the block of A LOAN HAS A DUE DATE with the rule "Every loan shows its due date." and the block THE RETURN PLACE IS SHOWN with the rule "Every loan shows its return place.";
-//   the entry holds the old rule "Every loan shows its due date and its return place." nowhere
+// expect: one commit; the entry 01-lending.md holds the block of A LOAN HAS A DUE DATE with the rule "Every loan shows its due date." and the block THE RETURN PLACE IS SHOWN with the rule "Every loan shows its return place."; the entry holds the old rule "Every loan shows its due date and its return place." nowhere
 test("spec-entry/draft - a split change candidate is written as the panel shows it", async () => {
   const { panel, product } = await panelOf(changeDraft());
   click(splitOf(itemOf(panel, CHANGED))[0]);
@@ -551,8 +544,7 @@ test("spec-entry/draft - two parts of class change with an empty of are not refu
 // guards: UC-005; A CHANGE IS PROPOSED UNDER THE EXISTING NAME; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // given: the endpoint answers, in every round, two different candidates, THE DUE DATE IS SHOWN and A MEMBER CAN RENEW ONCE, each a `change` of A LOAN HAS A DUE DATE; no split
 // input: Write proposals; then the person sets A MEMBER CAN RENEW ONCE to `new` with an empty "of" and presses Write proposals again
-// expect: the first press shows a problem reading "TwoChanges: THE DUE DATE IS SHOWN and A MEMBER CAN RENEW ONCE change A LOAN HAS A DUE DATE: one block would replace the other. Nothing was composed. To go on, give one of the two the class new, or merge them into one."; nothing is written to docs/spec-freigaben;
-//   Write proposals is enabled again; the second press writes one commit whose entry 01-lending.md holds the block of A LOAN HAS A DUE DATE with the rule "Every loan shows its due date and its return place." and the block A MEMBER CAN RENEW ONCE with its rule
+// expect: the first press shows a problem reading "TwoChanges: THE DUE DATE IS SHOWN and A MEMBER CAN RENEW ONCE change A LOAN HAS A DUE DATE: one block would replace the other. Nothing was composed. To go on, give one of the two the class new, or merge them into one."; nothing is written to docs/spec-freigaben; Write proposals is enabled again; the second press writes one commit whose entry 01-lending.md holds the block of A LOAN HAS A DUE DATE with the rule "Every loan shows its due date and its return place." and the block A MEMBER CAN RENEW ONCE with its rule
 test("spec-entry/draft - two different candidates that change one requirement are refused, nothing written", async () => {
   const { panel, product } = await panelOf({ candidates: [{ ...candidate(CHANGED, CHANGED_RULE), class: "change", of: LOAN }, { ...candidate(CLEAN, CLEAN_RULE), class: "change", of: LOAN }] });
   assert.equal(await problemOf(panel), `TwoChanges: ${CHANGED} and ${CLEAN} change ${LOAN}: one block would replace the other. Nothing was composed. To go on, give one of the two the class new, or merge them into one.`);

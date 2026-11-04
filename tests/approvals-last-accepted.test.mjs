@@ -12,7 +12,7 @@
 // MOD-repository-hosts.md states it — one repository in memory, whose default branch is `trunk` and whose history is written
 // below, oldest commit first; repositoryInfo, readSnapshot (the repository at the branch or at a commit: its paths, blob(path)
 // and read(path)) and readHistory (the commits that changed a path, newest first, up to `ref` and at most `limit`, each with its
-// parents, date, message and changes, a rename with the path it came from). Its other functions do not exist, so that a call
+// parents, date, message and changes, a rename with the path it came from) and readFileAt (a file's text at each of several commits). Its other functions do not exist, so that a call
 // the module has no business making fails by itself. Every call is counted, so that a test can refuse the nth. A failure is an
 // error whose name is the one the interface gives it, with its fields. The history is one that serves every test: use cases
 // written, edited, accepted by records, renamed. The module file does not say what `path` of the result is, nor what comes of a
@@ -151,6 +151,13 @@ function fakeHost({ refuseAt = null, refusal = null, forge = null } = {}) {
           },
           blob: (path) => (files.has(path) ? blobOf(files.get(path)) : null) };
       },
+      async readFileAt(path, shas) {
+        cross({ fn: "readFileAt", path, shas });
+        return new Map(shas.map((sha) => {
+          const files = commits[at(sha)].tree;
+          return [sha, forge && path === forge.path ? forge.text : files.has(path) ? files.get(path) : null];
+        }));
+      },
       async readHistory(path, { ref = "trunk", limit } = {}) {
         cross({ fn: "readHistory", path, ref, limit });
         const touched = (entry) => path === null || entry.changes.some((change) => change.path === path || change.from === path);
@@ -275,14 +282,14 @@ test("lastAcceptedText — a text of another blob than the record names is not g
 // guards: A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT; UC-008
 // given: the history above and UC-010 asked for on an honest host that counts its calls
 // input: lastAcceptedText("UC-010", host)
-// expect: seven calls — repositoryInfo once, readSnapshot twice (the head and the commit that added the record), readHistory twice (one for each of UC-010's two records), and two reads (the newer record, and UC-010 at that commit) — so that checking the text against the record's blob reads nothing more
-test("lastAcceptedText — one answer takes seven calls to the host, the check of the text among them adding none", async () => {
+// expect: six calls — repositoryInfo once, readSnapshot once (the head), readHistory twice (one for each of UC-010's two records), one read (the newer record) and one readFileAt (UC-010 at the commit that added it) — so that checking the text against the record's blob reads nothing more
+test("lastAcceptedText — one answer takes six calls to the host, the check of the text among them adding none", async () => {
   const fake = fakeHost();
   await lastAcceptedText("UC-010", fake.host);
   const count = (fn) => fake.calls.filter((call) => call.fn === fn).length;
-  assert.deepEqual({ repositoryInfo: count("repositoryInfo"), readSnapshot: count("readSnapshot"), readHistory: count("readHistory"), read: count("read") },
-    { repositoryInfo: 1, readSnapshot: 2, readHistory: 2, read: 2 });
-  assert.equal(fake.calls.length, 7);
+  assert.deepEqual({ repositoryInfo: count("repositoryInfo"), readSnapshot: count("readSnapshot"), readHistory: count("readHistory"), read: count("read"), readFileAt: count("readFileAt") },
+    { repositoryInfo: 1, readSnapshot: 1, readHistory: 2, read: 1, readFileAt: 1 });
+  assert.equal(fake.calls.length, 6);
 });
 
 // TST-1800006 · level: unit · module: MOD-approvals

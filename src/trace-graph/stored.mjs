@@ -7,7 +7,7 @@
 
 import { blobSha } from "../text-tools/index.mjs";
 import { traceGraph } from "./build.mjs";
-import { architectureImpact } from "./derive.mjs";
+import { architectureImpact, coverageGaps, requirementImpact } from "./derive.mjs";
 
 // The format mark of a stored graph: a text without it, or with another, is no graphText of this module.
 const FORMAT = "agent-m-trace-graph";
@@ -54,6 +54,70 @@ export const gzipped = async (text) => new Uint8Array(await through(new TextEnco
 export const gunzipped = (bytes) => through(bytes, new DecompressionStream("gzip")).text();
 const impactsOf = (commit) => `${commit}.impacts.json`;
 const IMPACTS_FORMAT = "agent-m-trace-impacts";
+// The coverage gaps of a commit's graph (coverageGaps), stored beside the graph, so that a page that only counts them transfers a few kilobytes, not the graph.
+export const gapsOf = (commit) => `${commit}.gaps.json`;
+const GAPS_FORMAT = "agent-m-trace-gaps";
+// What names each requirement of a commit's graph, gzipped, stored beside the graph for the impact lists of the SPEC changes that wait.
+export const referencesFile = (commit) => `${commit}.references.json.gz`;
+const REFERENCES_FORMAT = "agent-m-trace-references";
+
+/**
+ * storedGaps(source: TextSource, commit: string) -> Promise<object | null> — coverageGaps of the graph stored for `commit`, as publishGraph stored
+ * them beside it, read with the source's `readOn` in one request; null without `readOn`, or when the branch or the file is missing or holds another format.
+ * @param {object} source @param {string} commit
+ * @returns {Promise<object | null>}
+ */
+export async function storedGaps(source, commit) {
+  if (typeof source?.readOn !== "function" || typeof commit !== "string" || commit === "") return null;
+  let held;
+  try { held = JSON.parse(await source.readOn(BRANCH, gapsOf(commit))); } catch { return null; }
+  if (held === null || typeof held !== "object" || held.format !== GAPS_FORMAT || held.version !== VERSION || held.commit !== commit) return null;
+  const gaps = held.gaps;
+  const lists = ["requirementsWithoutUseCase", "requirementsWithoutModule", "requirementsWithoutTest", "useCasesWithoutRequirement", "unknownNames"];
+  if (gaps === null || typeof gaps !== "object" || !lists.every((name) => Array.isArray(gaps[name]))) return null;
+  return gaps;
+}
+
+/**
+ * storedReferences(source: TextSource, commit: string) -> Promise<Map<string, string[]> | null> — for each requirement of the graph stored for `commit`, and
+ * each name an edge of it leads to that no node is, the identifiers of what names it, as requirementImpact gives them (each once, in its order; none for a
+ * requirement nothing names) — a name it holds no entry for is named by nothing —, from
+ * `<commit>.references.json.gz`, which publishGraph stores beside the graph, read with the source's `readOn` in one request; null without `readOn`, or when
+ * the branch or the file is missing or holds another format.
+ * @param {object} source @param {string} commit
+ * @returns {Promise<Map<string, string[]> | null>}
+ */
+// The references read in this page, by commit, once each however many entries ask: the promise is kept, so that entries asking at once share the one request, and
+// so is a commit that holds none, whose entries then read the graph.
+const REFERENCES = new Map();
+export function storedReferences(source, commit) {
+  if (typeof source?.readOn !== "function" || typeof commit !== "string" || commit === "") return Promise.resolve(null);
+  if (!REFERENCES.has(commit)) {
+    const reading = referencesAt(source, commit);
+    REFERENCES.set(commit, reading);
+    reading.catch(() => REFERENCES.delete(commit));
+  }
+  return REFERENCES.get(commit);
+}
+
+async function referencesAt(source, commit) {
+  let held;
+  try {
+    const bytes = await source.readOn(BRANCH, referencesFile(commit), { bytes: true });
+    held = JSON.parse(await gunzipped(bytes));
+  } catch { return null; }
+  if (held === null || typeof held !== "object" || held.format !== REFERENCES_FORMAT || held.version !== VERSION || held.commit !== commit) return null;
+  const references = held.references;
+  if (references === null || typeof references !== "object" || Array.isArray(references)
+    || !Object.values(references).every((ids) => Array.isArray(ids) && ids.every((id) => typeof id === "string"))) return null;
+  return new Map(Object.entries(references));
+}
+
+// What names each requirement of the graph, and each name an edge leads to that no node is — a requirement a change would add may be named already —:
+// requirementImpact's identifiers, each once.
+const referencesOf = (graph) => Object.fromEntries([...new Set([...[...graph.nodes.values()].filter((node) => node.kind === "requirement").map((node) => node.id),
+  ...graph.edges.map((edge) => edge.to).filter((name) => !graph.nodes.has(name))])].sort()
+  .map((name) => [name, [...new Set(requirementImpact(graph, name).map((place) => place.id))]]));
 
 // The text of the impact lists of `commit`: for each changed file its path, its blob at the commit, the commit of the text it was last
 // accepted at (null for a file never accepted) and architectureImpact of the graph for that change.
@@ -87,8 +151,9 @@ export async function storedImpacts(source, commit) {
 /**
  * publishGraph(host: Host, snapshot: Snapshot, changed?: Array<{ path: string, before: { commit: string, text: string } | null }>) ->
  * Promise<{ commit: string, written: boolean }> — builds the graph of the snapshot's commit from its files and adds `<commit>.json.gz` (its graphText gzipped) to the
- * branch `trace-cache` by `commitFiles`, on the head it read; `written` is false when the branch holds the file already, which it then leaves
- * as it is. With `changed` it adds `<commit>.impacts.json` in the same commit. The commit that adds the graph also writes `latest.json` naming the commit; where it adds
+ * branch `trace-cache` by `commitFiles`, on the head it read, and beside it `<commit>.gaps.json`, the graph's coverageGaps, and `<commit>.references.json.gz`,
+ * what names each requirement (storedReferences); `written` is false when the
+ * branch holds the graph already, which it then leaves as it is. With `changed` it adds `<commit>.impacts.json` in the same commit. The commit that adds the graph also writes `latest.json` naming the commit; where it adds
  * nothing, `latest.json` is left as it is. Crosses the network; fails as `commitFiles` fails — `Moved` when
  * the branch moved meanwhile, so that the run can be made again —, and with `NotFound` naming the branch when the repository has none.
  * @param {object} host @param {object} snapshot @param {Array<{ path: string, before: { commit: string, text: string } | null }>} [changed]
@@ -106,7 +171,9 @@ export async function publishGraph(host, snapshot, changed) {
   if (branch.paths.includes(fileOf(commit))) return { commit, written: false };
   // The graph is built from the files: a source without readOn never uses a stored graph.
   const graph = await traceGraph({ paths: snapshot.paths, read: (path) => snapshot.read(path), readMany: (paths) => snapshot.readMany?.(paths) }, { commit });
-  const files = [{ path: fileOf(commit), bytes: await gzipped(graphText(graph)) }];
+  const files = [{ path: fileOf(commit), bytes: await gzipped(graphText(graph)) },
+    { path: gapsOf(commit), text: `${JSON.stringify({ format: GAPS_FORMAT, version: VERSION, commit, gaps: coverageGaps(graph) })}\n` },
+    { path: referencesFile(commit), bytes: await gzipped(`${JSON.stringify({ format: REFERENCES_FORMAT, version: VERSION, commit, references: referencesOf(graph) })}\n`) }];
   if (changed) files.push({ path: impactsOf(commit), text: await impactsText(graph, snapshot, commit, changed) });
   files.push({ path: LATEST, text: `${JSON.stringify({ commit })}\n` });
   await host.commitFiles({ branch: BRANCH, expectedHead: branch.commit, files, message: `trace-cache: the graph of ${commit}\n` });

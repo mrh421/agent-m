@@ -21,6 +21,11 @@
 //     the select's value and a `change` event.
 //   - A source that cannot be read is an <li class="source"> of a <ul class="unreadable"> above the list, "<address>: <the reason its host gives>".
 //   - The instance is connected as the product is, with the token `github-token`, from the address https://github.com/<its repository>.
+//   - GitHub's batch request of files' texts (POST /graphql, with a token), which the host sends for the records listJobs names to a snapshot's readMany (ITM-1280), is answered for the repository its
+//     variables name under the same rule of tokens as the API's other reads: the text of each file the repository holds at its head, and for a private repository only with its own token.
+//   - Above the list the route draws what waits for a person, read for each repository from the overview stored for its head on the branch overview-cache (ITM-1190; its cases are
+//     tests/main-page-jobs-waits.test.mjs). Each repository of these fixtures stores the overview of its head, in which nothing waits, so that what waits costs one request per repository
+//     and these cases read the list alone; the overview is served under the same rule of tokens, through the API for a private repository and from the raw host for a public one.
 
 import "./site-frame-dom.mjs";
 import test from "node:test";
@@ -96,6 +101,9 @@ const REPOSITORIES = {
   "acme/atlas": { private: false, files: { "docs/jobs/JOB-20261013-0700-eeee.md": CANCELLED, "docs/jobs/JOB-20261016-1000-ffff.md": ON_FOUR, "docs/jobs/JOB-20261016-0930-gggg.md": ON_FIVE } },
 };
 const sha = (text) => createHash("sha1").update(text).digest("hex");
+// The overview stored for the head of `name` on its branch overview-cache, in the format MOD-progress-measures' Data names: nothing waits, no build.
+const overviewOf = (name) => JSON.stringify({ commit: sha(`${name}@main`), shares: [], waiting: [], model: null, build: { states: [], records: [] }, queues: [] });
+const OVERVIEW = /^\/contents\/([0-9a-f]{40})\.json$/;
 
 // ---------------------------------------------------------------- the spy: the global fetch
 
@@ -118,10 +126,25 @@ function headerOf(init, name) {
   return found ? String(found[1]) : null;
 }
 // GitHub's API as the host reads it: the repository, its default branch's commit, the commit's tree, and a file by its commit — through the API for a private repository (with the token),
-// from the raw host for a public one. A private repository answers 404 to a request without its own token.
+// from the raw host for a public one. A private repository answers 404 to a request without its own token. The batch request of files' texts (POST /graphql) gives, for each aliased
+// `f<n>:object(expression: "<commit>:<path>")`, the file's text where the repository its variables name holds it at that commit, else null; without the repository's own token, no repository.
 function github(request) {
   const { url, authorization } = request;
   const path = decodeURIComponent(url.pathname);
+  if (url.host === "api.github.com" && path === "/graphql" && request.body) {
+    const { query, variables } = JSON.parse(request.body);
+    const name = `${variables?.owner}/${variables?.name}`;
+    const repository = REPOSITORIES[name];
+    if (!repository || (repository.private && authorization !== `Bearer ${TOKENS[name]}`)) {
+      return json(200, { data: { repository: null }, errors: [{ type: "NOT_FOUND", message: "Could not resolve to a Repository" }] });
+    }
+    const answer = {};
+    for (const [, alias, quoted] of query.matchAll(/(f\d+):object\(expression:("(?:[^"\\]|\\.)*")\)/g)) {
+      const expression = JSON.parse(quoted), cut = expression.indexOf(":"), file = expression.slice(cut + 1);
+      answer[alias] = expression.slice(0, cut) === sha(`${name}@main`) && repository.files[file] !== undefined ? { text: repository.files[file], isTruncated: false } : null;
+    }
+    return json(200, { data: { repository: answer } });
+  }
   const api = /^\/repos\/([^/]+\/[^/]+)(\/.*)?$/.exec(path);
   if (url.host === "api.github.com" && api) {
     const [, name, rest = ""] = api;
@@ -130,23 +153,32 @@ function github(request) {
     if (rest === "") return json(200, { default_branch: "main", visibility: repository.private ? "private" : "public", private: repository.private });
     if (rest === "/commits/main") return json(200, { sha: sha(`${name}@main`) });
     if (rest.startsWith("/git/trees/")) return json(200, { tree: Object.entries(repository.files).map(([file, body]) => ({ type: "blob", path: file, sha: sha(body) })) });
+    if (url.searchParams.get("ref") === "overview-cache") {
+      const stored = OVERVIEW.exec(rest);
+      return stored && stored[1] === sha(`${name}@main`) ? text(overviewOf(name)) : json(404, { message: "Not Found" });
+    }
     const file = /^\/contents\/(.+)$/.exec(rest);
     if (file && repository.files[file[1]] !== undefined) return text(repository.files[file[1]]);
     return json(404, { message: "Not Found" });
   }
+  const cached = /^\/([^/]+\/[^/]+)\/overview-cache\/([0-9a-f]{40})\.json$/.exec(path);
+  if (url.host === "raw.githubusercontent.com" && cached && REPOSITORIES[cached[1]] && !REPOSITORIES[cached[1]].private && cached[2] === sha(`${cached[1]}@main`)) return text(overviewOf(cached[1]));
   const raw = /^\/([^/]+\/[^/]+)\/[0-9a-f]{40}\/(.+)$/.exec(path);
   if (url.host === "raw.githubusercontent.com" && raw && REPOSITORIES[raw[1]] && !REPOSITORIES[raw[1]].private && REPOSITORIES[raw[1]].files[raw[2]] !== undefined) return text(REPOSITORIES[raw[1]].files[raw[2]]);
   return null;
 }
-// The Bridge lab-pc-4 answers its list of jobs with the job that runs on it; lab-pc-5's address refuses the connection; the model endpoint ep1 never answers until the request is aborted.
+// The Bridge lab-pc-4 answers its list of jobs with the job that runs on it, and testBridge's two requests, which the prompt bar sends when it is drawn, offering no
+// agent ready; lab-pc-5's address refuses the connection; the model endpoint drafter-a never answers until the request is aborted.
 function install() {
   spy.requests = [];
   spy.unrouted = [];
   globalThis.fetch = async (input, init) => {
     const url = new URL(typeof input === "object" && !(input instanceof URL) ? input.url : String(input));
-    const request = { url, href: url.href, authorization: headerOf(init, "authorization"), pairing: headerOf(init, "x-agent-m-token") };
+    const request = { url, href: url.href, authorization: headerOf(init, "authorization"), pairing: headerOf(init, "x-agent-m-token"), body: typeof init?.body === "string" ? init.body : null };
     spy.requests.push(request);
     if (url.host === "127.0.0.1:4711" && url.pathname === "/v1/jobs") return json(200, { jobs: [{ id: "JOB-20261016-1000-ffff", state: "running", usage: null }] });
+    if (url.host === "127.0.0.1:4711" && url.pathname === "/v1/pair") return json(200, { bridge: { name: "lab-pc-4", version: "1.0.0", platform: "linux" }, origin: "https://acme.github.io" });
+    if (url.host === "127.0.0.1:4711" && url.pathname === "/v1/agents") return json(200, { agents: [], missing: [] });
     if (url.host === "127.0.0.1:4712") throw new TypeError("connect ECONNREFUSED 127.0.0.1:4712");
     if (url.host === "models.example") {
       return new Promise((resolve, reject) => init?.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }))));
@@ -322,14 +354,14 @@ test("TST-509005 the four filters offer all and the values the rows hold, and ea
 
 // TST-509006 · level: unit · module: MOD-main-page
 // guards: ONE DASHBOARD SHOWS EVERY JOB; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED; UC-049
-// given: the same browser and the prompt bar on the page, with one participant drafter-a (the endpoint ep1, which never answers); the clock at 10:57:57 UTC when a message is sent
+// given: the same browser and the prompt bar on the page, with one participant, this browser's endpoint drafter-a, declared with its place, context and model, which never answers; the clock at 10:57:57 UTC when a message is sent
 // input: the route `jobs` drawn at 12:00:00 while the message runs; then Stop pressed and the route drawn again
 // expect: while the message runs the job of this tab is the second row, after the job waiting at a gate and before every other, its cells "this tab's" in place of an identifier, "—" for the product, "" for what it works on, "converse", "drafter-a", "this tab", "running", "1h 2m 3s", "unknown", with no data-id; the seven jobs of the records follow it; once it has ended the list holds the seven rows and no row of this tab
 test("TST-509006 the job of this tab's conversation is listed first among the rows that do not wait at a gate, and is gone once it has ended", async () => {
   install();
   registerStrategies("tests/main-page-jobs.test.mjs", { recipes: { "chapters-for-page": async () => [] } });
   const it = browser();
-  writeSetting(it.store, "endpoint:ep1", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture" });
+  writeSetting(it.store, "endpoint:drafter-a", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture", place: "Anthropic, USA", context: 200000 });
   const foot = document.createElement("div");
   document.body.append(foot);
   const subject = { key: "page:jobs", title: "Every job", kind: "converse", entry: null, paramsFor: () => ({ page: "Every job", target: "jobs" }), draftRoute: null, withhold: null, refuses: [] };
@@ -468,7 +500,7 @@ test("TST-970003 the job of this tab's conversation is the first row of the runn
   install();
   try { registerStrategies("tests/main-page-jobs.test.mjs", { recipes: { "chapters-for-page": async () => [] } }); } catch (failure) { if (failure.name !== "DuplicateStrategy") throw failure; /* TST-509006 registered it */ }
   const it = browser();
-  writeSetting(it.store, "endpoint:ep1", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture" });
+  writeSetting(it.store, "endpoint:drafter-a", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture", place: "Anthropic, USA", context: 200000 });
   const foot = document.createElement("div");
   document.body.append(foot);
   const subject = { key: "page:jobs", title: "Every job", kind: "converse", entry: null, paramsFor: () => ({ page: "Every job", target: "jobs" }), draftRoute: null, withhold: null, refuses: [] };
@@ -507,7 +539,7 @@ test("TST-866001 the host the route reads a product with still refuses a commit 
   const it = browser();
   writeSetting(it.store, "endpoint:ep1", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: SECRET });
   assert.equal(secretValues(it.store).includes(SECRET), true, "known positive: the store holds the key as a secret");
-  const { sourcesOf } = await import("../src/main-page/jobs.mjs");
+  const { sourcesOf } = await import("../src/main-page/sources.mjs");
   assert.equal(typeof sourcesOf, "function");
   const sources = await sourcesOf(it.context);
   assert.deepEqual(sources.map((source) => source.address), [INSTANCE, LIBRARY, ATLAS, MISSING]);

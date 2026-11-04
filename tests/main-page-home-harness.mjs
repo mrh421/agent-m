@@ -1,7 +1,7 @@
 // The browser, the repositories and the network of the tests of MOD-main-page's route `home` — a helper, no test of its own. It installs the small browser fixture of
 // tests/site-frame-start.d/dom.mjs (a document, a location, a local storage), opens the store of the instance alice/agent-m with the products and tokens a test gives, and puts a spy in
 // place of `fetch` over the counting fake of GitHub of tests/progress-measures-load.mjs (a helper too): the spy keeps every request with the authorisation it carried, answers the Bridges
-// lab-pc-4 (which lists the job it runs) and lab-pc-5 (which refuses the connection), and passes every other request to the fake. A test changes the files a repository holds with `change`, makes
+// lab-pc-4 (which lists the job it runs) and lab-pc-5 (which refuses the connection), answers GitHub's trees of named paths, and passes every other request to the fake. A test changes the files a repository holds with `change`, makes
 // GitHub refuse its API with `refusing` ({ how: "limit" | "limit, no reset time" | "error", repository?: the one repository refused, every one where none is given }), and fires the timers a page sets itself (`timers`) at a clock it names. Nothing reaches the network; nothing sleeps.
 //
 // Module: MOD-main-page
@@ -161,6 +161,7 @@ function headerOf(init, name) {
 /**
  * A fake GitHub serving `repos` ({ "owner/name": { path: text } }), with a spy over it. `bridgeLists` is the job identifier the Bridge lab-pc-4 lists as running (none lists no job); a test may set
  * `net.bridgeLists` later; `net.bridgeUsage` is the usage the Bridge lists for it, and `net.bridgeLog` (async (id, from) -> { lines, next, ended }) answers its log — the Bridge keeps none at first. `net.ciRuns` are the workflow runs (GitHub's answer, one page) that the job workflow's run list gives, none at first.
+ * GitHub's trees of named folders and the entries of the folders of named files (with a token) are answered, each request kept in `net.folderReads` ({ repository, paths }).
  * `requests` keeps every request { url, host, authorization }; `server.log` is the fake's own record of what each request read (tests/progress-measures-load.mjs). install() puts the spy in
  * place of `fetch`; restore() puts the earlier one back.
  */
@@ -169,8 +170,30 @@ export function network(repos, { bridgeLists = null } = {}) {
   const requests = [];
   const real = globalThis.fetch;
   let held = repos, fake = null, spy = null;
+  // GitHub's trees of named folders and the entries of the folders of named files ("Get a tree" of "<commit>:<path>", with recursive or without), which a
+  // snapshot narrowed to named paths sends together: a folder of the repository of that head commit gives its files or its entries, a file 422, any other
+  // path 404. Each request is kept in `net.folderReads` as { repository, paths } — a folder read whole as its path, a folder's entries as `<folder>/`.
+  const treeNamed = (url) => {
+    const m = /^\/repos\/[^/]+\/[^/]+\/git\/trees\/([^/:]+)(?::(.*))?$/.exec(url.pathname);
+    if (!m || (m[2] === undefined && url.searchParams.has("recursive"))) return null;
+    const named = Object.keys(held).find((each) => headOf(each) === m[1]) ?? null;
+    if (!named) return null;
+    const files = held[named], folder = (m[2] ?? "").split("/").map(decodeURIComponent).join("/"), recursive = url.searchParams.has("recursive");
+    net.folderReads.push({ repository: named, paths: [recursive ? folder : `${folder}/`] });
+    if (folder in files) return json(422, { message: "Invalid object requested. SHA must identify a commit or a tree." });
+    const below = Object.keys(files).filter((path) => folder === "" || path.startsWith(`${folder}/`)).sort();
+    if (!below.length) return json(404, { message: "Not Found" });
+    const rest = (path) => (folder === "" ? path : path.slice(folder.length + 1));
+    if (recursive) return json(200, { sha: "t".repeat(40), truncated: false, tree: below.map((path) => ({ path: rest(path), mode: "100644", type: "blob", sha: blobOf(files[path]) })) });
+    const entries = new Map();
+    for (const path of below) {
+      const [name, ...deeper] = rest(path).split("/");
+      if (!entries.has(name)) entries.set(name, deeper.length ? { path: name, mode: "040000", type: "tree", sha: "t".repeat(40) } : { path: name, mode: "100644", type: "blob", sha: blobOf(files[path]) });
+    }
+    return json(200, { sha: "t".repeat(40), truncated: false, tree: [...entries.values()] });
+  };
   // `overviews` ({ "owner/name": { "<commit>": text } }): the files `<commit>.json` of the branch `overview-cache` each repository holds, and under the key "latest" its file latest.json; none is held at first.
-  const net = { requests, bridgeLists, bridgeUsage: null, bridgeLog: null, refusing: null, ciRuns: [], overviews: {},
+  const net = { requests, bridgeLists, bridgeUsage: null, bridgeLog: null, refusing: null, ciRuns: [], overviews: {}, folderReads: [],
     // the fake's own record of what each request read: those of every state the repositories have been in
     server: { get log() { return servers.flatMap((server) => server.log); } },
     bridgeAsked: () => requests.filter((request) => request.host === "127.0.0.1:4711").length,
@@ -196,6 +219,8 @@ export function network(repos, { bridgeLists = null } = {}) {
           return new Response("{}", { status: 403, headers: { "content-type": "application/json", "x-ratelimit-remaining": "0", "x-ratelimit-limit": "5000", ...reset } });
         }
         if (url.host === "api.github.com" && /\/actions\/workflows\/[^/]+\/runs$/.test(url.pathname)) return json(200, { workflow_runs: net.ciRuns });
+        const tree = url.host === "api.github.com" ? treeNamed(url) : null;
+        if (tree) return tree;
         return fake(input, init);
       };
       globalThis.fetch = spy;

@@ -29,7 +29,7 @@ export function openEditor(target, text, { marks, save, disabledReason = () => n
   area.setAttribute("aria-label", "Markdown");
   const rows = element("ol", "marks"), preview = element("div", "preview");
   preview.setAttribute("tabindex", "0");
-  const button = element("button", null, "Save");
+  const button = element("button", "btn", "Save");
   button.setAttribute("type", "button");
   const result = element("p", "result"), newer = element("div", "newer");
   let currentMarks = [];

@@ -248,9 +248,7 @@ test("TST-2026103: where a restricted source does not allow the endpoint's place
 // guards: NO MODEL READS A CREDENTIAL; A HOSTED JOB AUTHENTICATES ITS AGENT WITH A CI SECRET
 // given: as TST-2026101, but laid out as the model's user's side of the agent's machine: FIXTURE_KEY is set neither in the entry's environment nor in the process's, and AGENT_M_KEY_HOLDER names http://127.0.0.1:9, a stand-in for the key holder at which the fake endpoint answers
 // input: onDispatch with the inputs job, task, endpoint (https://llm.example.test/v1) and secret FIXTURE_KEY
-// expect: outcome `done`; every request goes to http://127.0.0.1:9/chat/completions with the model fixture-llm and no Authorization header, none to the endpoint's own
-//   address; the checkout's src/sum.mjs now adds; counter-proof: laid out the same without AGENT_M_KEY_HOLDER, the entry ends `not run`, its summary naming FIXTURE_KEY as
-//   missing, and sends no request
+// expect: outcome `done`; every request goes to http://127.0.0.1:9/chat/completions with the model fixture-llm and no Authorization header, none to the endpoint's own address; the checkout's src/sum.mjs now adds; counter-proof: laid out the same without AGENT_M_KEY_HOLDER, the entry ends `not run`, its summary naming FIXTURE_KEY as missing, and sends no request
 test("TST-1243006: on the model's user's side the endpoint is reached through the key holder, with no key in that side's environment", async () => {
   await world({ answers: WORK, holder: "http://127.0.0.1:9" }, async (w) => {
     assert.equal(w.status.outcome, "done", w.status.summary);

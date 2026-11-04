@@ -265,7 +265,7 @@ The cases of `tests/test_single_definition.py`: SPEC.md's check of ONE DEFINITIO
     ]
   },
   "expected": {
-    "kinds": 26,
+    "kinds": 27,
     "listedOnce": true,
     "namedLikeItsFolder": true,
     "duplicates": [],

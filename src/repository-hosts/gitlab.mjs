@@ -5,7 +5,7 @@
 // Module: MOD-repository-hosts
 //
 // Private to the module: index.mjs builds the host from what this returns — repositoryInfo(), snapshot(ref),
-// readFile(commit, path), history(path, { ref, limit, changes }), listTags(), issueCounts(), commitFiles(change), createTag(name, commit),
+// readFile(commit, path), history(path, { ref, limit, changes }), listTags(), issueCounts(), listIssues(filter), readIssue(number), commitFiles(change), createTag(name, commit),
 // createBranch(name, from), startWorkflow(workflow, ref, inputs), setPipelineSchedule(schedule), listCiRuns(filter), cancelCiRun(id), jobLogs(id), jobLabels(id), listPullRequests(filter), openPullRequest(request), pullRequestFacts(number) — and adds what both adapters share.
 
 import { HostError, send, json, refusal } from "./failures.mjs";
@@ -120,6 +120,37 @@ export function gitlabAdapter(address, { token, tokenName }, links) {
     }
     return out;
   };
+  // Every item of a list the server pages, its pages asked for at once: page 1 first, then, once its X-Total-Pages header says how many there are ("Pagination", docs.gitlab.com/api/rest/),
+  // every other page together, the items in the order of the pages, each once. A server that leaves the header out — GitLab does for more than 10,000 — is read on page after page, as
+  // everyPage reads.
+  const allPages = async (url, options = {}, key = (item) => JSON.stringify(item)) => {
+    const at = (page) => `${url}${url.includes("?") ? "&" : "?"}per_page=${PAGE}&page=${page}`;
+    const first = await call("GET", at(1), options);
+    const items = await json(first, address.origin);
+    const total = Number(first.headers.get("x-total-pages") ?? 0);
+    const known = new Set();
+    const once = (list) => list.filter((item) => !known.has(key(item)) && known.add(key(item)));
+    if (total > 1) {
+      const rest = await Promise.all(Array.from({ length: Math.min(total, MAX_PAGES) - 1 }, (_, i) => read(at(i + 2), options)));
+      return once([...items, ...rest.flat()]);
+    }
+    const out = once(items);
+    for (let page = 2, got = items; total !== 1 && got.length >= PAGE && page <= MAX_PAGES; page++) {
+      got = once(await read(at(page), options));
+      out.push(...got);
+    }
+    return out;
+  };
+  // The comments of an issue ("List project issue notes", 100 to a page, page by page; the system notes, which GitLab writes for its own changes, are not comments), none asked for where its count of notes is 0.
+  const commentsOf = async (i) => {
+    const comments = [];
+    for (let page = 1; i.user_notes_count !== 0 && page <= MAX_PAGES; page++) {
+      const items = await read(`${api}/issues/${i.iid}/notes?per_page=${PAGE}&page=${page}`);
+      comments.push(...items.filter((n) => !n.system).map((n) => ({ author: n.author?.username ?? "", body: n.body ?? "", date: n.created_at })));
+      if (items.length < PAGE) break;
+    }
+    return comments;
+  };
   // The newest pipeline of a commit ("List project pipelines": sha, order_by id, sort desc), or null.
   const pipelineOf = async (sha) => (await read(`${api}/pipelines?sha=${sha}&order_by=id&sort=desc&per_page=1`, { what: `${address.web} at ${sha}` }))[0] ?? null;
 
@@ -133,7 +164,9 @@ export function gitlabAdapter(address, { token, tokenName }, links) {
       }
       const level = Math.max(r.permissions?.project_access?.access_level ?? 0, r.permissions?.group_access?.access_level ?? 0);
       return { defaultBranch: r.default_branch ?? null, visibility: r.visibility, canWrite: Boolean(token) && level >= MAINTAINER,
-        archived: r.archived === true, description: r.description ?? "" };
+        archived: r.archived === true, description: r.description ?? "",
+        // The project's setting "Pipelines must succeed" (`only_allow_merge_if_pipeline_succeeds` of "Get a single project"), null where the answer does not hold it.
+        greenToMerge: typeof r.only_allow_merge_if_pipeline_succeeds === "boolean" ? r.only_allow_merge_if_pipeline_succeeds : null };
     },
 
     // The branch, tag or commit resolved to one commit, then that commit's tree, page by page: every file, by its blob SHA.
@@ -185,8 +218,8 @@ export function gitlabAdapter(address, { token, tokenName }, links) {
     },
 
     // The issues of a state, labels and search text ("List project issues": state opened, closed or all; labels; search; per_page 100, page by page). Each issue that may have comments is given them
-    // ("List project issue notes": the system notes, which GitLab writes for its own changes, are not comments).
-    async listIssues({ state, labels, search }) {
+    // (commentsOf), unless `comments` is false: then no note is asked for and each issue's comments are empty.
+    async listIssues({ state, labels, search, comments: withComments }) {
       const found = [];
       for (let page = 1; page <= MAX_PAGES; page++) {
         const items = await read(`${api}/issues?${new URLSearchParams({ state: state === "open" ? "opened" : state, per_page: String(PAGE), page: String(page),
@@ -195,16 +228,14 @@ export function gitlabAdapter(address, { token, tokenName }, links) {
         if (items.length < PAGE) break;
       }
       const issues = [];
-      for (const i of found) {
-        const comments = [];
-        for (let page = 1; i.user_notes_count !== 0 && page <= MAX_PAGES; page++) {
-          const items = await read(`${api}/issues/${i.iid}/notes?per_page=${PAGE}&page=${page}`);
-          comments.push(...items.filter((n) => !n.system).map((n) => ({ author: n.author?.username ?? "", body: n.body ?? "", date: n.created_at })));
-          if (items.length < PAGE) break;
-        }
-        issues.push(issueOf(i, comments));
-      }
+      for (const i of found) issues.push(issueOf(i, withComments ? await commentsOf(i) : []));
       return issues;
+    },
+
+    // One issue ("Get a single project issue") with its comments. An iid no issue has — a merge request's among them, whose iids are counted apart — is answered 404: NotFound.
+    async readIssue(number) {
+      const i = await read(`${api}/issues/${number}`, { what: `issue #${number} of ${address.web}` });
+      return issueOf(i, await commentsOf(i));
     },
 
     // A comment on an issue ("Create new issue note").
@@ -345,11 +376,17 @@ export function gitlabAdapter(address, { token, tokenName }, links) {
     },
 
     // The pipelines ("List project pipelines": ref and sha from the filter's branch and commit, 100 to a page, read page by page). A project has one pipeline definition, which startWorkflow starts
-    // whatever workflow it is given: the filter's workflow narrows nothing, and is each run's workflow, "" where the filter names none.
-    async listCiRuns({ workflow, branch, commit } = {}) {
+    // whatever workflow it is given: the filter's workflow narrows nothing, and is each run's workflow, "" where the filter names none. The filter's event is the pipelines' `source`;
+    // with `newest`, only the first page, that many pipelines long, the newest first.
+    async listCiRuns({ workflow, branch, commit, event, newest } = {}) {
       const query = new URLSearchParams();
       if (branch) query.set("ref", branch);
       if (commit) query.set("sha", commit);
+      if (event) query.set("source", event);
+      if (newest) {
+        query.set("per_page", String(Math.min(newest, PAGE)));
+        return (await read(`${api}/pipelines?${query}`, {})).slice(0, newest).map((p) => ciRunOf(p, workflow ?? ""));
+      }
       return (await everyPage(`${api}/pipelines${query.size ? `?${query}` : ""}`, {}, (p) => p.id)).map((p) => ciRunOf(p, workflow ?? ""));
     },
 
@@ -407,10 +444,10 @@ export function gitlabAdapter(address, { token, tokenName }, links) {
       return [...new Set(jobs.flatMap((job) => job.tag_list ?? []))];
     },
 
-    // The merge requests ("List project merge requests": state opened, closed, merged or all, source_branch, 100 to a page, read page by page).
+    // The merge requests ("List project merge requests": state opened, closed, merged or all, source_branch, 100 to a page, the pages asked for at once).
     async listPullRequests({ state = "all", branch } = {}) {
       const ask = state === "open" ? "opened" : state;
-      const listed = await everyPage(`${api}/merge_requests?state=${ask}${branch ? `&source_branch=${encodeURIComponent(branch)}` : ""}`, {}, (m) => m.iid);
+      const listed = await allPages(`${api}/merge_requests?state=${ask}${branch ? `&source_branch=${encodeURIComponent(branch)}` : ""}`, {}, (m) => m.iid);
       return listed.map(pullOf).filter((p) => state === "all" || p.state === state);
     },
 

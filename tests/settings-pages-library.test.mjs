@@ -61,7 +61,8 @@ const byClass = (root, name) => descendants(root, (node) => (node.className ?? "
 const one = (root, name) => { const found = byClass(root, name); assert.equal(found.length, 1, `exactly one .${name}`); return found[0]; };
 const settle = () => new Promise((resolve) => setTimeout(resolve, 15));
 const fire = async (node, type) => { node.dispatchEvent(new Event(type)); await settle(); };
-const click = (node) => fire(node, "click");
+// A person's click: a browser marks it trusted (`isTrusted`); node marks every Event untrusted, as a script's.
+const click = async (node) => { node.dispatchEvent(Object.defineProperty(new Event("click"), "isTrusted", { value: true })); await settle(); };
 const put = async (node, value, type = "change") => { node.value = value; await fire(node, type); };
 const folded = (root) => byClass(root, "explain");
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -494,6 +495,26 @@ test("library — a registered source's name leads to its entry, which shows eac
   assert.deepEqual(b.went.at(-1), ["library", {}]);
 });
 
+// TST-1361001 · level: unit · module: MOD-settings-pages
+// guards: A SOURCE VERSION IS FIXED BY IDENTIFIER AND HASH; UC-004
+// given: the register of this file: EU AI Act's version 2026-10-01 of 2026-10-01 records act.html with the SHA-256 aaaa…a (64 × a), stored; IEC 62304's version IEC 62304:2006+AMD1:2015 of 2026-10-02 records iec-62304.pdf with the SHA-256 bbbb…b (64 × b), only hashed
+// input: the routes library/source=SRC-eu-ai-act and library/source=SRC-iec-62304
+// expect: each entry lists its one version with its identifier and its date, and under it each file read with its name and the SHA-256 the entry records: act.html with 64 × a, iec-62304.pdf with 64 × b, the file not stored as well; counter-proof: neither entry shows the other's SHA-256
+test("library — a source's entry lists each version with its identifier, its date and the SHA-256 of every file read", async (t) => {
+  const b = browser(t);
+  const [A, B] = ["a".repeat(64), "b".repeat(64)];
+  const stored = await b.page({ source: "SRC-eu-ai-act" });
+  const [act] = byClass(stored, "library-version");
+  assert.match(act.textContent, /^2026-10-01 · 2026-10-01/);
+  assert.match(act.textContent, new RegExp(`act\\.html[^\\n]*${A}`), "act.html with its SHA-256");
+  assert.doesNotMatch(one(stored, "library-entry").textContent, new RegExp(B), "counter-proof: not the other entry's SHA-256");
+  const hashed = await b.page({ source: "SRC-iec-62304" });
+  const [norm] = byClass(hashed, "library-version");
+  assert.match(norm.textContent, /^IEC 62304:2006\+AMD1:2015 · 2026-10-02/);
+  assert.match(norm.textContent, new RegExp(`iec-62304\\.pdf[^\\n]*${B}`), "the file only hashed with its SHA-256");
+  assert.doesNotMatch(one(hashed, "library-entry").textContent, new RegExp(A), "counter-proof: not the other entry's SHA-256");
+});
+
 // TST-472759 · level: unit · module: MOD-settings-pages
 // guards: A LIVING SOURCE IS PINNED; THE INSTANCE KEEPS THE SOURCE REGISTER; UC-004
 // given: the EU legal text route with the AI Act's address; the repository route with a repository pinned to its commit
@@ -574,6 +595,103 @@ test("library — what becomes public is stated before Save and follows the lice
   assert.match(statement(), /alice\/restricted-content/);
   await tickHashed(page);
   assert.match(statement(), /nothing of a\.md is stored/i);
+});
+
+// TST-1362001 · level: unit · module: MOD-settings-pages
+// guards: RESTRICTED CONTENT STAYS OUT OF THE PUBLIC INSTANCE; UC-004
+// given: the EU legal text route with the AI Act's address and a licence that may be republished, then the same with a restricted licence; the documents route with a.md and a licence that may be republished as the counter-proof
+// input: the form filled in, before Save
+// expect: the legal text's statement reads "Becomes public: the register entry, always, in the instance repository alice/agent-m. Content, public in the instance repository: the official text the fetch workflow downloads from the EU's publication repository after Save."; with the restricted licence it names the register entry and says the fetch stores no text in the public instance; the documents route still reads "Becomes public: the register entry, always, in the instance repository alice/agent-m. Content, public in the instance repository: a.md."
+test("library — before an EU legal text is saved, the statement names the official text the fetch stores in the public instance", async (t) => {
+  const b = browser(t);
+  const page = await b.page();
+  await register(page, "legal-text");
+  await put(one(page, "library-legal-address"), "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689");
+  const form = await describe(page, { id: "SRC-ai-act-3", title: "AI Act, third", authority: "normative", licence: "may be republished — EU law" });
+  const statement = () => one(page, "library-public").textContent;
+  assert.equal(statement(), "Becomes public: the register entry, always, in the instance repository alice/agent-m. Content, public in the instance repository: the official text the fetch workflow downloads from the EU's publication repository after Save.");
+  await typeInto(form, "licence", "restricted — terms");
+  assert.match(statement(), /^Becomes public: the register entry, always, in the instance repository alice\/agent-m\./);
+  assert.match(statement(), /official text/);
+  assert.doesNotMatch(statement(), /Content, public in the instance repository/, "a restricted text is not stated as public");
+
+  const c = browser(t);
+  const other = await c.page();
+  await register(other, "documents");
+  await chooseFiles(other, [fileOf("a.md", "# A\n")]);
+  await describe(other, { id: "SRC-x", title: "X", authority: "advisory", licence: "may be republished — CC BY 4.0" });
+  assert.equal(one(other, "library-public").textContent, "Becomes public: the register entry, always, in the instance repository alice/agent-m. Content, public in the instance repository: a.md.", "counter-proof: the documents route's statement is unchanged");
+});
+
+// The line after an entry's front matter, where its title line stands.
+const titleLineOf = (text) => text.split("\n")[text.split("\n").indexOf("---", 1) + 1];
+
+// TST-1363001 · level: unit · module: MOD-settings-pages
+// guards: EVERY ARTIFACT HAS AN IDENTIFIER; UC-004
+// given: the register of this file, whose entry SRC-eu-ai-act has the title line `# SRC-eu-ai-act EU AI Act` of the source schema (known positive of the reading); a registration by each route — an EU legal text, a standard with a file only hashed, documents, a repository —, the form's id and title typed after the route's own part; and documents whose title is typed, then the files chosen, which builds the form again, then the title typed anew
+// input: Save for each
+// expect: the entry committed to the instance has, on the line after its front matter, `# SRC-ai-act-2 AI Act, again`, `# SRC-iso-26262 ISO 26262`, `# SRC-handbook Handbook`, `# SRC-guidelines Guidelines`, and read with the entry's schema the title `<id> <title>`; the title typed anew gives `# SRC-renamed Renamed handbook`, and the title typed before, `Handbook, first title`, stands nowhere in that entry; counter-proof: an entry written with the bare line `#` fails this test
+test("library — the entry the page writes has the title line `# <id> <title>` of the source schema, on every route", async (t) => {
+  slowDigest(t, 20);
+  const known = SOURCES["docs/sources/SRC-eu-ai-act.md"];
+  assert.equal(titleLineOf(known), "# SRC-eu-ai-act EU AI Act", "known positive: the register's own entry");
+  assert.equal(readDocument(sourceSchemas().entry, "docs/sources/SRC-eu-ai-act.md", known).title, "SRC-eu-ai-act EU AI Act", "known positive: read as its title");
+  const written = (b, id) => instanceFiles(b).find((file) => file.path === `docs/sources/${id}.md`).text;
+  const titled = (b, id, title) => {
+    assert.equal(titleLineOf(written(b, id)), `# ${id} ${title}`, `${id}: the title line`);
+    assert.equal(entryOfCommit(b, id).title, `${id} ${title}`, `${id}: read as its title`);
+  };
+
+  const legal = browser(t);
+  let page = await legal.page();
+  await register(page, "legal-text");
+  await put(one(page, "library-legal-address"), "https://eur-lex.europa.eu/eli/reg/2024/1689/oj");
+  await describe(page, { id: "SRC-ai-act-2", title: "AI Act, again", authority: "normative", licence: "may be republished — EU law" });
+  await click(saveOf(one(page, "library-form-box")));
+  await until(() => legal.commits.length === 1, "the legal text's commit");
+  titled(legal, "SRC-ai-act-2", "AI Act, again");
+
+  const standard = browser(t);
+  page = await standard.page();
+  await register(page, "standard");
+  await put(one(page, "library-standard-designation"), "ISO 26262:2018");
+  await chooseFiles(page, [fileOf("iso-26262.pdf", "the publisher's bytes")]);
+  await tickHashed(page);
+  await put(one(page, "library-file-kept-at"), "cabinet 3, shelf B");
+  await describe(page, { id: "SRC-iso-26262", title: "ISO 26262", authority: "normative" });
+  await click(saveOf(one(page, "library-form-box")));
+  await until(() => standard.commits.length === 1, "the standard's commit");
+  titled(standard, "SRC-iso-26262", "ISO 26262");
+
+  const documents = browser(t);
+  page = await documents.page();
+  await register(page, "documents");
+  await chooseFiles(page, SELECTED);
+  await describe(page, { id: "SRC-handbook", title: "Handbook", authority: "advisory", licence: "may be republished — CC BY 4.0" });
+  await click(saveOf(one(page, "library-form-box")));
+  await until(() => documents.commits.length === 1, "the documents' commit");
+  titled(documents, "SRC-handbook", "Handbook");
+
+  const repository = browser(t);
+  writeSetting(repository.store, "github-token:alice/restricted-content", { value: "github_pat_named", name: "named", expires: "2027-01-01" });
+  page = await repository.page();
+  await register(page, "repository");
+  await put(one(page, "library-repository-address"), NAMED);
+  await describe(page, { id: "SRC-guidelines", title: "Guidelines", authority: "advisory", licence: "may be republished — MIT" });
+  await click(saveOf(one(page, "library-form-box")));
+  await until(() => repository.commits.length === 1, "the repository's commit");
+  titled(repository, "SRC-guidelines", "Guidelines");
+
+  const renamed = browser(t);
+  page = await renamed.page();
+  await register(page, "documents");
+  await describe(page, { id: "SRC-renamed", title: "Handbook, first title", authority: "advisory", licence: "may be republished — CC BY 4.0" });
+  await chooseFiles(page, SELECTED);
+  await describe(page, { title: "Renamed handbook" });
+  await click(saveOf(one(page, "library-form-box")));
+  await until(() => renamed.commits.length === 1, "the renamed documents' commit");
+  titled(renamed, "SRC-renamed", "Renamed handbook");
+  assert.equal(written(renamed, "SRC-renamed").includes("Handbook, first title"), false, "the title typed before stands nowhere in the entry");
 });
 
 // TST-472761 · level: unit · module: MOD-settings-pages

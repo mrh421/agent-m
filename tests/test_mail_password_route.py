@@ -88,7 +88,7 @@ def result(case: dict) -> dict:
 
 
 class TestMailPasswordRoute(unittest.TestCase):
-    # TST-532003 - level: release - module: system
+    # TST-532003 · level: release · module: system
     # guards: THE MAILBOX PASSWORD LEAVES THE BROWSER ONLY TO THE BRIDGE
     # given: the Markdown cases, each with two stored Bridges and an IMAP connection naming one of them
     # input: each connection tested through MOD-mail-routes with the selected MOD-bridge-client Bridge
@@ -98,7 +98,7 @@ class TestMailPasswordRoute(unittest.TestCase):
             with self.subTest(case=loaded["name"]):
                 self.assertEqual(result(loaded["case"]), loaded["case"]["expected"])
 
-    # TST-532004 - level: release - module: system
+    # TST-532004 · level: release · module: system
     # guards: THE MAILBOX PASSWORD LEAVES THE BROWSER ONLY TO THE BRIDGE
     # given: the loaded password-route cases
     # input: their expected traces

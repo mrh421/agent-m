@@ -23,18 +23,20 @@ const REPO = `GET /repos/${INSTANCE_REPO}`, COMMIT = `GET /repos/${INSTANCE_REPO
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: a product on GitHub with the links file docs/sources.md; an instance alice/agent-m whose register docs/sources/ holds SRC-alice and SRC-bob; the reviewer's token is stored
 // input: open the SPEC-entry page of entry 07 of the product
-// expect: the instance's register is read in one request of GitHub's batch API that names its two files (docs/sources/SRC-alice.md and docs/sources/SRC-bob.md) and no file of the instance is read on its own; the instance receives 4 requests in all: its repository, its default branch's commit and its tree once each (the one snapshot serves the person's account and the register) and the 1 batch
+// expect: the instance's register is read in one request of GitHub's batch API that names its two files (docs/sources/SRC-alice.md and docs/sources/SRC-bob.md) and no file of the instance is read on its own; the instance receives 5 requests in all: its repository with greenToMerge's GraphQL request beside it, which names no file (ITM-1170), its default branch's commit and its tree once each (the one snapshot serves the person's account and the register) and the 1 batch
 test("TST-844201: a product's entry page reads the instance's register in one batch with a token", async () => {
   const product = fakeGitHub(productWithLinks(10)), instance = fakeGitHub(instanceFiles(), { repo: INSTANCE_REPO });
   await openPage(product, { id: ENTRY_ID }, { instance });
 
-  assert.deepEqual(instance.namedPerQuery(), [2]);
-  assert.deepEqual(instance.graphqlRequests()[0].body.query.match(/docs\/sources\/SRC-[a-z]+\.md/g).sort(), REGISTER_PATHS);
+  // ITM-1170: the first query, naming no file, is greenToMerge's beside the instance's information.
+  assert.deepEqual(instance.namedPerQuery(), [0, 2]);
+  assert.deepEqual(instance.graphqlRequests()[1].body.query.match(/docs\/sources\/SRC-[a-z]+\.md/g).sort(), REGISTER_PATHS);
   assert.deepEqual(instance.contentPaths(), []);
-  assert.deepEqual(asked(instance), [COMMIT, REPO, TREE, "POST /graphql"].sort());
-  assert.equal(instance.requests.length, 4);
-  // The graph the workflow "main changed" stored for the product's commit is read by one request of its own (MOD-trace-graph's storedGraph); it is no file of the product.
-  assert.deepEqual(product.contentPaths().filter((path) => !/^[0-9a-f]{40}\.json\.gz$/.test(path)), [], "the product's own files are read in batches too");
+  assert.deepEqual(asked(instance), [COMMIT, REPO, TREE, "POST /graphql", "POST /graphql"].sort());
+  assert.equal(instance.requests.length, 5);
+  // The graph the workflow "main changed" stored for the product's commit is read by one request of its own (MOD-trace-graph's storedGraph), and so are the overview of the commit
+  // and latest.json of the branch overview-cache, from which the other proposals on the entry's section come (MOD-progress-measures' waitingQueues); none is a file of the product.
+  assert.deepEqual(product.contentPaths().filter((path) => !/^[0-9a-f]{40}(\.references)?\.json(\.gz)?$/.test(path) && path !== "latest.json"), [], "the product's own files are read in batches too");
 });
 
 // TST-844202 · level: system · module: MOD-review-pages
@@ -58,14 +60,15 @@ test("TST-844202: without a token the instance's register is read file by file f
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; THE PERSON WHO PROMPTS IS A SOURCE
 // given: the same product and instance with the reviewer's token, on a GitHub whose /graphql answers 404 for the instance (a server that serves none)
 // input: open the SPEC-entry page of entry 07, then ask the route for its subject and for the parameters of a message
-// expect: the batch is tried once (1 request to the instance's /graphql, which names the two register files), then each register file is read on its own (2 GETs of file contents, the two register files); the subject's parameters still name the person's own source SRC-alice
+// expect: the batch is tried once (1 request to the instance's /graphql, which names the two register files, after greenToMerge's, which the 404 makes null — ITM-1170), then each register file is read on its own (2 GETs of file contents, the two register files); the subject's parameters still name the person's own source SRC-alice
 test("TST-844203: when the instance serves no batch, its register is read file by file and the person's source is still found", async () => {
   const none = () => new Response(JSON.stringify({ message: "Not Found" }), { status: 404, headers: { "Content-Type": "application/json" } });
   const product = fakeGitHub(productWithLinks(10)), instance = fakeGitHub(instanceFiles(), { repo: INSTANCE_REPO, graphql: none });
   await openPage(product, { id: ENTRY_ID }, { instance });
 
-  assert.equal(instance.graphqlRequests().length, 1);
-  assert.deepEqual(instance.graphqlRequests()[0].body.query.match(/docs\/sources\/SRC-[a-z]+\.md/g).sort(), REGISTER_PATHS);
+  // ITM-1170: the first request to /graphql is greenToMerge's, which the 404 makes null.
+  assert.equal(instance.graphqlRequests().length, 2);
+  assert.deepEqual(instance.graphqlRequests()[1].body.query.match(/docs\/sources\/SRC-[a-z]+\.md/g).sort(), REGISTER_PATHS);
   assert.deepEqual(instance.contentPaths().sort(), REGISTER_PATHS);
   assert.equal(route.subject({ id: ENTRY_ID }, lastContext()).paramsFor({}).source, PERSON_SOURCE);
 });
@@ -74,25 +77,25 @@ test("TST-844203: when the instance serves no batch, its register is read file b
 // guards: THE PERSON WHO PROMPTS IS A SOURCE
 // given: the product, whose links file links SRC-alice, and the instance alice/agent-m, whose register holds the entry SRC-alice of the account github.com/alice, the owner of the instance; the reviewer's token is stored
 // input: open the SPEC-entry page of entry 07, then ask the route for the parameters of a message
-// expect: the parameters carry the person's own source "SRC-alice", found in the register that was read in one batch
+// expect: the parameters carry the person's own source "SRC-alice", found in the register that was read in one batch (after greenToMerge's GraphQL request, which names no file — ITM-1170)
 test("TST-844204: with the author's entry in the register, the subject carries the person's own source", async () => {
   const product = fakeGitHub(productWithLinks(10)), instance = fakeGitHub(instanceFiles(), { repo: INSTANCE_REPO });
   await openPage(product, { id: ENTRY_ID }, { instance });
 
   assert.equal(route.subject({ id: ENTRY_ID }, lastContext()).paramsFor({}).source, "SRC-alice");
-  assert.deepEqual(instance.namedPerQuery(), [2]);
+  assert.deepEqual(instance.namedPerQuery(), [0, 2]);
 });
 
 // TST-844205 · level: system · module: MOD-review-pages
 // guards: THE PERSON WHO PROMPTS IS A SOURCE; A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the same product, and an instance whose register holds only SRC-bob, not the entry of its author github.com/alice; the reviewer's token is stored
 // input: open the SPEC-entry page of entry 07, then ask the route for the parameters of a message
-// expect: the register is read in one batch that names its one file (docs/sources/SRC-bob.md); the parameters are given without throwing and hold no `source` key — a kind that needs one refuses by its own precondition (MOD-prompt-bar, MOD-review-pages)
+// expect: the register is read in one batch that names its one file (docs/sources/SRC-bob.md), after greenToMerge's GraphQL request, which names none (ITM-1170); the parameters are given without throwing and hold no `source` key — a kind that needs one refuses by its own precondition (MOD-prompt-bar, MOD-review-pages)
 test("TST-844205: with no entry of the author in the register, the batch names the one file and the parameters hold no source", async () => {
   const product = fakeGitHub(productWithLinks(10)), instance = fakeGitHub(instanceFiles({ withAuthor: false }), { repo: INSTANCE_REPO });
   await openPage(product, { id: ENTRY_ID }, { instance });
 
-  assert.deepEqual(instance.namedPerQuery(), [1]);
+  assert.deepEqual(instance.namedPerQuery(), [0, 1]);
   assert.deepEqual(instance.contentPaths(), []);
   assert.equal(Object.hasOwn(route.subject({ id: ENTRY_ID }, lastContext()).paramsFor({}), "source"), false, "a missing source is no `source` key");
 });

@@ -33,6 +33,8 @@ const open = (text) => {
   return { target, editor };
 };
 
+// TST-931001 · level: unit · module: MOD-markdown-render
+// guards: THE SITE SERVES A SCREEN READER
 // given: an editor opened on "# Title\n\nText.\n"
 // input: the element with the class preview
 // expect: exactly one is drawn (the known positive), and its tabindex attribute is the string "0"
@@ -43,6 +45,8 @@ test("TST-931001: the preview of an opened editor carries tabindex 0", () => {
   assert.equal(previews[0].getAttribute("tabindex"), "0");
 });
 
+// TST-931002 · level: unit · module: MOD-markdown-render
+// guards: THE SITE SERVES A SCREEN READER
 // given: the same editor, whose text a person changed to "# Other\n\nMore text.\n" (the preview is rendered again on every input)
 // input: the element with the class preview, after the input event
 // expect: it is still the one preview, its tabindex is still the string "0", and it shows the new text
@@ -57,6 +61,8 @@ test("TST-931002: the preview keeps tabindex 0 after the text changed and the pr
   assert.equal(previews[0].textContent.includes("More text."), true);
 });
 
+// TST-931003 · level: unit · module: MOD-markdown-render
+// guards: THE SITE SERVES A SCREEN READER
 // given: the same editor, whose draft a participant returned (Editor.showDraft puts it into the text and renders the preview again)
 // input: editor.showDraft("# Draft\n\nDrafted.\n", "# Title\n\nText.\n"), then the element with the class preview
 // expect: its tabindex is the string "0" and it shows the draft

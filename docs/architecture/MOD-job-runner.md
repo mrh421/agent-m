@@ -59,6 +59,8 @@ provides:
   - JobResult
   - WriteOutcome
   - registerStrategies
+  - registerLater
+  - registeredAll
   - prepareJob
   - runJob
   - failedBecause
@@ -292,15 +294,21 @@ ONLY WHEN RECORDING IS ON`).
   strategy's name in `strategy`, since an error's own `name` is its type —, and then adds none of them; the same strategy
   handed again, by any owner, stays registered under its first owner. A program registers each owner once, before its
   first job.
+- `registerLater(register: () -> Promise<void>) -> void` — a registration a program hands in now, which the runner makes
+  before it first looks a strategy up, so that a page imports the strategies' modules only for a job.
+- `registeredAll() -> Promise<void>` — makes every registration handed to `registerLater` that is not made yet, each once,
+  in the order handed; `prepareJob`, `runJob`, `writeResult` and the offer of tools call it first.
 - `estimate(text: string) -> number` — a text's size in tokens as the runner estimates it: its characters divided by
   three, rounded up; the size prepareJob gives each part, and the one MOD-endpoint-calls' execution loop bounds its tool
   results by.
 - `prepareJob(kind: string, context: JobContext, choice: { drafter: Participant | null, reviewers: Participant[], limit?:
-  number }) -> Promise<Prepared>` — sends nothing. It reads the kind, evaluates its preconditions, reads Agent M's
+  number, selfReview?: boolean }) -> Promise<Prepared>` — sends nothing. It reads the kind, evaluates its preconditions, reads Agent M's
   `AGENTS.md` once from the instance's snapshot as the job's `rules`, builds the parts from its recipes, estimates their
   sizes — the `rules` counted in every destination's size —, and checks each destination with MOD-participant-list's `eligible`: the
   capabilities the kind needs, the places every part's sources and the mailbox allow, the context against the size, and
-  for a reviewer or checker that it `differs` from the drafter and, for checkers, from each other. Nothing is truncated:
+  for a reviewer or checker that it `differs` from the drafter and, for checkers, from each other — except with
+  `selfReview`, which only MOD-prompt-bar sets, for a change described in the prompt bar: `reviewers` is then the drafter
+  alone, and it is not asked to differ (`NO REVIEWER IS THE DRAFTER`). Nothing is truncated:
   what does not fit is named in `notFitting`, with how many requirements and use cases each destination holds and how many of
   them fit (`NO REQUIREMENT IS LEFT OUT OF THE CONTEXT SILENTLY`, `NOTHING IS LEFT OUT
   OF AN ARCHITECTURE PROMPT SILENTLY`, `NO USE CASE IS LEFT OUT OF A PROMPT SILENTLY`). The limit is fixed here, before
@@ -321,7 +329,8 @@ ONLY WHEN RECORDING IS ON`).
   finding is left, and `not checked` when a reviewer's answer cannot be read —, reads the answer by the output schema —
   an answer that cannot be read is a
   finding of the loop, and if it still cannot be read after the last round the result is `unusable` —, runs the kind's
-  checks and then its reviewing participants, whose findings are warnings
+  checks and then, only for a draft the checks find complete — one in which no check found `ONE DECISION STATES THE WHOLE
+  ARCHITECTURE` (`AN ARCHITECTURE IS CHECKED WHEN IT IS COMPLETE`) —, its reviewing participants, whose findings are warnings
   whatever they say (`A REVIEWER'S FINDING IS A WARNING`); an answer of a reviewer that cannot be read is a check not done,
   asked again within the limit, and the result is `not checked` if it never can be read. Findings whose rule the kind
   leaves to a person go to `forPerson` and are never sent back (`WHAT A PERSON DECIDES IS NOT SENT BACK`); errors and

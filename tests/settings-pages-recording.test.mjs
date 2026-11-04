@@ -169,9 +169,7 @@ test("the line shows on only for the switch file with recording: on, and off for
 // guards: SWITCHING CONVERSATION RECORDING ON STATES WHAT FOLLOWS; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; A FORM OPENS WITH ITS FIRST FIELD FOCUSED
 // given: an instance repository without a switch file, whose server reports it public
 // input: the person presses Switch on; presses Save before ticking I have read this; ticks it; a script presses Save (a click that is not trusted); the person presses Save
-// expect: after Switch on the notice is shown with I have read this focused and Save disabled, and nothing is written; Save before the tick, and the script's Save, write nothing;
-//   the person's Save after the tick writes one commit on main at the head that was read, of the one file docs/conversation-recording.md with exactly
-//   "---\nrecording: on\n---\n# Recording of conversations\n"; the line then states "Recording conversations is on.", shows Switch off and no longer shows the notice
+// expect: after Switch on the notice is shown with I have read this focused and Save disabled, and nothing is written; Save before the tick, and the script's Save, write nothing; the person's Save after the tick writes one commit on main at the head that was read, of the one file docs/conversation-recording.md with exactly "---\nrecording: on\n---\n# Recording of conversations\n"; the line then states "Recording conversations is on.", shows Switch off and no longer shows the notice
 test("Switch on shows the notice and saves nothing; Save works only after I have read this and on a person's click", async () => {
   const page = await open();
   const notice = one(page.line, "settings-recording-notice");
@@ -205,9 +203,7 @@ test("Switch on shows the notice and saves nothing; Save works only after I have
 // guards: UC-042; SWITCHING CONVERSATION RECORDING ON STATES WHAT FOLLOWS
 // given: an instance repository without a switch file
 // input: the person presses Switch on
-// expect: the notice says, in its own words, that every message of a conversation in the prompt bar, the person's and the participant's, will be committed to the repository of the
-//   page the conversation is held on, under docs/conversations/; that it stays in that repository's history; and that for each repository the server reports as public the
-//   conversations held on its pages will be published
+// expect: the notice says, in its own words, that every message of a conversation in the prompt bar, the person's and the participant's, will be committed to the repository of the page the conversation is held on, under docs/conversations/; that it stays in that repository's history; and that for each repository the server reports as public the conversations held on its pages will be published
 test("the notice states the three statements of UC-042 step 3", async () => {
   const page = await open();
   await switchOn(page);
@@ -263,9 +259,7 @@ test("with no repository reported as public the notice says so and names none", 
 // guards: A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; UC-042
 // given: an instance repository whose switch file holds `recording: on`, and one product https://github.com/fixture/pub, public
 // input: a script presses Switch off (a click that is not trusted); the person presses Switch off
-// expect: the script's click writes nothing; the person's click writes at once one commit of the one file docs/conversation-recording.md with exactly
-//   "---\nrecording: off\n---\n# Recording of conversations\n"; the notice and I have read this are not shown and no product's server was asked; the line states
-//   "Recording conversations is off." and says "Records already written stay in the history of the repositories they were written to."; Switch on is shown again
+// expect: the script's click writes nothing; the person's click writes at once one commit of the one file docs/conversation-recording.md with exactly "---\nrecording: off\n---\n# Recording of conversations\n"; the notice and I have read this are not shown and no product's server was asked; the line states "Recording conversations is off." and says "Records already written stay in the history of the repositories they were written to."; Switch on is shown again
 test("Switch off saves at once without a notice and says that written records stay", async () => {
   installServers({ pub: "public" });
   const page = await open({ host: instanceHost({ files: { [SWITCH]: file("recording: on\n") } }), products: ["https://github.com/fixture/pub"] });
@@ -301,8 +295,7 @@ test("a switch file created meanwhile refuses the save and nothing is written", 
 // guards: EVERY STEP EXPLAINS ITSELF; UC-042
 // given: an instance repository without a switch file
 // input: the Settings page is rendered
-// expect: the line holds one folded explanation — a details of class explain — with the summary "What is this?". The fixture DOM of this file renders no Markdown, so the
-//   text of the topic is checked on the line in tests/site-frame-settings-subject.test.mjs
+// expect: the line holds one folded explanation — a details of class explain — with the summary "What is this?". The fixture DOM of this file renders no Markdown, so the text of the topic is checked on the line in tests/site-frame-settings-subject.test.mjs
 test("the line has its folded explanation", async () => {
   const page = await open();
   const folded = descendants(page.line, (node) => node.localName === "details" && node.className.split(" ").includes("explain"));
@@ -336,8 +329,7 @@ test("an instance that is not connected or cannot be read gives a line without a
 // guards: UC-042; UC-049
 // given: an instance repository whose switch file holds `recording: on`
 // input: the Settings page is rendered and left on its first tab, General; the person then opens the tab Repositories
-// expect: while the first tab is shown the page asks the instance repository for no file at all and the line states "Recording conversations is not read yet."; once the tab Repositories is opened the
-//   switch file docs/conversation-recording.md is read exactly once and the line states "Recording conversations is on."
+// expect: while the first tab is shown the page asks the instance repository for no file at all and the line states "Recording conversations is not read yet."; once the tab Repositories is opened the switch file docs/conversation-recording.md is read exactly once and the line states "Recording conversations is on."
 test("the switch is read when the tab Repositories is shown, not when the page is rendered", async () => {
   const host = instanceHost({ files: { [SWITCH]: file("recording: on\n") } });
   const store = newStore();

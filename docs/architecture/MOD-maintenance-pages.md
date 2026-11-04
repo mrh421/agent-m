@@ -22,6 +22,7 @@ uses:
   - MOD-repository-hosts.readSnapshot
   - MOD-repository-hosts.repositoryInfo
   - MOD-repository-hosts.listIssues
+  - MOD-repository-hosts.readIssue
   - MOD-repository-hosts.setIssueState
   - MOD-repository-hosts.setIssueLabels
   - MOD-repository-hosts.commentOnIssue
@@ -99,7 +100,9 @@ It runs in a browser, loaded by `docs/index.html` through MOD-site-frame.
 
 ## Parts
 
-- `index.mjs` — the interface: `view`.
+- `index.mjs` — the interface: `view`, the routes of routes.mjs with the strategies of the view's kinds.
+- `routes.mjs` — the routes' heads, the view module the frame loads at start; it imports index.mjs, and with it the
+  strategies, only when a job is prepared (`loadStrategies`).
 - `issues.mjs` — issues, their analysis, class, fix, change and move into the backlog.
 - `mail.mjs` — reading mail into issues.
 - `replies.mjs` — replies to answer, answers received, drafts, sending, asking a reporter.
@@ -118,13 +121,15 @@ person reviews it. Its formats are those of the modules it uses.
     fixing participant — one that can run tests — and its run panel, the job queued on its route; and, before its pull request is merged, for each existing test whose expected result the fix changes, the requirement it now checks correctly with the old and the new expectation side by side (UC-012 5a); for a change, the
     change of requirements drafted against the existing ones with the issue as its origin, run attended, its candidates
     shown by class beside the requirements they refer to and every conflict decided by the person, then *Save*, which
-    writes them as a change queue naming the issue — the job of `change-requirements` given the issue's number as its
+    writes them as queue entries naming the issue — the job of `change-requirements` given the issue's number as its
     parameter `issue` and the person's own source as its parameter `source`, which `personSource` names for
     `personAccount`'s account among the product's links and the instance's register, or, without one, the steps its
     precondition names —; *Move to backlog* with the item prefilled — its fields checked in a
     form while the person edits them —; *Add*, which writes the item and the issue's comment and label with
     `moveToBacklog`, or names the comment to copy
-    when the token may not comment; closing an issue with links once its pull request is merged.
+    when the token may not comment; closing an issue with links once its pull request is merged. The list reads the open
+    issues without their comments (`listIssues` with `comments: false`); `issue/<number>` and `replies/<issue>` read
+    their one issue with `readIssue`.
   - `mail` — *Read mailbox*; the mails no issue lists and nobody marked *not an issue*, with sender, subject and date in
     this browser only; the participant for the proposals among those at places the mailbox allows, a place outside the
     EU named as not compliant, and the three checkers; the run panel and *Propose*; per mail, the mail in full beside the
@@ -169,7 +174,8 @@ instance's participants and source register.
   MOD-bridge-client.bridgeAt — a handle for each Bridge, handed to the runtimes.
 - MOD-repository-hosts.parseAddress, MOD-repository-hosts.connect — the hosts of the instance's products, whose issues a
   mail may concern; MOD-repository-hosts.readSnapshot, MOD-repository-hosts.repositoryInfo,
-  MOD-repository-hosts.listIssues — issues and what a job's context needs; MOD-repository-hosts.setIssueState —
+  MOD-repository-hosts.listIssues — issues and what a job's context needs; MOD-repository-hosts.readIssue — the one
+  issue the route `issue` and a reply show; MOD-repository-hosts.setIssueState —
   *Close and reply*, *Reopen*; MOD-repository-hosts.setIssueLabels — the label `waiting-for-reporter` removed;
   MOD-repository-hosts.commentOnIssue — a note offered again; MOD-repository-hosts.webLinks — an issue's page.
 - MOD-job-ledger.recordsNewestFirst, MOD-runtimes.jobTrail — an issue's fix: the newest `fix-bug` job whose `works_on`
@@ -196,8 +202,8 @@ instance's participants and source register.
 - MOD-issue-handling.confirmClass, MOD-issue-handling.backlogItemFrom, MOD-issue-handling.moveToBacklog,
   MOD-issue-handling.closeWithLinks — every decision on an issue.
 - MOD-work-plans.backlogFindings — the item's marks while the person edits it; MOD-spec-changes.queues — the change's
-  queues, those whose `issue` names the number of the issue shown and the address of the product the frame has chosen;
-  MOD-spec-changes.entryView — the requirements each of their entries changes or adds, its `impact`, given to
+  entries, those whose `issue` names the number of the issue shown and the address of the product the frame has chosen;
+  MOD-spec-changes.entryView — the requirements each of them changes or adds, its `impact`, given to
   `backlogItemFrom` as `changed`, since an entry's anchor is the heading of a whole section, not a requirement's name.
 - MOD-source-register.sourceSchemas, MOD-source-register.personSource, MOD-source-register.personAccount — the product's
   links file and the instance's register, and in them the person's own source, the parameter `source` of a change.

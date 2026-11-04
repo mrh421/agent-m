@@ -14,6 +14,7 @@ provides:
   - isTestFile
   - isNamedTestFile
   - testDeclarations
+  - unidentifiedDeclarations
   - testFindings
   - testHeader
 ---
@@ -81,10 +82,10 @@ language; a line that begins with a letter, a digit or a quote is no header line
 
 ## Interfaces
 
-- `TestDeclaration` — `{ id: string, title: string | null, level: "unit" | "component" | "system" | "release" | "user", module: string | null,
+- `TestDeclaration` — `{ id: string | null, title: string | null, level: "unit" | "component" | "system" | "release" | "user", module: string | null,
   guards: string[], given: string | null, input: string | null, expect: string | null, runs: number | null, phrasings:
   number | null, paid: string | null, path: string, line: number }`; `module` is a module's identifier or the word
-  `system`.
+  `system`; `id` is `null` only in a declaration `unidentifiedDeclarations` gives.
 - `isTestFile(path: string) -> boolean` — whether a path is a test file as defined under Data.
 - `isNamedTestFile(path: string) -> boolean` — whether a path is named as tests are named in its language, as defined
   under Data, wherever it lies: the test files a test runner runs, as against a helper, a fixture or a Markdown file of
@@ -92,6 +93,10 @@ language; a line that begins with a letter, a digit or a quote is no header line
 - `testDeclarations(path: string, text: string) -> TestDeclaration[]` — every declaration in a test file, in order. It
   never throws on content: a declaration missing a key is read with that key `null`, and `testFindings` names it. A file
   with no declaration yields none; the caller decides whether that is a gap.
+- `unidentifiedDeclarations(path: string, text: string) -> TestDeclaration[]` — every block of comment lines in a test
+  file that is written as a declaration but whose first line names no identifier — in its place, `key: value` parts with
+  keys of the declaration, such as `// level: unit · module: MOD-text-tools` —, in order, each read as a declaration is
+  read, with `id` `null`, its `path` and its `line`; `testDeclarations` gives none of them. It never throws on content.
 - `testFindings(declaration: TestDeclaration) -> Finding[]` — an error under `EVERY TEST HAS ONE LEVEL` for a missing or
   unknown level; under `A TEST STATES ITS EXPECTED RESULT BEFORE IT RUNS` for a missing precondition, input or expected
   result; under `EVERY ARTIFACT NAMES ITS ORIGIN` for a test that guards nothing or names no module, or a test of level

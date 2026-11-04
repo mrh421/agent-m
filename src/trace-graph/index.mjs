@@ -1,6 +1,6 @@
 // MOD-trace-graph — the trace graph and everything derived from it (docs/architecture/MOD-trace-graph.md): its
-// interface: traceGraph, graphFindings, tracesTo, requirementImpact, architectureImpact, coverageGaps, moduleOrder, moduleRows
-// and selfSufficiencyFindings.
+// interface: traceGraph, graphFindings, tracesTo, requirementImpact, architectureImpact, coverageGaps, compareGraphs, moduleOrder,
+// moduleRows and selfSufficiencyFindings.
 // traceGraph reads, of its Data, SPEC.md through MOD-spec-document, the test files through MOD-test-document, the use cases, the
 // architecture decisions, the module files, the plan steps and the backlog items through MOD-documents, and the group files through
 // MOD-group-document, so that its graph holds every requirement, test, document and group with the edges it states and the facts
@@ -12,6 +12,7 @@
 // supplied before/after texts. traceGraph also reads the code files, a node of the kind `code` for each by its path, and, for
 // JavaScript, TypeScript, Python and CSS, their imports (code.mjs): an `imports` edge from the code node to each other module whose
 // folder holds the path imported. moduleRows gives one row per module and the gaps of UC-025.
+// compareGraphs gives the requirements added, changed and removed between two versions' graphs, and the coverage gained and lost (UC-020 1b).
 //
 // Module: MOD-trace-graph
 //
@@ -127,6 +128,6 @@
  */
 
 export { latestGraph, storedGraph, traceGraph } from "./build.mjs";
-export { graphFromText, graphText, publishGraph, storedImpacts } from "./stored.mjs";
+export { graphFromText, graphText, publishGraph, storedGaps, storedImpacts, storedReferences } from "./stored.mjs";
 export { graphFindings, selfSufficiencyFindings } from "./checks.mjs";
-export { architectureImpact, coverageGaps, moduleOrder, moduleRows, requirementImpact, systemDecisions, tracesTo } from "./derive.mjs";
+export { architectureImpact, compareGraphs, coverageGaps, moduleOrder, moduleRows, requirementImpact, systemDecisions, tracesTo } from "./derive.mjs";

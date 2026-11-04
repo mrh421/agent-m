@@ -2,7 +2,7 @@
 // as THE SITE SERVES A SCREEN READER asks of every page: "every control has an accessible name" and a page that meets WCAG 2.2 at level AA, whose rule `label` asks every
 // form control for a name and whose rule `scrollable-region-focusable` asks a box that scrolls to be reachable by keyboard. The accepted text of
 // docs/architecture/MOD-review-pages.md states the list for `<k>`: "those files, each with its status and a tick", and the difference for `<k>/<id>`: "in a box of its own
-// that scrolls". UC-008 3d gives each use case not accepted a tick: "Each one read gets a tick; Accept ticked writes one commit with one record per ticked file".
+// that scrolls". UC-008 3d gives each use case not accepted a tick: "Each use case not accepted has an empty tick box on the list, read or not; the reviewer ticks the ones to accept".
 // Run: node --test tests/review-pages-accessible-names.test.mjs
 //
 // Module: MOD-review-pages
@@ -88,6 +88,9 @@ function fakeHost(steps) {
   };
   return {
     async repositoryInfo() { return { defaultBranch: "main", visibility: "public", canWrite: true, archived: false, description: "" }; },
+    async readFileAt(path, shas) {
+      return new Map(shas.map((sha) => [sha, commits.get(sha)?.tree.get(path) ?? null]));
+    },
     async readSnapshot(ref) {
       if (ref === "main") return { ...snapshotAt(head), ref };
       if (commits.has(ref)) return snapshotAt(ref);
@@ -106,10 +109,9 @@ function fakeHost(steps) {
 
 // ---------------------------------------------------------------- the page
 
-async function show(name, steps, params = {}) {
+async function show(name, steps, params = {}, host = fakeHost(steps)) {
   const route = pages.view?.routes.find((candidate) => candidate.name === name);
   assert.ok(route, `the route ${name}: ${pages.error?.message}`);
-  const host = fakeHost(steps);
   const store = openStore("alice/agent-m");
   writeSetting(store, "github-token:alice/thesis-tool", TOKEN);
   const target = document.createElement("div");
@@ -137,20 +139,25 @@ const ticksOf = (root) => elements(root).filter((node) => node.localName === "in
 // TST-921001 · level: unit · module: MOD-review-pages
 // guards: THE SITE SERVES A SCREEN READER; UC-008
 // given: the use cases UC-041 and UC-044 open, UC-043 changed since acceptance; a token
-// input: the route use-case drawn as the list
+// input: the pages of UC-041, UC-043 and UC-044 drawn; the route use-case drawn as the list
 // expect: three ticks, in the rows UC-041, UC-043 and UC-044, each named by a name that holds the identifier of its row
 test("TST-921001 use-case list — each tick is named by the file it accepts", async () => {
-  assert.deepEqual(ticksOf(await show("use-case", USE_CASES)), [{ id: "UC-041", named: true }, { id: "UC-043", named: true }, { id: "UC-044", named: true }]);
+  const host = fakeHost(USE_CASES);
+  for (const id of ["UC-041", "UC-043", "UC-044"]) await show("use-case", USE_CASES, { id }, host);
+  assert.deepEqual(ticksOf(await show("use-case", USE_CASES, {}, host)), [{ id: "UC-041", named: true }, { id: "UC-043", named: true }, { id: "UC-044", named: true }]);
 });
 
 // TST-921002 · level: unit · module: MOD-review-pages
 // guards: THE SITE SERVES A SCREEN READER; UC-023
 // given: the decisions ARC-002 open and ARC-003 changed; the modules MOD-desk and MOD-queue open; a token
-// input: the route decision drawn as the list; the route module drawn as the list
+// input: the pages of ARC-002, ARC-003, MOD-desk and MOD-queue drawn; the route decision drawn as the list; the route module drawn as the list
 // expect: decisions: two ticks, in the rows ARC-002 and ARC-003; modules: two ticks, in the rows MOD-desk and MOD-queue; every tick named by a name that holds the identifier of its row
 test("TST-921002 decision and module lists — each tick is named by the file it accepts", async () => {
-  assert.deepEqual(ticksOf(await show("decision", ARCHITECTURE)), [{ id: "ARC-002", named: true }, { id: "ARC-003", named: true }]);
-  assert.deepEqual(ticksOf(await show("module", ARCHITECTURE)), [{ id: "MOD-desk", named: true }, { id: "MOD-queue", named: true }]);
+  const host = fakeHost(ARCHITECTURE);
+  for (const id of ["ARC-002", "ARC-003"]) await show("decision", ARCHITECTURE, { id }, host);
+  for (const id of ["MOD-desk", "MOD-queue"]) await show("module", ARCHITECTURE, { id }, host);
+  assert.deepEqual(ticksOf(await show("decision", ARCHITECTURE, {}, host)), [{ id: "ARC-002", named: true }, { id: "ARC-003", named: true }]);
+  assert.deepEqual(ticksOf(await show("module", ARCHITECTURE, {}, host)), [{ id: "MOD-desk", named: true }, { id: "MOD-queue", named: true }]);
 });
 
 // ---------------------------------------------------------------- the box of a difference

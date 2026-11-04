@@ -53,6 +53,8 @@ const SECRET = `# Changelog of ${GH_PATH}`, GL_SECRET = `# Changelog of ${GL_PAT
 const OTHER = "sk-not-part-of-any-layout-text-0123456789";
 
 const ghSteps = () => [
+  // ITM-1170: with the record, the read-only GraphQL request of greenToMerge, sent first.
+  { method: "POST", path: "/graphql", body: { data: { repository: { defaultBranchRef: null } } } },
   { method: "GET", path: GH_PREFIX, body: { default_branch: "main", visibility: "private", private: true, archived: false, description: "", permissions: { push: true } } },
   { method: "GET", path: `${GH_PREFIX}/commits/main`, body: { sha: HEAD, commit: { tree: { sha: TREE } } } },
   { method: "GET", path: `${GH_PREFIX}/git/trees/${HEAD}`, body: { sha: HEAD, truncated: false, tree: [] } },
@@ -103,7 +105,8 @@ async function addProduct({ web, store, steps }) {
   await turn();
   return { line: byClass(stepC, "result").at(-1)?.textContent ?? "", products: readSetting(store, "products"), seen: fake.seen };
 }
-const writesOf = (seen) => seen.filter((request) => request.method !== "GET");
+// The requests that write: every one but a GET, and but the read-only GraphQL query of greenToMerge (ITM-1170).
+const writesOf = (seen) => seen.filter((request) => request.method !== "GET" && request.path !== "/graphql");
 
 // TST-883001
 // level: unit

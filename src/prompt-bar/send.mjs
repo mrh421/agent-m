@@ -12,9 +12,10 @@
 
 import { readSetting } from "../browser-store/index.mjs";
 import { bridgeAt, settingsOf } from "../bridge-client/index.mjs";
+import { kindOf } from "../job-catalogue/index.mjs";
 import { handOverParams, prepareJob, taskRefusal } from "../job-runner/index.mjs";
 import { runOnTab, tabContext } from "../runtimes/index.mjs";
-import { readParticipants } from "./offer.mjs";
+import { BAR_KIND, readParticipants } from "./offer.mjs";
 import { readDocument } from "../documents/index.mjs";
 import { registerPaths, restrictedPlaces, sourceSchemas } from "../source-register/index.mjs";
 import { recordingOf } from "./record.mjs";
@@ -82,23 +83,25 @@ export function prepareMessage({ subject, participant, instruction, conversation
     { participant, store, instance, product });
 }
 
-/** The one kind every message of the bar runs, on every page (MOD-prompt-bar, Responsibility; UC-049 step 3). */
-export const BAR_KIND = "converse";
+export { BAR_KIND };
 
 /**
  * prepareHandOver({ handOver, subject, participant, conversation, store, instance, product }) -> Promise<Ready> — a hand-over { kind, works_on, task } prepared to run in this
  * tab as a message is (UC-049 4a.1): of its kind, its parameters the subject's paramsFor less `page`, with what MOD-job-runner's handOverParams gives for what it works on, its
- * task as `instruction`, the conversation so far, the subject's entry and refuses. Writes nothing; throws what prepareMessage throws.
+ * task as `instruction`, the conversation so far, the subject's entry and refuses. A kind with reviewers is prepared with the participant itself as its one reviewer and
+ * `selfReview` set, since the change is described in the prompt bar (NO REVIEWER IS THE DRAFTER). Writes nothing; throws what prepareMessage throws, and what kindOf throws.
  */
-export function prepareHandOver({ handOver, subject, participant, conversation, store, instance, product }) {
+export async function prepareHandOver({ handOver, subject, participant, conversation, store, instance, product }) {
+  const reviewed = (await kindOf(handOver.kind)).reviewer !== null;
   return prepareIn(handOver.kind, (snapshot) => {
     const { page: _page, ...context } = subject.paramsFor(participant);
     return { ...context, ...handOverParams(handOver.works_on, snapshot), instruction: String(handOver.task ?? ""), conversation, entry: subject.entry, refuses: subject.refuses };
-  }, { participant, store, instance, product });
+  }, { participant, store, instance, product }, reviewed ? { reviewers: [participant], selfReview: true } : { reviewers: [] });
 }
 
-// A job of `kind` prepared in this tab's context, its parameters `paramsOf(snapshot of the page's repository)`; the Ready of prepareMessage.
-async function prepareIn(kind, paramsOf, { participant, store, instance, product }) {
+// A job of `kind` prepared in this tab's context, its parameters `paramsOf(snapshot of the page's repository)`, drafted by the participant and reviewed as `review`
+// gives — by none for a message; the Ready of prepareMessage.
+async function prepareIn(kind, paramsOf, { participant, store, instance, product }, review = { reviewers: [] }) {
   const instanceSnapshot = await defaultSnapshot(instance.host);
   const page = product
     ? { address: product.address, host: product.host, snapshot: await defaultSnapshot(product.host) }
@@ -112,7 +115,7 @@ async function prepareIn(kind, paramsOf, { participant, store, instance, product
     places: { ...(await placesOf(instanceSnapshot, page.address)), mailbox: null }, gates: [], person, agentM: { version: commit, commit }, jobId: null,
   };
   // The kind's definition is the job's own: prepareJob reads it by name, and the context that runs the job carries it.
-  const prepared = await prepareJob(kind, tabContext({ kind: null, ...inputs }), { drafter: participant, reviewers: [] });
+  const prepared = await prepareJob(kind, tabContext({ kind: null, ...inputs }), { drafter: participant, ...review });
   return { prepared, context: tabContext({ kind: prepared.kind, ...inputs }), connections: connectionsOf(participant, store), participants, person, page,
     recording: await recordingOf(instanceSnapshot) };
 }

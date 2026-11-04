@@ -54,7 +54,7 @@ const NOT_READY = { artifact: "SPEC.md", line: 1, kind: "error", rule: "AN ARCHI
 const recipe = (parts) => async () => parts.map((part) => ({ ...part }));
 const STAND_INS = {
   preconditions: { "architecture-ready": async (context) => (context.params.notReady ? NOT_READY : null) },
-  recipes: { "whole-spec": recipe([SPEC_PART]), "accepted-use-cases": recipe(USE_CASES), "source-excerpt": recipe([EXCERPT]),
+  recipes: { "whole-spec": recipe([SPEC_PART]), "accepted-use-cases": recipe(USE_CASES), "whole-architecture": recipe([]), "source-excerpt": recipe([EXCERPT]),
     "spec-with-queues": recipe([SPEC_PART]), "chapters-for-architecture": recipe([CHAPTERS]),
     "chapters-for-requirements": recipe([CHAPTER_8]) },
   checks: Object.fromEntries(["document-schema", "graph-checks", "candidate-classes", "requirement-form"]
@@ -98,7 +98,7 @@ test("registerStrategies — a name registered twice is refused as DuplicateStra
       && error.owners.includes("owner-one") && error.owners.includes("owner-two"));
 });
 
-// TST-472335 · level: component · module: MOD-job-runner
+// TST-1302007 · level: component · module: MOD-job-runner
 // guards: THE CATALOGUE IS DATA
 // given: a recipe registered under a name of this file's own by one owner, as a Bridge composed in the page's process registers MOD-approvals' strategies
 // input: registerStrategies of the very same recipe under the same name by a second owner, as a view hands the same set
@@ -115,7 +115,7 @@ test("registerStrategies — the same strategy handed again by another owner is 
 
 // TST-472335 · level: component · module: MOD-job-runner
 // guards: THE PAGE NAMES WHERE IT SENDS; THE CORRECTION LOOP HAS A FIXED LIMIT
-// given: the kind derive-architecture, whose recipes are whole-spec, accepted-use-cases and chapters-for-architecture, reviewed by one participant of review-architecture, whose recipes are whole-spec, accepted-use-cases, the draft under review and chapters-for-architecture; drafter-a with 200000 tokens of context; reviewer-c, another participant with another model
+// given: the kind derive-architecture, whose recipes are whole-spec, accepted-use-cases and chapters-for-architecture, reviewed by one participant of review-architecture, whose recipes are whole-spec, accepted-use-cases, whole-architecture (which gives no part for a product without an architecture), the draft under review and chapters-for-architecture; drafter-a with 200000 tokens of context; reviewer-c, another participant with another model
 // input: prepareJob("derive-architecture", its context, { drafter: drafter-a, reviewers: [reviewer-c] }); and once more with the limit 2
 // expect: the job's parts — the SPEC, both use cases and the chapters, whole, each sized by the estimate and naming its recipe, the reviewer's being the same; two destinations: the drafter, with those parts and its prompt, and the reviewer, with review-architecture's prompt and the parts its recipes give before a draft exists, each at its place; everything fits, nothing left out, nothing blocking; the kind's limit, 5, and the caller's, 2, where it gives one
 test("prepareJob — names every destination with the parts it receives and their size, and fixes the limit before the first round", async () => {

@@ -258,15 +258,14 @@ test("traceGraph — a requirement's node keeps the items of its source as writt
 
 // TST-473145 · level: unit · module: MOD-trace-graph
 // guards: THE TRACEABILITY MATRIX IS DERIVED; UC-007; UC-019
-// given: the fixture's use case UC-001, architecture decision ARC-002 and test TST-001, none of which has a fact of its own
+// given: the fixture's use case UC-001 and architecture decision ARC-002, neither of which has a fact of its own, and test TST-001, whose fact is its level
 // input: traceGraph over the fixture repository
-// expect: the five facts of each of these nodes are null — the kinds that have none
-test("traceGraph — the nodes of the other kinds have all five facts as null", async () => {
+// expect: the five facts of UC-001 and ARC-002 are null — the kinds that have none —; TST-001's are null but its level, "unit" as its declaration names it
+test("traceGraph — the nodes of the other kinds have all five facts as null, a test's but its level", async () => {
   const graph = await traceGraph(repository());
-  for (const id of ["UC-001", "ARC-002", "TST-001"]) {
-    assert.ok(graph.nodes.has(id), `known positive: the graph holds ${id}`);
-    assert.deepEqual(facts(graph.nodes.get(id)), NO_FACTS, id);
-  }
+  for (const id of ["UC-001", "ARC-002", "TST-001"]) assert.ok(graph.nodes.has(id), `known positive: the graph holds ${id}`);
+  for (const id of ["UC-001", "ARC-002"]) assert.deepEqual(facts(graph.nodes.get(id)), NO_FACTS, id);
+  assert.deepEqual(facts(graph.nodes.get("TST-001")), { ...NO_FACTS, level: "unit" }, "TST-001");
 });
 
 // ---------------------------------------------------------------- the interface of a uses edge

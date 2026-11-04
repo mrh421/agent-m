@@ -95,7 +95,8 @@ export const holdsRole = (assignment, participant, role) => holdersOf(assignment
  * - more than one participant for a role that one participant fills, on its row (A ROLE NAMES HOW MANY FILL IT);
  * - a name the instance's list does not hold, on its row (PARTICIPANTS ARE CONFIGURED ONCE PER INSTANCE);
  * - a role that needs a person, of which no holder is a person of the list, on its row, or on the heading ## Roles where no
- *   row names it (A PROCESS MODEL ORGANISES PEOPLE AND AGENTS);
+ *   row names it, and a person of the list holding a role that an agent fills, on its row, naming the role and the person;
+ *   a role that either may fill takes both (A PROCESS MODEL ORGANISES PEOPLE AND AGENTS);
  * - a holder that lacks a capability its role needs, on its row, naming the holder, the role and the capability, decided by
  *   MOD-participant-list's `eligible` called once per capability (A ROLE NAMES THE CAPABILITIES IT NEEDS).
  * A warning: a holder, of those that declare a processing place, at a place one of `sources` does not permit, on its row,
@@ -147,6 +148,12 @@ export function roleAssignmentFindings(assignments, workflow, participants, sour
       for (const holder of row.holders.filter((name) => !names.has(name))) {
         add(row.line, ONCE_PER_INSTANCE, `the participant ${holder} is not in the instance's list docs/participants.md`,
           `name a participant of docs/participants.md, or add ${holder} there`);
+      }
+      if (role.filledBy === "agent") {
+        for (const holder of row.holders.filter((name) => persons.has(name))) {
+          add(row.line, PEOPLE_AND_AGENTS, `the role ${row.role} is filled by an agent, and the person ${holder} holds it`,
+            `assign to ${row.role} an agent of the instance's list instead of ${holder}`);
+        }
       }
     }
 

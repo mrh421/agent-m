@@ -47,8 +47,9 @@ asks again.
 ## Interfaces
 
 - `mailHandlers` — the handlers of the `mail` routes of `bridgeApi`, of MOD-bridge-http's type `BridgeHandlers`. Each
-  takes the connection — servers, ports, encryption, account, password, named folders — from the request and the
-  operation's arguments, and answers in the fields of MOD-mail-routes' `Mail`, `Draft`, `DraftRef` and `ShownMail`. Every
+  takes the connection — servers, ports, encryption, account, SMTP account and sender where named, password, named
+  folders — from the request and the operation's arguments, logs in to each server with the account MOD-mail-routes'
+  `MailConnection` gives it, builds and sends every draft from the sender it gives, the SMTP envelope included, and answers in the fields of MOD-mail-routes' `Mail`, `Draft`, `DraftRef` and `ShownMail`. Every
   operation crosses the network to the mail servers and fails with `no-encryption` naming the server when it offers
   neither implicit TLS nor STARTTLS — no login is sent to it (`THE MAIL SERVER IS REACHED ONLY OVER TLS`) —,
   `login-refused` with the server's answer, `not-found` for a named folder that does not exist, and `upstream-failed`

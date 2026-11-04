@@ -67,8 +67,7 @@ for (const site of SITES) {
   // guards: UC-018; EDITS ARE PREPARED ON THE DASHBOARD
   // given: the edit page of <site> rendered twice, the first render ending after the second; the second render's editor changed to "newer text", and a confirmation that declines
   // input: route.leave() after both renders have ended
-  // expect: it asks the newer editor: it returns false and asks "Discard unsaved changes?" once, for the newer editor holds unsaved changes (the late render's editor never changed); the
-  //   newer editor is still drawn with "newer text" in it
+  // expect: it asks the newer editor: it returns false and asks "Discard unsaved changes?" once, for the newer editor holds unsaved changes (the late render's editor never changed); the newer editor is still drawn with "newer text" in it
   test(`TST-067301 ${site.site}: two renders, the first ending last, leave the newer editor as the one leave asks`, async () => {
     await withConfirm([false], async (asked) => {
       const { route, firstTarget, secondTarget } = await twoRenders(site);

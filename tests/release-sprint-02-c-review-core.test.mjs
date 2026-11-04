@@ -206,7 +206,7 @@ test("release · gates: the current text beside a proposal is the section as it 
   assert.equal(one.createdBy, null);
   const two = await entryView(Q, 2, snapshot);
   assert.equal(two.current, null, "the SPEC holds no section 5 yet");
-  assert.equal(two.createdBy, 1);
+  assert.deepEqual(two.createdBy, { queue: Q, entry: 1 });
   const [p, t] = await specRecordFile(repo, 1, { section: await blob("## 2. Title page\n\n(a summary of the rule)\n") });
   repo.set(p, t);
   const out = await applyApprovals(repo);

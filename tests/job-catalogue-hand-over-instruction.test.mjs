@@ -25,7 +25,7 @@ const HEADING = "## The task as the person gave it";
 const nothing = async () => [];
 for (const [category, name] of [["preconditions", "rests-on-accepted"], ["preconditions", "architecture-ready"], ["recipes", "test-selection"], ["recipes", "chapters-for-tests"],
   ["recipes", "commit-and-levels"], ["recipes", "resource-pins"], ["recipes", "resource-check"], ["recipes", "source-excerpt"], ["recipes", "spec-with-queues"],
-  ["recipes", "chapters-for-requirements"], ["recipes", "chosen-requirements"], ["recipes", "use-cases"], ["recipes", "whole-spec"], ["recipes", "accepted-use-cases"],
+  ["recipes", "chapters-for-requirements"], ["recipes", "chosen-requirements"], ["recipes", "use-cases"], ["recipes", "whole-spec"], ["recipes", "accepted-use-cases"], ["recipes", "whole-architecture"],
   ["recipes", "chapters-for-architecture"], ["checks", "test-proposals"], ["steps", "due-diligence"], ["writers", "result-record"], ["writers", "queue-entries"],
   ["writers", "open-files"]]) {
   const stand = category === "preconditions" ? async () => null : category === "steps" ? async (draft) => ({ draft, findings: [] }) : nothing;
@@ -56,7 +56,7 @@ async function promptSent(kind, params) {
 // guards: UC-049; ONE DEFINITION, THREE DRIVERS
 // given: the kinds propose-tests, run-tests, check-resource, derive-requirements, derive-use-cases, derive-architecture and review-architecture of the catalogue
 // input: kindOf of each
-// expect: `instruction` is the first recipe, optional; the recipes after it are, for propose-tests test-selection and chapters-for-tests, for run-tests commit-and-levels and resource-pins, for check-resource resource-check, for derive-requirements source-excerpt, spec-with-queues and chapters-for-requirements, for derive-use-cases chosen-requirements, use-cases and chapters-for-requirements, for derive-architecture whole-spec, accepted-use-cases and chapters-for-architecture, for review-architecture whole-spec, accepted-use-cases, draft and chapters-for-architecture, none optional
+// expect: `instruction` is the first recipe, optional; the recipes after it are, for propose-tests test-selection and chapters-for-tests, for run-tests commit-and-levels and resource-pins, for check-resource resource-check, for derive-requirements source-excerpt, spec-with-queues and chapters-for-requirements, for derive-use-cases chosen-requirements, use-cases and chapters-for-requirements, for derive-architecture whole-spec, accepted-use-cases and chapters-for-architecture, for review-architecture whole-spec, accepted-use-cases, whole-architecture, draft and chapters-for-architecture, none optional
 test("kindOf — the kinds a hand-over hands on name the recipe instruction? first, then the recipes they named before", async () => {
   const expected = {
     "propose-tests": ["test-selection", "chapters-for-tests"],
@@ -65,7 +65,7 @@ test("kindOf — the kinds a hand-over hands on name the recipe instruction? fir
     "derive-requirements": ["source-excerpt", "spec-with-queues", "chapters-for-requirements"],
     "derive-use-cases": ["chosen-requirements", "use-cases", "chapters-for-requirements"],
     "derive-architecture": ["whole-spec", "accepted-use-cases", "chapters-for-architecture"],
-    "review-architecture": ["whole-spec", "accepted-use-cases", "draft", "chapters-for-architecture"],
+    "review-architecture": ["whole-spec", "accepted-use-cases", "whole-architecture", "draft", "chapters-for-architecture"],
   };
   assert.deepEqual(Object.keys(expected), KINDS);
   for (const name of KINDS) {

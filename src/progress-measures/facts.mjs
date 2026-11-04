@@ -6,9 +6,6 @@
 //
 // Module: MOD-progress-measures
 //
-// Where the default branch's snapshot has `readOn`, the facts stored for its commit (stored.mjs, `storedFacts`) are read first, in every scope: the facts the scope reads that they hold are taken from them,
-// and none of the files they come from is read; the job rows are derived from the stored records with listJobs, as from the files.
-//
 // With the scope `work` it reads what MOD-work-plans' itemStates and startable and MOD-product-process' holdsRole take. Where the
 // module file leaves a reading open, this file takes the one it names:
 //   - The default branch is the one the host's repositoryInfo names; a host that does no server operations answers NotSupported,
@@ -30,7 +27,7 @@
 import { statuses } from "../approvals/index.mjs";
 import { queues } from "../spec-changes/index.mjs";
 import { artifactSchemas, readDocument, readRegister } from "../documents/index.mjs";
-import { declarationSchema, gateSchema, gateStates, productWorkflow, roleAssignmentSchema, workflowOf } from "../product-process/index.mjs";
+import { declarationSchema, gateSchema, gateStates, productWorkflow, roleAssignmentSchema } from "../product-process/index.mjs";
 import { participantSchema, participantsOf } from "../participant-list/index.mjs";
 import { listJobs } from "../job-ledger/index.mjs";
 import { heldItems, itemStates, planSchemas, undecidedHeads } from "../work-plans/index.mjs";
@@ -38,7 +35,6 @@ import { parseSpec } from "../spec-document/index.mjs";
 import { isTestFile, testDeclarations } from "../test-document/index.mjs";
 import { configurationDrift, defaultSchedule, scheduleSchema } from "../test-schedule/index.mjs";
 import { reachableBy, resourceSchema } from "../resource-list/index.mjs";
-import { MODULE_FILE, storedFactsWithJobs } from "./stored.mjs";
 
 const DECLARATION = "docs/process.md";
 const PARTICIPANTS = "docs/participants.md";
@@ -60,6 +56,7 @@ const BACKLOG_ITEM = /^docs\/backlog\/ITM-\d{3,}-[^/]+\.md$/;
 const SPRINT = /^docs\/backlog\/sprints\/[^/]+\/[^/]+\.md$/;
 const ASSIGNMENT = /^docs\/role-assignments\/[^/]+\.md$/;
 const GATE_RECORD = /^docs\/gates\/[^/]+\.md$/;
+const MODULE_FILE = /^docs\/architecture\/MOD-[^/]+\.md$/;
 // An entry of a gate record's `on` that names an artifact: <path>@<blob> (MOD-product-process, gateStates).
 const CHECKED = /^([^\s@]+)@[0-9a-f]{7,64}$/;
 
@@ -94,15 +91,8 @@ async function orUnknown(read) {
 // The facts of the product's declared model and workflow: what MOD-product-process' productWorkflow gives, read with the instance's SPEC; `model` is the
 // workflow's model. Where the instance cannot read the commit the declaration names, they are "unknown" and `modelUnread` keeps the error; where the
 // instance holds no model at `model_file`, they are null.
-async function declaredWorkflow(declaration, instance, instanceAt, storedModel) {
+async function declaredWorkflow(declaration, instance, instanceAt) {
   if (declaration === null) return { model: null, workflow: null, modelUnread: null };
-  // A model stored with the facts spares the instance's catalogue: it is none (null), or the workflow is derived from it. The model alone does not give the practices the declaration names; then the files of the
-  // instance are read as before.
-  if (storedModel === null) return { model: null, workflow: null, modelUnread: null };
-  if (storedModel !== undefined) {
-    const workflow = workflowOf(declaration, storedModel, [], (await instance.read(INSTANCE_SPEC)) ?? "");
-    if (workflow.practices.length === 0) return { model: storedModel, workflow, modelUnread: null };
-  }
   try {
     const workflow = await productWorkflow(declaration, instanceAt, (await instance.read(INSTANCE_SPEC)) ?? "");
     return workflow === null ? { model: null, workflow: null, modelUnread: null } : { model: workflow.model, workflow, modelUnread: null };
@@ -160,11 +150,7 @@ async function resultsBranch(host) {
 // The facts only the scope `all` reads: the requirements of the SPEC, the declarations of the test files (MOD-test-document's isTestFile
 // names them; they are told to the snapshot first, to be read in batches), the branch `test-results` and the tags. The trace graph is
 // not built: nothing reads Facts.graph, so `graph` is "unknown" in both scopes and no file only the graph would read is read.
-async function allFacts(host, snapshot, stored, requirements = null) {
-  if (stored) {
-    const [results, tags] = await Promise.all([resultsBranch(host), orUnknown(() => host.listTags())]);
-    return { requirements: stored.requirements, tags, results, tests: stored.tests };
-  }
+async function allFacts(host, snapshot, requirements = null) {
   const names = requirements ?? await requirementsOf(snapshot);
   const testFiles = snapshot.paths.filter(isTestFile);
   await snapshot.readMany?.(testFiles);
@@ -264,34 +250,30 @@ async function acceptanceStatuses(approvals, items, requirements, snapshot) {
 async function buildFacts(host, instance, instanceAt) {
   const info = await orUnknown(() => host.repositoryInfo());
   const snapshot = await host.readSnapshot(info === "unknown" ? CHECKED_OUT : info.defaultBranch);
-  const held = await storedFactsWithJobs(snapshot);
-  const stored = held?.facts ?? null;
   const pullRequests = await orUnknown(() => host.listPullRequests());
   const address = snapshot.repository?.web ?? "";
   const pathsOf = (pattern) => snapshot.paths.filter((path) => pattern.test(path)).sort();
   const planned = snapshot.paths.includes(ORDER) || snapshot.paths.some((path) => PLAN_STEP.test(path));
   const itemPaths = pathsOf(planned ? PLAN_STEP : BACKLOG_ITEM);
-  if (stored === null) {
-    await snapshot.readMany?.([DECLARATION, ORDER, ...itemPaths, ...pathsOf(GATE_RECORD), ...snapshot.paths.filter((path) => path.startsWith(JOB_RECORDS))]
-      .filter((path) => snapshot.paths.includes(path)));
-  }
+  await snapshot.readMany?.([DECLARATION, ORDER, ...itemPaths, ...pathsOf(GATE_RECORD), ...snapshot.paths.filter((path) => path.startsWith(JOB_RECORDS))]
+    .filter((path) => snapshot.paths.includes(path)));
   await instance.readMany?.((snapshot.paths.includes(DECLARATION) ? [INSTANCE_SPEC] : []).filter((path) => instance.paths?.includes(path)));
-  const [declaration, order, items, gates] = stored ? [stored.declaration, stored.order, stored.items, stored.gates] : await Promise.all([
+  const [declaration, order, items, gates] = await Promise.all([
     snapshot.paths.includes(DECLARATION) ? readDocument(declarationSchema, DECLARATION, (await snapshot.read(DECLARATION)) ?? "") : null,
     snapshot.paths.includes(ORDER) ? readDocument(planSchemas.planOrder, ORDER, (await snapshot.read(ORDER)) ?? "") : null,
     readAll(snapshot, itemPaths, artifactSchemas().item),
     readAll(snapshot, pathsOf(GATE_RECORD), gateSchema),
   ]);
   const approvals = statuses(snapshot);
-  const changeQueues = stored ? stored.queues : await queues(snapshot);
-  const { model, workflow, modelUnread } = await declaredWorkflow(declaration, instance, instanceAt, stored?.model);
-  const jobs = await listJobs([{ address, snapshot: held ? held.jobsSnapshot : snapshot }], new Map());
+  const changeQueues = await queues(snapshot);
+  const { model, workflow, modelUnread } = await declaredWorkflow(declaration, instance, instanceAt);
+  const jobs = await listJobs([{ address, snapshot }], new Map());
   const known = workflow !== null && workflow !== "unknown" ? workflow : null;
   const gateStatesOf = known ? gateStates(known, gates, checkedBlobs(gates, snapshot)) : [];
-  const acceptance = await acceptanceStatuses(approvals, items, stored?.requirements ?? null, snapshot);
+  const acceptance = await acceptanceStatuses(approvals, items, null, snapshot);
   const states = itemStates(itemsByNumber(items), order, { statuses: acceptance, queues: changeQueues, jobs, pullRequests, gates: gateStatesOf, workflow: known });
   return {
-    address, info: "unknown", snapshot: held ? held.serving(snapshot) : snapshot, graph: "unknown", requirements: "unknown", statuses: approvals, queues: changeQueues, declaration,
+    address, info: "unknown", snapshot, graph: "unknown", requirements: "unknown", statuses: approvals, queues: changeQueues, declaration,
     workflow, model, modelUnread, modelSince: "unknown", participants: [], plan: { order, items, states },
     sprints: [], assignments: [], held: [], modules: [], gates, gateStates: gateStatesOf, jobs, pullRequests, schedule: "unknown", ci: "unknown", tags: "unknown",
     results: "unknown", tests: "unknown", resourceNeeds: "unknown", resultCommits: "unknown", own: isOwn(address, instance),
@@ -314,15 +296,13 @@ async function buildFacts(host, instance, instanceAt) {
  */
 export async function productFacts(host, instance, instanceAt, now, options = { scope: "all" }) {
   const scope = options?.scope ?? "all";
-  if (scope !== "all" && scope !== "work" && scope !== "build") throw new TypeError(`a scope is "all", "work" or "build": ${String(scope)}`);
+  if (!["all", "work", "build"].includes(scope)) throw new TypeError(`a scope is "all", "work" or "build": ${String(scope)}`);
   if (scope === "build") return buildFacts(host, instance, instanceAt);
   const all = scope === "all";
 
   const info = await orUnknown(() => host.repositoryInfo());
   const branch = info === "unknown" ? CHECKED_OUT : info.defaultBranch;
   const snapshot = await host.readSnapshot(branch);
-  const held = await storedFactsWithJobs(snapshot);
-  const stored = held?.facts ?? null;
   const pullRequests = await orUnknown(() => host.listPullRequests());
   const address = snapshot.repository?.web ?? "";
   const pathsOf = (pattern) => snapshot.paths.filter((path) => pattern.test(path)).sort();
@@ -331,16 +311,11 @@ export async function productFacts(host, instance, instanceAt, now, options = { 
   const itemPaths = pathsOf(planned ? PLAN_STEP : BACKLOG_ITEM);
   // Both scopes tell the snapshot every file they read themselves — and the job records listJobs reads — before the first read, so
   // that the snapshot fetches them in batches of a hundred where the host can (Snapshot.readMany); the instance's two files likewise.
-  if (stored === null) {
-    await snapshot.readMany?.([DECLARATION, ORDER, ...(all ? [SPEC, ...schedulingPaths(snapshot)] : []), ...itemPaths, ...pathsOf(SPRINT), ...pathsOf(ASSIGNMENT),
-      ...pathsOf(GATE_RECORD), ...pathsOf(MODULE_FILE), ...snapshot.paths.filter((path) => path.startsWith(JOB_RECORDS))]
-      .filter((path) => snapshot.paths.includes(path)));
-  } else if (all && schedulingPaths(snapshot).length > 0) {
-    await snapshot.readMany?.(schedulingPaths(snapshot));
-  }
+  await snapshot.readMany?.([DECLARATION, ORDER, ...(all ? [SPEC, ...schedulingPaths(snapshot)] : []), ...itemPaths, ...pathsOf(SPRINT), ...pathsOf(ASSIGNMENT),
+    ...pathsOf(GATE_RECORD), ...pathsOf(MODULE_FILE), ...snapshot.paths.filter((path) => path.startsWith(JOB_RECORDS))]
+    .filter((path) => snapshot.paths.includes(path)));
   await instance.readMany?.([PARTICIPANTS, ...(snapshot.paths.includes(DECLARATION) ? [INSTANCE_SPEC] : [])].filter((path) => instance.paths?.includes(path)));
-  const [declaration, order, items, sprints, assignments, gates, modules] = stored
-    ? [stored.declaration, stored.order, stored.items, stored.sprints, stored.assignments, stored.gates, stored.modules] : await Promise.all([
+  const [declaration, order, items, sprints, assignments, gates, modules] = await Promise.all([
     snapshot.paths.includes(DECLARATION) ? readDocument(declarationSchema, DECLARATION, (await snapshot.read(DECLARATION)) ?? "") : null,
     snapshot.paths.includes(ORDER) ? readDocument(planSchemas.planOrder, ORDER, (await snapshot.read(ORDER)) ?? "") : null,
     readAll(snapshot, itemPaths, artifactSchemas().item),
@@ -350,31 +325,31 @@ export async function productFacts(host, instance, instanceAt, now, options = { 
     readAll(snapshot, pathsOf(MODULE_FILE), artifactSchemas().module),
   ]);
   const approvals = statuses(snapshot);
-  const changeQueues = stored ? stored.queues : await queues(snapshot);
-  const { model, workflow, modelUnread } = await declaredWorkflow(declaration, instance, instanceAt, stored?.model);
+  const changeQueues = await queues(snapshot);
+  const { model, workflow, modelUnread } = await declaredWorkflow(declaration, instance, instanceAt);
   const registerText = await instance.read(PARTICIPANTS);
   const register = readDocument(participantSchema(), PARTICIPANTS, registerText ?? "");
   const participants = registerText === null ? [] : participantsOf(register);
 
-  const jobs = await listJobs([{ address, snapshot: held ? held.jobsSnapshot : snapshot }], new Map());
+  const jobs = await listJobs([{ address, snapshot }], new Map());
   const known = workflow !== null && workflow !== "unknown" ? workflow : null;
   const states = known ? gateStates(known, gates, checkedBlobs(gates, snapshot)) : [];
-  const knownRequirements = stored?.requirements ?? (all ? await requirementsOf(snapshot) : null);
+  const knownRequirements = all ? await requirementsOf(snapshot) : null;
   const acceptance = await acceptanceStatuses(approvals, items, knownRequirements, snapshot);
   const planStates = itemStates(itemsByNumber(items), order, { statuses: acceptance, queues: changeQueues, jobs, pullRequests, gates: states, workflow: known });
 
-  // held: the head commits undecidedHeads names are the only ones the default branch is asked about (containsCommit).
+  // held: the head commits undecidedHeads names are the only ones the default branch is asked about (containsCommit), all of them at once.
   const onDefault = new Set();
   if (pullRequests !== "unknown") {
-    for (const head of undecidedHeads(sprints, pullRequests)) {
-      if (await host.containsCommit(branch, head)) onDefault.add(head);
-    }
+    const heads = undecidedHeads(sprints, pullRequests);
+    const contained = await Promise.all(heads.map((head) => host.containsCommit(branch, head)));
+    heads.forEach((head, at) => { if (contained[at]) onDefault.add(head); });
   }
 
-  const more = all ? await allFacts(host, snapshot, stored, knownRequirements) : { requirements: "unknown", tags: "unknown", results: "unknown", tests: "unknown" };
+  const more = all ? await allFacts(host, snapshot, knownRequirements) : { requirements: "unknown", tags: "unknown", results: "unknown", tests: "unknown" };
   const scheduling = all ? await schedulingFacts(host, branch, snapshot, instance, register) : { schedule: "unknown", ci: "unknown", resourceNeeds: "unknown" };
   return {
-    address, info: all ? info : "unknown", snapshot: held ? held.serving(snapshot) : snapshot, graph: "unknown", requirements: more.requirements, statuses: approvals, queues: changeQueues,
+    address, info: all ? info : "unknown", snapshot, graph: "unknown", requirements: more.requirements, statuses: approvals, queues: changeQueues,
     declaration, workflow, model, modelUnread, modelSince: all ? await modelSinceOf(host, branch, declaration) : "unknown", participants,
     plan: { order, items, states: planStates }, sprints, assignments, held: heldItems(sprints, items, modules, pullRequests, onDefault), modules,
     gates, gateStates: states, jobs, pullRequests, schedule: scheduling.schedule, ci: scheduling.ci, tags: more.tags, results: more.results,

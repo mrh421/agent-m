@@ -28,6 +28,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { queueJob } from "../src/runtimes/index.mjs";
 import { startRecord } from "../src/job-ledger/index.mjs";
+import { openStore, writeSetting } from "../src/browser-store/index.mjs";
 
 const GITHUB_WORKFLOW = ".github/workflows/agent-m-jobs.yml";
 const GITLAB_WORKFLOW = ".gitlab/agent-m-jobs.yml";
@@ -184,4 +185,79 @@ test("queueJob — the CI route's failures are the host's, by name", async () =>
     });
     assert.equal(fake.writes.length, 0, `${name}: nothing written`);
   }
+});
+
+// ---------------------------------------------------------------- the endpoint a CI start names (ITM-1378)
+//
+// The browser's store (MOD-browser-store) is a Map-backed localStorage and a location the test sets, as tests/runtimes-tab-browser.test.mjs sets them. Reading taken: the
+// model endpoint of the participant a start names is the setting `endpoint:<participant>` of the store of the instance whose Pages address the tab shows, as MOD-prompt-bar
+// names an endpoint's participant after its setting; MOD-runtimes' Uses list readSetting by key and no listing. Counter-proofs are recorded in the pull request.
+const realLocation = Object.getOwnPropertyDescriptor(globalThis, "location");
+const realStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+const ENDPOINT_KEY = "sk-HUB-KEY-0123456789abcdef";
+const STORED = { url: "https://hub.example.test/v1", kind: "openai-compatible", model: "hub-model", key: ENDPOINT_KEY, place: "NHR@FAU, Erlangen", context: 128000, secret: "HUB_KEY" };
+
+// A tab at alice.github.io/agent-m/ whose localStorage holds the settings given. -> the store.
+function browserWith(settings) {
+  const values = new Map();
+  const storage = { getItem: (key) => (values.has(key) ? values.get(key) : null), setItem: (key, value) => values.set(key, String(value)), removeItem: (key) => values.delete(key),
+    get length() { return values.size; }, key: (index) => [...values.keys()][index] ?? null };
+  Object.defineProperty(globalThis, "location", { value: { hostname: "alice.github.io", pathname: "/agent-m/" }, configurable: true, writable: true });
+  Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true, writable: true });
+  const store = openStore("alice/agent-m");
+  for (const [key, value] of Object.entries(settings)) writeSetting(store, key, value);
+  return store;
+}
+test.afterEach(() => {
+  for (const [name, saved] of [["location", realLocation], ["localStorage", realStorage]]) { if (saved) Object.defineProperty(globalThis, name, saved); else delete globalThis[name]; }
+});
+
+// TST-1378001 · level: unit · module: MOD-runtimes
+// guards: AGENT M WORKS WITHOUT A LOCAL INSTALLATION; NO SECRET IN THE REPOSITORY; UC-010
+// given: a tab whose browser stores the model endpoint `drafter-a` — address, kind, model, the CI secret HUB_KEY and the key itself — and a product on GitHub whose default branch holds its job workflow; a start of the participant drafter-a with the parameters { requirements }
+// input: queueJob(host, START, { kind: "ci", runner: "hosted" }, the head read)
+// expect: the committed record is startRecord of START whose parameters hold, besides requirements, `endpoint` { kind, baseUrl, model } of the stored endpoint and `secret` HUB_KEY; the file holds neither the key nor any text that begins sk-
+test("queueJob — a CI start for a model endpoint names the endpoint's address, kind and model and its secret's name, and no key", async () => {
+  browserWith({ "endpoint:drafter-a": STORED });
+  const fake = fakeHost({});
+  await queueJob(fake.host, START, CI_HOSTED, fake.head());
+  const expected = startRecord({ ...START, params: { ...START.params, endpoint: { kind: "openai-compatible", baseUrl: "https://hub.example.test/v1", model: "hub-model" }, secret: "HUB_KEY" } });
+  assert.deepEqual(fake.writes[0].files, [{ path: expected.path, text: expected.text }], "the record names the endpoint and its secret");
+  assert.ok(fake.writes[0].files[0].text.includes("https://hub.example.test/v1"), "known positive: the address stands in the record");
+  assert.ok(!fake.writes[0].files[0].text.includes(ENDPOINT_KEY) && !/sk-/.test(fake.writes[0].files[0].text), "no key is written");
+});
+
+// TST-1378002 · level: unit · module: MOD-runtimes
+// guards: AGENT M WORKS WITHOUT A LOCAL INSTALLATION; A JOB IS RECORDED IN ITS PRODUCT REPOSITORY; UC-010
+// given: (1) a tab whose browser stores the endpoint `other` and none of the participant drafter-a; (2) a tab that stores the endpoint `drafter-a`, and a start whose parameters already hold an `endpoint` and a `secret`; (3) no tab: no location and no localStorage
+// input: queueJob(host, START, { kind: "ci", runner: "hosted" }, the head read) in each case
+// expect: (1) and (3) the record is startRecord(START) as it was, with no `endpoint` and no `secret`; (2) the record is the start's own parameters, not the stored endpoint's
+test("queueJob — a CI start names nothing where the browser keeps no endpoint of the participant, and keeps the parameters a page gave", async () => {
+  const committed = async (start) => { const fake = fakeHost({}); await queueJob(fake.host, start, CI_HOSTED, fake.head()); return fake.writes[0].files; };
+  const unchanged = [{ path: startRecord(START).path, text: startRecord(START).text }];
+
+  browserWith({ "endpoint:other": STORED });
+  assert.deepEqual(await committed(START), unchanged, "(1) another participant's endpoint is not named");
+
+  browserWith({ "endpoint:drafter-a": STORED });
+  const given = { ...START, params: { ...START.params, endpoint: { kind: "anthropic", baseUrl: "https://api.example.test", model: "given-model" }, secret: "GIVEN_KEY" } };
+  assert.deepEqual(await committed(given), [{ path: startRecord(given).path, text: startRecord(given).text }], "(2) the page's own endpoint and secret stand");
+
+  delete globalThis.location; delete globalThis.localStorage;
+  assert.deepEqual(await committed(START), unchanged, "(3) without a tab nothing is named");
+});
+
+// TST-1378003 · level: unit · module: MOD-runtimes
+// guards: A RUNTIME IS INTERCHANGEABLE; UC-010
+// given: a tab whose browser stores the endpoint `drafter-a`; a start of drafter-a on the tab's route
+// input: queueJob(host, START with route "tab", { kind: "tab" }, the head read)
+// expect: the record's parameters are START's own: no `endpoint` and no `secret` (the endpoint reaches CI at the start of a CI job alone)
+test("queueJob — a start on the tab's route names no endpoint", async () => {
+  browserWith({ "endpoint:drafter-a": STORED });
+  const fake = fakeHost({});
+  const start = { ...START, route: "tab" };
+  await queueJob(fake.host, start, { kind: "tab" }, fake.head());
+  const text = fake.writes[0].files[0].text;
+  assert.ok(text.includes("route: tab"), "known positive: the tab's record");
+  assert.ok(!text.includes("hub.example.test") && !text.includes("HUB_KEY"), "no endpoint, no secret");
 });

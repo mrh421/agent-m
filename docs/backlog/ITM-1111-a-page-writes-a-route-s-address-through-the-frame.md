@@ -25,24 +25,25 @@ how an address's fragment is written and read (MOD-site-frame.md:133; `src/site-
 `ViewContext` gives a route `go(route, params)` to navigate (:141), but nothing to write an address as a link. So the page
 holds a second copy of the frame's format (AGENTS.md §2, principle 2), and finding 2 of ITM-969 came from such a copy.
 
-## Not ready: a draft for akmaier
+## The reading of the accepted text
 
-The draft `a7fa3d01` was reviewed, and was withdrawn in `391cf759` so that the security fix's uses draft `7377eaa2` is
-the only draft on MOD-site-frame.md. It is committed again once akmaier has decided `7377eaa2`; `git show a7fa3d01`
-holds its text.
-
-The draft gives the `ViewContext` the address of a route with its parameters, as `go` would go there. MOD-maintenance-pages'
-links take it from there.
+A page writes no route's address at all: it goes there through `ViewContext.go(route, params)` (MOD-site-frame.md:187),
+which the frame turns into the address (:191-193), as *+ Add product* does (`context.go("add-product")`,
+`src/main-page/home.mjs:139`).
+- The replies page's control *Open* calls `go("replies", { issue, product })` and carries no address of its own. It
+  already calls `go` on a click (`src/maintenance-pages/replies.mjs:309`); the hand-written address beside it
+  (`:307`) goes.
+- No member of `ViewContext` changes.
 
 ## Acceptance
 
-- Once the draft is accepted: the replies page's issue link is the frame's address for `replies` with `issue` and `product`.
-  Counter-proof: a hand-written link fails it.
+- The replies page's *Open* of an issue goes to `replies` with `issue` and `product` through `go`, and the page's text
+  holds no address `#replies/…`. The control keeps an accessible name. Counter-proof: a hand-written address fails it.
+- The first commit holds only the tests, and CI is red on it.
 
-**A second caller (team 2's sprint 100, po-opus-b).** ITM-684's live main page links its waits, its card's token setting
-and *+ Add product* into `docs/index.html`.
-- Until the frame gives a route's address, it writes the `docs/index.html#<route>/<params>` form itself, a second copy of
-  the frame's writer (MOD-site-frame.md:158).
-- This item's draft, when it is committed again, also gives the address of a review page's route on the main page, so
-  that the copy goes.
-
+**The planning run (sprint team1/124).** A stand-in on `main` at `fb0322f08` draws *Open* as a button of the classes
+`issue-link btn small`, of type `button`, which calls `go("replies", { issue, product })`.
+- 89 files that name MOD-maintenance-pages, its folder, `replies`, `issue-link`, UC-039, `site-usability` or
+  `site-accessibility`: two cases fail only with it, both in `tests/maintenance-pages-replies.test.mjs` (`:40` and `:265`),
+  which read the address of the link. They change in the tests-only commit.
+- No read or request changes. MOD-site-frame's code does not change.

@@ -470,3 +470,61 @@ test("mailbox — Store and test on the IMAP route stores the sending its test g
   assert.equal(threw.outcome, "refused", "known positive: the test threw");
   assert.ok(!("sending" in threw), "a test that threw stores no sending");
 });
+
+// TST-1771005 · level: unit · module: MOD-settings-pages
+// guards: UC-037; CONFIGURATION IS STORED IN LOCALSTORAGE, NOT IN A COOKIE
+// given: the form of a correct IMAP connection for this computer's Bridge (reports@example.test), whose SMTP account field, sender address field and sender name field stand empty when the page opens
+// input: the SMTP account "author@example.test", the sender's address "desk@example.test" and its display name "Reports Desk" entered; Store and test
+// expect: the three fields exist on the IMAP route and are empty at first; the stored connection's `imap` holds the account "reports@example.test", `smtpAccount` "author@example.test" and `sender` { name: "Reports Desk", address: "desk@example.test" }, and the Bridge's test request carries the same in its connection
+test("mailbox — the SMTP account and the sender are entered on the IMAP route and stored with the connection", async (t) => {
+  const b = browser(t);
+  const page = await b.page();
+  for (const name of ["mailbox-smtp-account", "mailbox-sender-address", "mailbox-sender-name"]) assert.equal(one(page, name).value, "", `${name} is empty at first`);
+  await fill(page);
+  await put(one(page, "mailbox-smtp-account"), "author@example.test");
+  await put(one(page, "mailbox-sender-address"), "desk@example.test");
+  await put(one(page, "mailbox-sender-name"), "Reports Desk");
+  await click(one(page, "mailbox-store-test"));
+  const stored = readSetting(b.store, "mailbox").imap;
+  assert.deepEqual([stored.account, stored.smtpAccount, stored.sender], ["reports@example.test", "author@example.test", { name: "Reports Desk", address: "desk@example.test" }]);
+  const mail = b.requests.filter((request) => request.url.includes("/v1/mail/"));
+  assert.equal(mail.length, 1, "positive: the Bridge was asked to test");
+  const sent = JSON.parse(mail[0].init.body).connection.imap;
+  assert.deepEqual([sent.smtpAccount, sent.sender], ["author@example.test", { name: "Reports Desk", address: "desk@example.test" }]);
+});
+
+// TST-1771006 · level: unit · module: MOD-settings-pages
+// guards: UC-037
+// given: the form of a correct IMAP connection for this computer's Bridge, the SMTP account left empty
+// input: the sender's address "desk@example.test" entered and its display name left empty; Store and test
+// expect: the stored connection's `imap` holds `sender` { name: null, address: "desk@example.test" } and no key `smtpAccount`
+test("mailbox — a sender without a display name is stored with the name null, and an empty SMTP account is not stored", async (t) => {
+  const b = browser(t);
+  const page = await b.page();
+  await fill(page);
+  await put(one(page, "mailbox-sender-address"), "desk@example.test");
+  await click(one(page, "mailbox-store-test"));
+  const stored = readSetting(b.store, "mailbox").imap;
+  assert.deepEqual(stored.sender, { name: null, address: "desk@example.test" });
+  assert.equal("smtpAccount" in stored, false);
+});
+
+// TST-1771007 · level: unit · module: MOD-settings-pages
+// guards: UC-037
+// given: a browser whose stored IMAP connection names `smtpAccount` "author@example.test" and `sender` { name: "Reports Desk", address: "desk@example.test" }; and a browser whose stored connection names neither (the known positive)
+// input: the page `mailbox` opened with each, as the Settings page's Change opens it
+// expect: the first shows "author@example.test", "desk@example.test" and "Reports Desk" in the SMTP account, sender address and sender name fields; the second shows the three empty
+test("mailbox — a stored connection's SMTP account and sender are shown again in their fields", async (t) => {
+  const stored = (fields) => ({ address: "reports@example.test", route: "imap", folders: ["INBOX"], places: [],
+    imap: { bridge: "laptop", jumpHostNoted: false, imap: { host: "imap.example.test", port: 993, security: "tls" }, smtp: { host: "smtp.example.test", port: 587, security: "starttls" },
+      account: "reports@example.test", password: PASSWORD, ...fields } });
+  const fields = (page) => ["mailbox-smtp-account", "mailbox-sender-address", "mailbox-sender-name"].map((name) => one(page, name).value);
+  const named = browser(t);
+  writeSetting(named.store, "mailbox", stored({ smtpAccount: "author@example.test", sender: { name: "Reports Desk", address: "desk@example.test" } }));
+  const namedPage = await named.page();
+  assert.equal(one(namedPage, "mailbox-account").value, "reports@example.test", "positive: the stored connection is shown");
+  assert.deepEqual(fields(namedPage), ["author@example.test", "desk@example.test", "Reports Desk"]);
+  const bare = browser(t);
+  writeSetting(bare.store, "mailbox", stored({}));
+  assert.deepEqual(fields(await bare.page()), ["", "", ""]);
+});

@@ -179,7 +179,7 @@ test("waitingForAPerson — without a workflow no gate waits; with nothing waiti
 // guards: THE BUILD IS SHOWN AS IT HAPPENS; A PAGE LOAD READS THE REPOSITORY IN BATCHES; UC-046
 // given: the six items of the build above with their job rows, the records of JOB-a and JOB-b as the commit's files, the model "scrum", and three change queues — one whose entries are all in the SPEC, one with an open entry, one with a stale entry; a branch overview-cache that holds nothing yet, whose commitFiles is recorded; then a snapshot of the commit whose readOn answers the text committed
 // input: publishOverview(host, snapshot, facts); then storedOverview(snapshot) twice
-// expect: one commit of `<commit>.json`, `<commit>.facts.json` and latest.json; the overview holds the model "scrum", the build's states of ITM-002 and ITM-003 alone (in progress with a job; not ITM-004, in progress without one), the records of JOB-a and JOB-b with the commit's texts, and the two queues with an entry not in the SPEC; storedOverview gives the same model, build and queues — and buildInProgress over the stored states and the job rows gives the rows it gives over the facts —, read with one readOn for both calls; counter-proof: an overview text without the build is none (null)
+// expect: one commit of `<commit>.json`, the three views of the commit (ITM-1260, ITM-1265) and latest.json; the overview holds the model "scrum", the build's states of ITM-002 and ITM-003 alone (in progress with a job; not ITM-004, in progress without one), the records of JOB-a and JOB-b with the commit's texts, and the two queues with an entry not in the SPEC; storedOverview gives the same model, build and queues — and buildInProgress over the stored states and the job rows gives the rows it gives over the facts —, read with one readOn for both calls; counter-proof: an overview text without the build is none (null)
 test("publishOverview stores the model, the build with its jobs' records and the undecided queues, and storedOverview reads them back once", async () => {
   const RECORDS = { "docs/jobs/JOB-a.md": "record of JOB-a\n", "docs/jobs/JOB-b.md": "record of JOB-b\n" };
   const queues = [queueOf("docs/spec-freigaben/2026-10-01_done", [[1, "in SPEC"]]), queueOf("docs/spec-freigaben/2026-10-02_open", [[1, "in SPEC"], [2, "open"]]),
@@ -190,7 +190,7 @@ test("publishOverview stores the model, the build with its jobs' records and the
   const host = { readSnapshot: async () => ({ commit: "0".repeat(40), paths: [] }), commitFiles: async (change) => { commits.push(change); } };
   await publishOverview(host, snapshot, given);
   assert.equal(commits.length, 1);
-  assert.deepEqual(commits[0].files.map((file) => file.path).sort(), [`${COMMIT}.facts.json`, `${COMMIT}.json`, "latest.json"]);
+  assert.deepEqual(commits[0].files.map((file) => file.path).sort(), [`${COMMIT}.backlog.json.gz`, `${COMMIT}.json`, `${COMMIT}.progress.json.gz`, `${COMMIT}.schedule.json.gz`, "latest.json"]);
   const text = commits[0].files.find((file) => file.path === `${COMMIT}.json`).text;
   const held = JSON.parse(text);
   assert.equal(held.model, "scrum");

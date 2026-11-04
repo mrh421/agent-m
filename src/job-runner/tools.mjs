@@ -13,7 +13,7 @@
 
 import { kindOf, toolsOf } from "../job-catalogue/index.mjs";
 import { misfit } from "./loop.mjs";
-import { registered, strategyOf } from "./registry.mjs";
+import { registered, registeredAll, strategyOf } from "./registry.mjs";
 
 const refusal = (why) => `refused: ${why}`;
 // The most files one search-files call reads.
@@ -29,6 +29,7 @@ const SEARCH_LIMIT = 200;
 export async function offerTools(kind, drafter, context) {
   const named = kind.tools ?? [];
   if (!drafter || drafter.type !== "model endpoint" || !drafter.capabilities.includes("use tools") || named.length === 0) return null;
+  await registeredAll();
   const refuses = Array.isArray(context.params.refuses) ? context.params.refuses : [];
   const definitions = (await toolsOf(named)).filter((tool) => drafter.capabilities.includes(tool.needs) && registered("tools", tool.name) && !refuses.includes(tool.name));
   const held = { edits: new Map(), handOver: null };

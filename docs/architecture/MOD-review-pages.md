@@ -55,7 +55,7 @@ uses:
   - MOD-approvals.approvalSchema
   - MOD-approvals.approvalStrategies
   - MOD-spec-changes.queues
-  - MOD-spec-changes.openQueueOf
+  - MOD-spec-changes.queueAt
   - MOD-spec-changes.proposeSection
   - MOD-spec-changes.saveEntry
   - MOD-spec-changes.entrySections
@@ -63,6 +63,7 @@ uses:
   - MOD-spec-changes.acceptEntries
   - MOD-spec-changes.rejectEntry
   - MOD-spec-changes.specStrategies
+  - MOD-progress-measures.waitingQueues
   - MOD-artifact-edits.saveFile
   - MOD-artifact-edits.keptIdentifier
   - MOD-artifact-edits.saveGroupFile
@@ -79,6 +80,7 @@ uses:
   - MOD-participant-list.participantSchema
   - MOD-participant-list.eligible
   - MOD-participant-list.differs
+  - MOD-product-process.productWorkflow
   - MOD-job-catalogue.kindOf
   - MOD-job-runner.prepareJob
   - MOD-job-runner.writeResult
@@ -118,7 +120,9 @@ It runs in a browser, loaded by `docs/index.html` through MOD-site-frame.
 
 ## Parts
 
-- `index.mjs` — the interface: `view`.
+- `index.mjs` — the interface: `view`, the routes of routes.mjs with the strategies of the view's kinds.
+- `routes.mjs` — the routes' heads, the view module the frame loads at start; it imports index.mjs, and with it the
+  strategies, only when a job is prepared (`loadStrategies`).
 - `flow.mjs` — the template method: list, file, review all, accept, edit, drafting, arrange.
 - `common.mjs` — what the pages of every kind share: the elements of a page, the token kept for the page's product, and
   the kind of server a product is on.
@@ -127,7 +131,7 @@ It runs in a browser, loaded by `docs/index.html` through MOD-site-frame.
   current text.
 - `file-drafts.mjs` — drafted files in editors as their difference, saved together in one commit.
 - `requirements-draft.mjs` — a draft of requirements: the candidates beside the requirements they refer to, saved as
-  sections of the person's open queue.
+  entries of their sections' queues.
 - `candidates.mjs` — the candidates of a draft of requirements as the author reviews them, with their classes.
 - `file-edit.mjs`, `edit.mjs`, `entry-edit.mjs` — the editors of a reviewed file, of a requirement, and of an open SPEC
   entry in place.
@@ -216,17 +220,30 @@ ReviewKind = {
     module file that `removedFiles` names, each with its impact list (`architectureImpact` with `after: null`) and the empty
     text as the text shown, so that *Accept all N shown* counts it and records its removal in the same commit
     (`AN ARCHITECTURE CHANGE IS NOT ACCEPTED WITHOUT AN IMPACT LIST`).
+  - For use cases, in a product whose workflow's model is `pulled`, every *Accept* — of one file, of the ticked ones, or
+    *Accept all N shown* — names beside it the participant that will check which modules each use case changes, chosen as
+    on `<k>/draft`, with the place where it processes data, as `prepareJob` of the kind `check-affected-modules` gives
+    it (`THE PAGE NAMES WHERE IT SENDS`). Once the acceptance's commit is written, the same click runs one job of that
+    kind in this tab for each use case it recorded, naming that use case in its parameters, whose writer commits the
+    items under the person's account (UC-008 step 6). In a `planned` model, none is named and nothing runs.
   - For a changed decision or module file, on `<k>/<id>` and in `<k>/all`, the page first reads the impact lists stored for
     the commit it shows (MOD-trace-graph's `storedImpacts`, one request). Where an entry's blob is the file's blob, the
     page takes the file's impact list from it. It reads the last accepted text at the entry's `before` commit with one
     `readFileAt` per file, and calls neither `traceGraph` nor `lastAcceptedText` for them. Where no
     entry fits, it derives both as before. The stored lists are records of the repository, derived from that commit
     alone by `onMainChanged` (MOD-workflow-entries), never kept in the browser.
+  - Once *Accept* has recorded changed or removed decision or module files, the page lists the modules of the impact
+    lists it showed for them, each with the plan steps and backlog items of those lists that name it in the graph of the
+    commit shown (`storedGraph`) (UC-023 step 6).
+  - For a SPEC entry, on `<k>/<id>` and for its subject, the page reads the entry's own queue (`queueAt`, the folder
+    from the entry's identifier), and the other proposals on the same section from the queues MOD-progress-measures'
+    `waitingQueues` gives, with its line `As of <commit>` while they are of an earlier commit; the editor of a
+    requirement reads the other open proposals on its section the same way. Neither reads every queue.
   - `<k>/<id>/edit`, and `requirement/<name>/edit` and `requirements/new` for a requirement — whose subject for the
     prompt bar is the file, or the requirement, as on the file's route — the editor with live
     preview and the descriptor's marks, whose unsaved changes the route's `leave` keeps by the editor's `close` (UC-018
     7a); for a requirement, its SPEC section, a *Why* field and its impact list, saved as
-    an entry of the person's open queue of the day (`A SPEC EDIT IS SAVED AS A PROPOSAL`); `requirements/new` with the four
+    an entry of its section's queue (`A SPEC EDIT IS SAVED AS A PROPOSAL`); `requirements/new` with the four
     fields empty, for the SPEC section the specification browser hands it (UC-018 3d); an open SPEC entry saved in
     place, in its own queue (UC-006 3a, UC-018 1a); every save only on the blob the file or section was opened on. Before saving an edit of the architecture, *Check this edit* runs the kind
     `review-architecture` on the edited files as its draft, and its findings stand beside them for the author to weigh.
@@ -238,7 +255,7 @@ ReviewKind = {
     conflict undecided kept out of what is saved (UC-019 8a); an architecture file with its rounds, the due diligence and
     the impact list of a change, as the descriptor's sections show them —, with the rounds and the findings the loop
     left. *Save* saves the draft as an edit of UC-018 is saved — the files with one `saveFile`, in one commit (UC-019 8b),
-    each section with `proposeSection` as an entry of the person's open queue of the day —, only on the text the job
+    each section with `proposeSection` as an entry of its queue —, only on the text the job
     read, with GitHub's pages without a token, and with the job's provenance lines, which name no message of the
     conversation (UC-019 step 9, 9a); *Discard* drops the draft. A further change is asked for in the prompt bar: the subject carries
     the draft as it stands as `draft`, the conversation hands the change on to the draft's kind with it (UC-049 4a.1),
@@ -249,7 +266,10 @@ ReviewKind = {
     each file with `saveFile` after its owner's schema found no error. A draft handed to CI or a Bridge arrives as an
     open file, a queue entry or a pull request instead.
   - `<k>/draft` — drafting: for use cases, the requirements to cover — by default those no use case realises —; for
-    requirements, the linked source and, to send less, the files of its version to work on (UC-005 2a); for the
+    requirements, the linked source and, to send less, the files of its version to work on (UC-005 2a), and, where the
+    job's preparation finds a file of that version whose content no longer matches the SHA-256 its version records
+    (MOD-source-register's `HashMismatch`), the file named as changed in place of the run panel, that nothing is sent,
+    and a link to register a new version of its source, `#library/source=<source>` (UC-005 1a, UC-016); for the
     architecture, what the derivation covers, its preconditions,
     the drafting and the reviewing participant — a reviewer offered only if it differs from the drafter in participant
     and model —; then the run panel and *Run*. A job the person starts here and waits for runs in this tab, attended: a
@@ -311,11 +331,13 @@ and `docs/participants.md` of the instance.
   MOD-approvals.acceptanceBlockers, MOD-approvals.fallbackAcceptLink — statuses, the files removed since their acceptance, and acceptance;
   MOD-approvals.rejectShown — rejecting a use case, decision or module file; MOD-approvals.approvalSchema —
   the schema an approval record is read with, on `<k>/history` too.
-- MOD-spec-changes.queues, MOD-spec-changes.openQueueOf, MOD-spec-changes.proposeSection, MOD-spec-changes.saveEntry,
-  MOD-spec-changes.entrySections, MOD-spec-changes.entryView, MOD-spec-changes.acceptEntries — SPEC edits, an open entry
+- MOD-spec-changes.queues, MOD-spec-changes.queueAt, MOD-spec-changes.proposeSection,
+  MOD-spec-changes.saveEntry, MOD-spec-changes.entrySections, MOD-spec-changes.entryView, MOD-spec-changes.acceptEntries —
+  the list and *Review all* of SPEC entries, one entry's own queue, SPEC edits, an open entry
   saved in place, the sections a draft of the conversation holds, SPEC entries and their acceptance in the queue's order, with the product's links and
   the instance's register, so that an entry whose requirement names no linked source is named and not accepted;
   MOD-spec-changes.rejectEntry — rejecting an entry.
+- MOD-progress-measures.waitingQueues — the other open proposals beside one entry and beside a requirement's editor.
 - MOD-artifact-edits.saveFile, MOD-artifact-edits.saveGroupFile, MOD-artifact-edits.fallbackEditLinks — saves;
   MOD-artifact-edits.keptIdentifier — a drafted change's identifier restored before the editor opens.
 - MOD-release-evidence.acceptAndRelease — accepting an open release test report.
@@ -330,6 +352,7 @@ and `docs/participants.md` of the instance.
   MOD-source-register.sourceStrategies, MOD-reuse-facts.reuseStrategies — the strategies of its kinds, handed to the frame.
 - MOD-participant-list.participantSchema, MOD-participant-list.eligible, MOD-participant-list.differs — who may draft and
   who may review, a reviewer differing from the drafter in participant and model.
+- MOD-product-process.productWorkflow — whether the product's model is planned or pulled, beside a use case's *Accept*.
 - MOD-job-catalogue.kindOf — a kind's purpose and whether its result waits for a person; MOD-job-runner.prepareJob —
   the run panel; MOD-job-runner.writeResult — a result that waited for the person, written on their click;
   MOD-job-runner.provenanceLines — the trailers of a draft of the conversation the person saves.

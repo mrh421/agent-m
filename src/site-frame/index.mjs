@@ -15,11 +15,9 @@ import { renderArtifact } from "../markdown-render/index.mjs";
 import { openStore, readSetting } from "../browser-store/index.mjs";
 import { parseAddress, connect, HostError } from "../repository-hosts/index.mjs";
 import { instanceOfPagesAddress } from "../identifiers/index.mjs";
-import { watchForAcceptance } from "../notifications/index.mjs";
-import { startPromptBar } from "../prompt-bar/index.mjs";
 import { menuOf, labelOf, linkOf, foldMenu } from "./menu.mjs";
 import { siteFooter } from "./footer.mjs";
-import { routeOf, fragmentOf, productOf, chosenProduct, addressWriter, instanceHostFollowingStore, productHostFollowingStore } from "./routing.mjs";
+import { routeOf, fragmentOf, productOf, chosenProduct, addressWriter, instanceHostFollowingStore, productHostFollowingStore, loadRoute } from "./routing.mjs";
 import { subjectOf, entryShownOf } from "./subject.mjs";
 import { notice, noticePlace, showTokenNotices, refusedNotice } from "./notices.mjs";
 
@@ -156,6 +154,28 @@ export function readProblem(failure, tokenStored) {
   return paragraph;
 }
 
+// What happened and what the person can do, in plain words, above the message of a fault of the page itself (routeProblem).
+const FAULT_WORDS = "Something went wrong while this page was being drawn, so it cannot be shown. Reload the page to try again. "
+  + "If it happens again, report it, together with the message below.";
+
+/**
+ * routeProblem(failure: Error, tokenStored: boolean) -> Element — what stands in the place of a route that could not be drawn. For a host's failure (HostError) it is
+ * readProblem's paragraph. For any other error, a fault of the page itself, it is a <div class="page-fault"> holding first a <p class="page-fault-words"> that says in
+ * plain words what happened and what the person can do — reload the page, and report it if it happens again —, and below it readProblem's paragraph with the error's
+ * message. It reads nothing and never throws. Private to the module: index.mjs and dashboard-app.mjs use it.
+ */
+export function routeProblem(failure, tokenStored) {
+  const problem = readProblem(failure, tokenStored);
+  if (failure instanceof HostError) return problem;
+  const fault = document.createElement("div");
+  fault.className = "page-fault";
+  const words = document.createElement("p");
+  words.className = "page-fault-words";
+  words.textContent = FAULT_WORDS;
+  fault.append(words, problem);
+  return fault;
+}
+
 // The files a route names in `reads` (Route), read before the route is rendered: the repository the route shows — the chosen product's, else
 // the instance's — at its default branch, as one snapshot; the route says which of its paths it will read, and the snapshot fetches their
 // texts ahead (readMany: a hundred to a batch on GitHub with a token). The host keeps the texts by blob SHA, so the route's own reads through
@@ -204,7 +224,10 @@ export function pageStarted(page, routes, context) {
  */
 export async function embedRoute(name, target, params = {}) {
   const route = started?.routes.find((candidate) => candidate.name === name);
-  if (route) return route.render(target, started.context(), params);
+  if (route) {
+    await loadRoute(route);
+    return route.render(target, started.context(), params);
+  }
   const product = started?.context()?.product?.address;
   const fragment = fragmentOf(name, product && !("product" in params) ? { ...params, product } : params);
   const link = document.createElement("a");
@@ -302,6 +325,7 @@ async function startSite({ page, views }) {
   let shown = null;
   pageStarted(page, routes, () => shown?.context ?? null);
   let shownName = routes[0]?.name ?? "";
+  let firstShown = false; // whether the page has shown a route yet
   const defaultBranches = new Map();
   const drawMenu = (active, product) => {
     menu.replaceChildren(...menuOf(page, [...served], product).map((entry) => {
@@ -378,13 +402,31 @@ async function startSite({ page, views }) {
       return;
     }
     shownName = route.name;
-    shown = { route, params: routeParams, context, fragment };
-    await readNamedFiles(route, shown.params, context, defaultBranches);
+    // A route that names `module` is imported before it is shown (loadRoute): what it reads, leaves and gives as its subject is the imported route's; the view's route renders it.
+    let loadedRoute;
+    // While a page's first route is imported, its place reads "Loading…"; the line goes before the route is rendered.
+    const waiting = !firstShown && typeof route.module === "function";
+    firstShown = true;
+    if (waiting) {
+      const line = document.createElement("p");
+      line.textContent = "Loading…";
+      target.replaceChildren(line);
+    }
+    try {
+      loadedRoute = await loadRoute(route);
+    } catch (failure) {
+      shown = { route, params: routeParams, context, fragment };
+      target.replaceChildren(routeProblem(failure, product ? product.tokenStored : readSetting(store, "github-token") !== null));
+      return;
+    }
+    shown = { route: loadedRoute, params: routeParams, context, fragment };
+    await readNamedFiles(loadedRoute, shown.params, context, defaultBranches);
+    if (waiting) target.replaceChildren();
     try {
       await route.render(target, context, shown.params);
     } catch (failure) {
       if (failure?.name === "TokenRefused") refusedNotice(failure);
-      else target.replaceChildren(readProblem(failure, product ? product.tokenStored : readSetting(store, "github-token") !== null));
+      else target.replaceChildren(routeProblem(failure, product ? product.tokenStored : readSetting(store, "github-token") !== null));
     }
   };
   const browser = globalThis.window ?? globalThis;
@@ -398,10 +440,12 @@ async function startSite({ page, views }) {
   });
   await show();
 
+  // The checks and the bar are imported once the page is drawn, so that the page does not wait for their modules.
+  const { watchForAcceptance } = await import("../notifications/index.mjs");
   watchForAcceptance({ store, instance, productHost: productHostFollowingStore({ store }),
     addressOf: (route, given, forRepository) =>
       writeAddress(route, given, forRepository) });
-  attachPromptBar(foot, { page, store, instance,
+  await attachPromptBar(foot, { page, store, instance,
     product: () => shown.context.product && { address: shown.context.product.address, host: shown.context.product.host },
     subject: () => subjectOf({ ...shown, drawn: () => target.textContent }),
     explain,
@@ -414,11 +458,12 @@ async function startSite({ page, views }) {
 // the bar changes (a selector, a conversation, a draft). Where it has none, the height is set once, when the bar is drawn. The height is
 // the footer's `style` attribute, as the bar's own position is its root's.
 /**
- * attachPromptBar(foot: Element, setup) -> void — MOD-prompt-bar's bar started in `foot`, the footer fixed to the bottom of the window, which then takes the bar's height; `setup`
+ * attachPromptBar(foot: Element, setup) -> Promise<void> — MOD-prompt-bar's bar, imported then, started in `foot`, the footer fixed to the bottom of the window, which then takes the bar's height; `setup`
  * as startPromptBar takes it. Both entry pages attach it: startPage, and the live page's app (dashboard-app.mjs) for the review pages.
  */
-export function attachPromptBar(foot, setup) {
+export async function attachPromptBar(foot, setup) {
   footTakesBarHeight(foot);
+  const { startPromptBar } = await import("../prompt-bar/index.mjs");
   startPromptBar(foot, setup);
 }
 
@@ -482,21 +527,29 @@ async function startBridge({ page, views }) {
   const defaultBranches = new Map();
   const show = async () => {
     const selected = routeOf(location.hash);
-    const route = routes.find((candidate) => candidate.name === selected.name) ?? first;
-    if (!route) {
+    const named = routes.find((candidate) => candidate.name === selected.name) ?? first;
+    if (!named) {
       target.textContent = "This Bridge page has no view yet.";
       return;
     }
     const context = { page, instance: { repository, host }, product: null, store,
       go: (name, params = {}) => { location.hash = fragmentOf(name, params); } };
+    const params = named.name === selected.name ? selected.params : {};
+    let route = named;
+    try {
+      route = await loadRoute(named);
+    } catch (failure) {
+      shown = { route: named, fragment: location.hash ?? "", context };
+      target.replaceChildren(routeProblem(failure, readSetting(store, "github-token") !== null));
+      return;
+    }
     shown = { route, fragment: location.hash ?? "", context };
-    const params = route.name === selected.name ? selected.params : {};
     await readNamedFiles(route, params, context, defaultBranches);
     try {
-      await route.render(target, context, params);
+      await named.render(target, context, params);
     } catch (failure) {
       if (failure?.name === "TokenRefused") refusedNotice(failure);
-      else target.replaceChildren(readProblem(failure, readSetting(store, "github-token") !== null));
+      else target.replaceChildren(routeProblem(failure, readSetting(store, "github-token") !== null));
     }
   };
   const browser = globalThis.window ?? globalThis;

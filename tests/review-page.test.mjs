@@ -31,10 +31,11 @@ const reviewedId = (path) => readDocument(artifactSchemaOf(path), path, "").id;
 
 const FIX = fileURLToPath(new URL("./fixtures/architecture/", import.meta.url));
 const base = {};
+// The fixture keeps its test file as tests/reader.test.js.fixture, so that node --test tests/ does not run it; the walk builds it back under its name.
 (function walk(dir) {
   for (const n of readdirSync(dir)) {
     const p = join(dir, n);
-    if (statSync(p).isDirectory()) walk(p); else base[relative(FIX, p).split("\\").join("/")] = readFileSync(p, "utf8");
+    if (statSync(p).isDirectory()) walk(p); else base[relative(FIX, p).split("\\").join("/").replace(/\.fixture$/, "")] = readFileSync(p, "utf8");
   }
 })(FIX);
 const UC1 = "docs/use-cases/UC-001-read-a-file.md", UC2 = "docs/use-cases/UC-002-show-the-status.md";
@@ -78,6 +79,11 @@ function section(html, id) {
   return html.slice(at, end === Infinity ? html.length : at + 1 + end);
 }
 
+// TST-1294001 · level: component · module: MOD-site-frame
+// guards: SEVERAL FILES ARE ACCEPTED IN ONE CLICK; A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT; ARCHITECTURE RESTS ON ACCEPTED ARTIFACTS; EVERY STEP EXPLAINS ITSELF
+// given: the fixture product, whose MOD-page is new, MOD-reader changed since its acceptance, MOD-review rests on UC-002 which is not accepted, and ARC-001 accepted
+// input: open #review/arc with a token
+// expect: ARC-001 is not on the page; MOD-page, MOD-reader and MOD-review stand in sequence; MOD-page in full, MOD-reader as the difference to its last accepted text with its impact list, MOD-review naming UC-002 as what it rests on; one button "Accept all 3 shown" and the folded explanations
 test("the architecture's review page shows every open or changed file in sequence — new in full, changed as a difference with its impact list, a waiting one named", async () => {
   const repo = await product();
   const page = await openDashboard({ server: await server(repo), hash: "#review/arc" });
@@ -106,6 +112,11 @@ test("the architecture's review page shows every open or changed file in sequenc
   assert.match(reader, /<details class="explain"><summary>What is this\?<\/summary>[^]*Before a change to an accepted decision or module is accepted/);
 });
 
+// TST-1294002 · level: component · module: MOD-site-frame
+// guards: AN ARCHITECTURE CHANGE IS NOT ACCEPTED WITHOUT AN IMPACT LIST
+// given: MOD-reader changed since its acceptance; once with the graph of the commit stored, once on a server that answers 404 for the stored graph
+// input: open #arc/MOD-reader with a token on each
+// expect: with the stored graph the impact list is shown and Accept is offered; without it the page says the impact list could not be derived, shows no impact list and offers no Accept
 test("a change to an architecture file is not offered for acceptance where its impact list cannot be derived", async () => {
   const repo = await product();
   const good = await openDashboard({ server: await server(repo), hash: "#arc/MOD-reader" });
@@ -120,6 +131,11 @@ test("a change to an architecture file is not offered for acceptance where its i
   assert.doesNotMatch(page.main(), /<button class="btn accept"/, "without the list, no Accept");
 });
 
+// TST-1294003 · level: component · module: MOD-site-frame
+// guards: SEVERAL FILES ARE ACCEPTED IN ONE CLICK; AN APPROVAL NAMES THE EXACT TEXT; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; ARCHITECTURE RESTS ON ACCEPTED ARTIFACTS
+// given: the review page of the architecture with MOD-page and MOD-reader acceptable and MOD-review resting on UC-002, which is not accepted
+// input: press Accept all 3 shown
+// expect: one commit holding one record for MOD-page and one for MOD-reader, each naming the blob rendered, and none for ARC-001, MOD-review or a use case; the head read again, then ref, commit object, write tree, write commit and write ref; MOD-page and MOD-reader no longer shown, MOD-review shown and named as left out because it rests on UC-002
 test("Accept all N shown: one commit with one record per file the page could count, each naming the blob of the text it rendered; the file that waits is left out and named", async () => {
   const repo = await product(), caches = fakeCaches();
   const srv = await server(repo);
@@ -141,6 +157,11 @@ test("Accept all N shown: one commit with one record per file the page could cou
   assert.match(page.main(), /MOD-review was left out: rests on what is not accepted \(UC-002\)/);
 });
 
+// TST-1294004 · level: component · module: MOD-site-frame
+// guards: SEVERAL FILES ARE ACCEPTED IN ONE CLICK; AN APPROVAL NAMES THE EXACT TEXT
+// given: the review page of the architecture, and MOD-page edited on the server after the page was built
+// input: press Accept all 3 shown
+// expect: one commit holding the record of MOD-reader alone; MOD-page is named as left out and shown with its new text
 test("counter-proof: a file changed between building the page and the click is left out and named", async () => {
   const repo = await product();
   const srv = await server(repo);
@@ -154,20 +175,20 @@ test("counter-proof: a file changed between building the page and the click is l
   assert.match(section(page.main(), "MOD-page"), /Edited by someone else\./);
 });
 
+// TST-1294005 · level: component · module: MOD-site-frame
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the fixture product, whose three module files MOD-page, MOD-reader and MOD-review are not accepted
-// input: open #review/arc with a token
-// expect: the three files shown come in one batch of three and none by itself; the graph of the impact list is the one stored for the commit, read once — no
-//         batch of the files a graph reads (MOD-review-pages: "The graph is the one `onMainChanged` stored for the commit shown ..., read through `storedGraph`;
-//         no page builds a graph"); the SPEC, which the page reads for what a file rests on and does not show, at most once; the commit, the tree and the
-//         repository's information once each; no use case and no queue file
-test("request count: the architecture's review page reads the files it shows in one batch, its commit and tree once, the repository's information once, and the stored graph of its impact list once", async (t) => {
+// input: open #review/arc with a token, and again on a fresh server with the same caches
+// expect: the three files shown come in one batch of three and none by itself; the stored graph of the commit read once, no batch of the files a graph reads; the SPEC at most once; no use case and no queue file; the commit and the repository's information once each, the folders once, one batch of the three files, one batch of one (MOD-reader's last accepted text, read by MOD-approvals as one file at the commit that added its record) and the GraphQL request of greenToMerge beside the repository's information, a batch of no file (ITM-1170), and no git/trees; the second load sends the same requests and shows the same page
+test("request count: the architecture's review page reads the files it shows in one batch, its commit and its folders once, the repository's information once, and the stored graph of its impact list once", async (t) => {
   const repo = await product(), caches = fakeCaches();
   const srv = await server(repo);
   const cold = await openDashboard({ server: srv, hash: "#review/arc", caches });
   assert.deepEqual(files(cold.requests).filter((p) => p.startsWith("docs/architecture/")), [],
     "no file shown is read by itself");
-  assert.equal(srv.batches.length, 1);
+  // ITM-1170: the third batch, of no file, is the GraphQL request of greenToMerge beside the repository's information.
+  assert.equal(srv.batches.length, 3, "the files shown, MOD-reader's last accepted text, and greenToMerge's");
+  assert.equal(srv.batches.filter((batch) => batch.length === 0).length, 1, "greenToMerge's names no file");
   assert.deepEqual([...srv.batches[0]].sort(), ["docs/architecture/MOD-page.md", "docs/architecture/MOD-reader.md", "docs/architecture/MOD-review.md"],
     "the three files shown, in one batch");
   assert.equal(cold.requests.filter((r) => r.startsWith("stored graph ")).length, 1, "the stored graph of the commit, once");
@@ -175,9 +196,10 @@ test("request count: the architecture's review page reads the files it shows in 
   assert.deepEqual(files(cold.requests).filter((p) => p.startsWith("docs/use-cases/") || p.startsWith("docs/spec-freigaben/")), [],
     "no use case and no queue file");
   assert.equal(count(cold.requests, "commit"), 1);
-  assert.equal(count(cold.requests, "tree"), 1);
+  assert.equal(count(cold.requests, "folders"), 1, "the folders it reads");
+  assert.equal(count(cold.requests, "tree"), 0);
   assert.equal(count(cold.requests, "repository"), 1);
-  assert.equal(cold.requests.filter((r) => r.startsWith("batch ")).length, 1, "the files shown in one batch, and no batch of a graph's files");
+  assert.deepEqual(cold.requests.filter((r) => r.startsWith("batch ")), ["batch 3", "batch 0", "batch 1"], "the files shown in one batch, greenToMerge's of no file (ITM-1170), MOD-reader's last accepted text in one of one, and no batch of a graph's files");
   const warm = await openDashboard({ server: await server(repo), hash: "#review/arc", caches });
   // Each server's head is a commit of its own (the stored graph is kept per commit for a page), so the two loads' requests are compared with the commit named alike.
   const anyCommit = (requests) => requests.map((request) => request.replace(/[0-9a-f]{40}/g, "<commit>"));
@@ -186,6 +208,11 @@ test("request count: the architecture's review page reads the files it shows in 
   t.diagnostic(`architecture review page: ${cold.requests.length} requests (${cold.requests.join(", ")})`);
 });
 
+// TST-1294006 · level: component · module: MOD-site-frame
+// guards: SEVERAL FILES ARE ACCEPTED IN ONE CLICK; A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT
+// given: the fixture product, whose UC-001 is accepted and UC-002 changed since its acceptance
+// input: open #review/uc with a token, then press Accept all 1 shown
+// expect: UC-001 is not on the page and UC-002 is shown as the difference to its last accepted text; no file outside the use cases and their records is read; the click writes one commit holding UC-002's record
 test("the use cases' review page: a changed use case as its difference, no accepted one, no architecture file read; Accept all writes its record", async (t) => {
   const repo = await product();
   const srv = await server(repo);
@@ -203,6 +230,11 @@ test("the use cases' review page: a changed use case as its difference, no accep
   assert.deepEqual(srv.writes.map((w) => w.files), [{ [approvalPath("UC-002", b)]: record(UC2, b) }]);
 });
 
+// TST-1294007 · level: component · module: MOD-site-frame
+// guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; SEVERAL FILES ARE ACCEPTED IN ONE CLICK
+// given: the review page of the architecture, opened without a token
+// input: open #review/arc without a token
+// expect: MOD-page and MOD-reader are shown, there is no Accept all, and for each of them a link to GitHub's page that prefills the new file of its approval record
 test("without a token: no Accept all — GitHub's prefilled page for each record, as for a single Accept", async () => {
   const repo = await product();
   const page = await openDashboard({ server: await server(repo), hash: "#review/arc", token: null });
@@ -216,6 +248,11 @@ test("without a token: no Accept all — GitHub's prefilled page for each record
   }
 });
 
+// TST-1294008 · level: component · module: MOD-site-frame
+// guards: SEVERAL FILES ARE ACCEPTED IN ONE CLICK
+// given: the fixture product
+// input: open #uc and #arc with a token
+// expect: the use-case list links to #use-case/id=all and the architecture list to #decision/id=all, each with the text Review all
 test("the use-case list and the architecture list link to their review page", async () => {
   const repo = await product();
   const uc = await openDashboard({ server: await server(repo), hash: "#uc" });

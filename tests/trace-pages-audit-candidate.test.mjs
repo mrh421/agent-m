@@ -47,8 +47,7 @@ const rowNames = (root) => withClass(root, "audit-row").map((row) => row.getAttr
 // guards: THE AUDIT VIEW LISTS EVERY REQUIREMENT OF THE RELEASE; UC-013
 // given: a product whose tags are the candidate v2026.2.0-rc.1 (two requirements) and the release v2026.1.0 (one)
 // input: Route.render with the key "audit", the candidate's tag as ref and its commit, as the release panel embeds it
-// expect: one row for each requirement at the candidate — A FIRST RULE, A SECOND RULE —, read at the candidate's tag; the page does not say that no release
-//   is tagged
+// expect: one row for each requirement at the candidate — A FIRST RULE, A SECOND RULE —, read at the candidate's tag; the page does not say that no release is tagged
 // Planted fault: an audit that offers only release tags draws "No release is tagged yet" — or the release's row — instead.
 test("TST-1227001 the audit of a release candidate draws the candidate's rows", async () => {
   const probe = productHost();

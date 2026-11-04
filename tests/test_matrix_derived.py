@@ -20,7 +20,8 @@ TEST = "tests/reader.test.js"
 # The fixture's test, with one declaration that guards RULE ONE, written from parts so that this file declares no test by it.
 TEST_TEXT = ("// Module: MOD-reader\n" + " ".join(["//", "TST-100001", "·", "level: unit", "·", "module: MOD-reader"])
              + "\n// guards: RULE ONE\n// given: nothing\n// input: nothing\n// expect: nothing\ntest(\"reads\", () => {});\n")
-FILES = {**{p.relative_to(FIX).as_posix(): p.read_text(encoding="utf-8") for p in sorted(FIX.rglob("*")) if p.is_file()},
+# The fixture keeps its test file as tests/reader.test.js.fixture, so that node --test tests/ does not run it; FILES builds it back under its name.
+FILES = {**{p.relative_to(FIX).as_posix().removesuffix(".fixture"): p.read_text(encoding="utf-8") for p in sorted(FIX.rglob("*")) if p.is_file()},
          TEST: TEST_TEXT}
 UC1, UC2 = "docs/use-cases/UC-001-read-a-file.md", "docs/use-cases/UC-002-show-the-status.md"
 NOTHING = {"sources": [], "useCases": [], "decisions": [], "modules": [], "tests": [], "items": []}

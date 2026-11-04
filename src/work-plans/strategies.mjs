@@ -1,14 +1,14 @@
-// strategies.mjs — the recipes, checks and writers of `workStrategies` (MOD-work-plans, Parts: strategies.mjs; Interfaces: workStrategies). Of it, this file has the recipes
-// `architecture-and-model` (UC-045 step 2), `backlog-inputs` (UC-032 step 2) and `sprint-facts` (UC-041 step 2), the checks `plan-checks` (UC-045), `backlog-checks` (UC-032 step 3) and `sprint-record-checks` (UC-041 1a) and the writers `backlog-items` (UC-032 4) and `sprint-record` (UC-041 6); the other recipes, checks and writers are not built yet.
+// strategies.mjs — the recipes, checks, step and writers of `workStrategies` (MOD-work-plans, Parts: strategies.mjs; Interfaces: workStrategies). Of it, this file has the recipes
+// `architecture-and-model` (UC-045 step 2), `backlog-inputs` (UC-032 step 2) and `sprint-facts` (UC-041 step 2), the checks `plan-checks` (UC-045), `backlog-checks` (UC-032 step 3) and `sprint-record-checks` (UC-041 1a), the step `leave-out-named-modules` (UC-008 step 6) and the writers `plan-steps` (UC-045 5), `backlog-items` (UC-032 4) and `sprint-record` (UC-041 6).
 //
 // Module: MOD-work-plans
 //
 // The recipe reads the product through the job's snapshot, once, as the trace graph of MOD-trace-graph: the graph holds the decisions with what they refine and design, and the modules.
-// It makes no request of its own; the snapshot reads what the host holds. It follows the pattern of MOD-run-planner's `implementation-inputs`, which MOD-work-plans does not use and
+// It makes no request of its own; the snapshot reads what the host holds, and the instance at the declared version is read through the instance's host, as workflowOf reads it. It follows the pattern of MOD-run-planner's `implementation-inputs`, which MOD-work-plans does not use and
 // does not import. Part, JobContext and Strategies are MOD-job-runner's types.
 
 import { statuses } from "../approvals/index.mjs";
-import { artifactSchemas, readDocument } from "../documents/index.mjs";
+import { artifactSchemas, readDocument, writeDocument } from "../documents/index.mjs";
 import { listJobs } from "../job-ledger/index.mjs";
 import { provenanceLines } from "../job-runner/index.mjs";
 import { declarationSchema, gateSchema, gateStates, productWorkflow } from "../product-process/index.mjs";
@@ -18,7 +18,7 @@ import { isTestFile, testDeclarations } from "../test-document/index.mjs";
 import { systemDecisions, traceGraph } from "../trace-graph/index.mjs";
 import { finding } from "../text-tools/index.mjs";
 import { backlogFindings, planFindings } from "./checks.mjs";
-import { closeSprint, saveItems, WorkPlansError } from "./saves.mjs";
+import { closeSprint, ITEM_FILE, saveItems, savePlan, WorkPlansError } from "./saves.mjs";
 import { sprintFacts } from "./facts.mjs";
 import { selectionOf as selectionOfRecord } from "./sprints.mjs";
 import { planOrderSchema, sprintSchema } from "./schemas.mjs";
@@ -26,6 +26,7 @@ import { itemStates } from "./states.mjs";
 
 const PROCESS = "docs/process.md";
 const PLAN = "docs/plan";
+const WORKFLOW_PART = "phases and gates of the product's workflow";
 
 // A failure of the module's own, by name.
 const failure = (name, message, fields) => Object.assign(new Error(message), { name, ...fields });
@@ -41,10 +42,11 @@ const sourcesFor = (context, path) => unique((context.places.contents ?? []).fil
  * - the decision that states the system (the one that refines no other; each, if the product has several), by identifier;
  * - the subsystems' decisions (those that refine it and design at least one module), by identifier;
  * - every module's file, by identifier;
- * - the process model, `docs/process.md`;
+ * - the process model, `docs/process.md`, and then its phases and gates: one part, "phases and gates of the product's workflow", JSON `{ phases, gates }` of the workflow workflowOf gives
+ *   from that declaration, carrying the sources of `docs/process.md`;
  * - the existing plan, every file under `docs/plan/`, by path.
- * A part is one file, named by its path, whole, given once; it carries the sources of every `context.places.contents` entry that names its path or a folder above it. Throws
- * UnknownWork { id } when the product has no `docs/process.md`.
+ * A file's part is the file, named by its path, whole, given once; it carries the sources of every `context.places.contents` entry that names its path or a folder above it. Throws
+ * UnknownWork { id } when the product has no `docs/process.md`, and UnknownWork { id: <model_file> } when the instance holds no model at the declared `model_file` and `model_version`.
  */
 async function architectureAndModel(context) {
   const snapshot = context.product.snapshot;
@@ -64,14 +66,25 @@ async function architectureAndModel(context) {
   };
   for (const node of [...system, ...subsystems, ...modules]) await give(node.path);
   await give(PROCESS);
+  const { declaration, workflow } = await workflowOf(context);
+  if (workflow === null) {
+    throw failure("UnknownWork", `the product has no workflow: the instance holds no model at ${declaration.fields.model_file} at ${declaration.fields.model_version}, the model and commit it declared`,
+      { id: String(declaration.fields.model_file ?? "") });
+  }
+  parts.set(WORKFLOW_PART, { name: WORKFLOW_PART, text: JSON.stringify({ phases: workflow.phases, gates: workflow.gates }, null, 2), size: 0, sources: sourcesFor(context, PROCESS), required: true });
   for (const path of snapshot.paths.filter((each) => within(each, PLAN)).sort()) await give(path);
   return [...parts.values()];
+}
+
+// The product's pull requests as itemStates takes them: "unknown" without a host, or where the host does no server operations (NotSupported).
+async function pullRequestsOf(host) {
+  if (!host) return "unknown";
+  try { return await host.listPullRequests(); } catch (error) { if (error?.name === "NotSupported") return "unknown"; throw error; }
 }
 
 const SPRINT_NAME = /^[^/\s]+\/\d+$/;
 const ORDER = "docs/plan/order.md";
 const PLAN_STEP = /^docs\/plan\/ITM-\d{3,}-[^/]+\.md$/;
-const BACKLOG_ITEM = /^docs\/backlog\/ITM-\d{3,}-[^/]+\.md$/;
 const GATE_RECORD = /^docs\/gates\/[^/]+\.md$/;
 const CHECKED = /^([^\s@]+)@[0-9a-f]{7,64}$/;
 const day = (value) => String(value ?? "").slice(0, 10);
@@ -93,7 +106,7 @@ function checkedBlobs(records, snapshot) {
  * docs/backlog/sprints/<team>/<nn>.md must exist (UnknownWork otherwise). Five parts, in this order:
  * - the sprint's record, whole, by its path;
  * - "facts of sprint <name>": `sprintFacts` as JSON, of the product's items (the plan's steps, else the backlog's), its tests with what each guards, the items' states (`itemStates`, with the
- *   workflow `productWorkflow` gives from the declaration, read at the version it names), its jobs (`listJobs`, without live states), the branch `test-results` (the host's readSnapshot) and its
+ *   workflow `productWorkflow` gives from the declaration, read at the version it names, and with the requirements the SPEC holds as accepted, as Progress derives them), its jobs (`listJobs`, without live states), the branch `test-results` (the host's readSnapshot) and its
  *   pull requests;
  * - "issues of sprint <name>": the issues the host gives (of every state) whose `opened` or `closed` is dated within the sprint's time box, one line each with its address; where the host gives
  *   none, one line saying they were not read, with the reason;
@@ -120,22 +133,16 @@ async function sprintInputs(context, params) {
   const sprint = readDocument(sprintSchema, path, recordText);
 
   const planned = snapshot.paths.includes(ORDER) || snapshot.paths.some((each) => PLAN_STEP.test(each));
-  const itemPaths = snapshot.paths.filter((each) => (planned ? PLAN_STEP : BACKLOG_ITEM).test(each)).sort();
+  const itemPaths = snapshot.paths.filter((each) => (planned ? PLAN_STEP : ITEM_FILE).test(each)).sort();
   const items = await Promise.all(itemPaths.map(async (each) => readDocument(artifactSchemas().item, each, (await snapshot.read(each)) ?? "")));
   const order = snapshot.paths.includes(ORDER) ? readDocument(planOrderSchema, ORDER, (await snapshot.read(ORDER)) ?? "") : null;
 
-  const declarationText = await snapshot.read(PROCESS);
-  const declaration = declarationText === null ? null : readDocument(declarationSchema, PROCESS, declarationText);
-  const instanceAt = (commit) => (context.instance.host ? context.instance.host.readSnapshot(commit) : Promise.resolve(context.instance.snapshot));
-  const workflow = declaration === null ? null : await productWorkflow(declaration, instanceAt, (await context.instance.snapshot.read("SPEC.md")) ?? "");
+  const { workflow } = await workflowOf(context);
 
-  const orUnknown = async (read, fallback) => {
-    try { return await read(); } catch (error) { if (error?.name === "NotSupported") return fallback; throw error; }
-  };
-  const pullRequests = host ? await orUnknown(() => host.listPullRequests(), "unknown") : "unknown";
+  const pullRequests = await pullRequestsOf(host);
   const jobs = await listJobs([{ address, snapshot }], new Map());
   const gates = await Promise.all(snapshot.paths.filter((each) => GATE_RECORD.test(each)).sort().map(async (each) => readDocument(gateSchema, each, (await snapshot.read(each)) ?? "")));
-  const states = itemStates(items, order, { statuses: statuses(snapshot), queues: await queues(snapshot), jobs, pullRequests, workflow,
+  const states = itemStates(items, order, { statuses: await acceptanceOf(snapshot), queues: await queues(snapshot), jobs, pullRequests, workflow,
     gates: workflow ? gateStates(workflow, gates, checkedBlobs(gates, snapshot)) : [] });
 
   const tests = (await Promise.all(snapshot.paths.filter(isTestFile).map(async (each) => testDeclarations(each, (await snapshot.read(each)) ?? "")))).flat()
@@ -169,63 +176,126 @@ async function sprintInputs(context, params) {
 }
 
 const DECLARED = "THE PROCESS MODEL IS DECLARED PER PRODUCT";
+const PLAN_RULE = "THE IMPLEMENTATION PLAN LIVES IN THE PRODUCT REPOSITORY";
 const ARCHITECTURE_FILE = /^docs\/architecture\/(?:ARC-\d+-[^/]+|MOD-[^/]+)\.md$/;
 const ITEM_ID = /(?:^|\/)(ITM-\d{3,})-/;
 const slugOf = (title) => String(title).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "step";
+const idOfDocument = (document) => String(document.id ?? document.fields?.id ?? "");
+
+// The product's workflow in a job: productWorkflow of its declaration docs/process.md, with the instance read at the version the declaration names and the instance's SPEC; `declaration` and `workflow`
+// null where the product declares none, `workflow` null where the instance holds no model at the declared file and version. The one reading of it that architecture-and-model, plan-checks, plan-steps and sprint-facts
+// share.
+async function workflowOf(context) {
+  const declarationText = await context.product.snapshot.read(PROCESS);
+  if (declarationText === null) return { declaration: null, workflow: null };
+  const declaration = readDocument(declarationSchema, PROCESS, declarationText);
+  const instanceAt = (commit) => (context.instance.host ? context.instance.host.readSnapshot(commit) : Promise.resolve(context.instance.snapshot));
+  return { declaration, workflow: await productWorkflow(declaration, instanceAt, (await context.instance.snapshot.read("SPEC.md")) ?? "") };
+}
+
+// The architecture's decisions and module files at a snapshot, by path, each read with its schema: the one read of them that plan-checks and plan-steps share.
+const architectureFiles = async (snapshot) => Promise.all(snapshot.paths.filter((each) => ARCHITECTURE_FILE.test(each)).sort()
+  .map(async (each) => readDocument(/\/ARC-/.test(each) ? artifactSchemas().decision : artifactSchemas().module, each, (await snapshot.read(each)) ?? "")));
 
 /**
- * The check plan-checks(draft, context) -> Promise<Finding[]> — planFindings on the drafted plan of a job of the kind `draft-plan`, with the product's workflow (productWorkflow); where the product has
- * none — no declaration, or the instance holds no model at its `model_file` at its `model_version` — one error finding that names the declared model and its commit. The draft is the answer of the
- * kind, `{ steps: [{ title, implements, level, phase, after }] }`; each entry becomes a step with an identifier after the product's highest: `implements` names modules (a step of level module), a
- * subsystem's decision (level subsystem, its `modules` the modules the decision designs) or `system` (level system, every module), its tests are the draft's `level` (the system's also `release`),
- * `after` the titles it builds on; the order is the drafted sequence with each phase. The steps replace the product's plan in the source the graph is read from. A finding about a drafted step
- * names it by its title.
+ * draftedPlan(draft, architecture, idFor) -> { steps: Document[], order: Document } — the steps and the order of a drafted plan, the answer of the kind `draft-plan`, `{ steps: [{ title, implements, level, phase,
+ * after }] }`, as Documents of the item and plan-order schemas: the one reading of a drafted plan that plan-checks and plan-steps share. Each entry becomes a step: `implements` names modules (level module), a
+ * subsystem's decision (level subsystem, `integrates` that decision, its `modules` those the decision designs) or `system` (level system, every module); its `tests` are the draft's `level`, the system's also
+ * `release`; it realises what forces what it implements — a module's `realises` and the `forced_by` of the decisions it follows, a subsystem's decision's `forced_by`, the `forced_by` of the decisions that
+ * refine none —, and `origin` is the same list; `builds_on` names the steps of the draft whose titles its `after` names; `## Outcome` says what it implements or integrates, `## Acceptance` holds the tests of
+ * its level, one bullet each. `idFor(entry, index)` gives a step's identifier, or null for a new step, which then has no `id` and no path and is named in `builds_on` and in the order by its title. The order
+ * holds a row per entry in the drafted sequence, with its phase.
+ */
+function draftedPlan(draft, architecture, idFor) {
+  const entries = asList(draft?.steps);
+  const byId = new Map(architecture.map((document) => [idOfDocument(document), document]));
+  const field = (id, name) => asList(byId.get(id)?.fields?.[name]);
+  const moduleIds = architecture.map(idOfDocument).filter((id) => id.startsWith("MOD-"));
+  const roots = architecture.map(idOfDocument).filter((id) => id.startsWith("ARC-") && String(byId.get(id).fields?.refines ?? "").trim() === "");
+  const ids = entries.map((entry, index) => idFor(entry, index));
+  const refOfTitle = new Map(entries.map((entry, index) => [entry.title, ids[index] ?? String(entry.title)]));
+  const steps = entries.map((entry, index) => {
+    const implemented = asList(entry.implements).map(String);
+    const system = implemented.includes("system");
+    const subsystems = implemented.filter((name) => name.startsWith("ARC-"));
+    const level = system ? "system" : subsystems.length ? "subsystem" : "module";
+    const modules = unique(system ? moduleIds : subsystems.length ? subsystems.flatMap((id) => field(id, "designs")) : implemented);
+    const realises = unique(system ? roots.flatMap((id) => field(id, "forced_by")) : subsystems.length ? subsystems.flatMap((id) => field(id, "forced_by"))
+      : modules.flatMap((id) => [...field(id, "realises"), ...field(id, "follows").flatMap((decision) => field(decision, "forced_by"))]));
+    const tests = system ? ["system", "release"] : [String(entry.level)];
+    const buildsOn = asList(entry.after).map((title) => refOfTitle.get(title)).filter(Boolean);
+    const id = ids[index];
+    const title = String(entry.title);
+    const outcome = system ? `Integrates the system: ${modules.join(", ")}.` : subsystems.length ? `Integrates ${subsystems.join(", ")}: ${modules.join(", ")}.` : `Implements ${modules.join(", ")}.`;
+    return { kind: "item", path: id ? `docs/plan/${id}-${slugOf(title)}.md` : null, id: id ?? null, title, appended: [], body: id ? `# ${id} ${title}\n\n` : "",
+      fields: { ...(id ? { id } : {}), title, level, realises, modules, ...(subsystems.length ? { integrates: subsystems[0] } : {}), ...(buildsOn.length ? { builds_on: buildsOn } : {}), tests, origin: realises },
+      sections: [{ heading: "## Outcome", text: `\n${outcome}\n\n` }, { heading: "## Acceptance", text: `\n${tests.map((one) => `- ${one[0].toUpperCase()}${one.slice(1)} tests.`).join("\n")}\n` }] };
+  });
+  const order = { kind: "plan-order", path: ORDER, fields: {}, body: "", appended: [],
+    sections: [{ heading: "## Order", text: "", rows: entries.map((entry, index) => ({ cells: { Step: ids[index] ?? String(entry.title), Phase: String(entry.phase) } })) }] };
+  return { steps, order };
+}
+
+/**
+ * The check plan-checks(draft, context) -> Promise<Finding[]> — planFindings on the drafted plan of a job of the kind `draft-plan`, with the product's workflow (workflowOf); where the product has none — no
+ * declaration, or the instance holds no model at its `model_file` at its `model_version` — one error finding that names the declared model and its commit. The draft becomes steps and an order as draftedPlan
+ * reads it, each step with an identifier after the product's highest, in the drafted sequence; a draft that cannot be written as the plan's files gives one error finding that says why. The steps replace the
+ * product's plan in the source the graph is read from. A finding about a drafted step names it by its title.
  */
 async function planChecks(draft, context) {
   const { snapshot } = context.product;
   const error = (what, fix) => [finding({ artifact: PROCESS, line: 1, kind: "error", rule: DECLARED, what, fix })];
-  const declarationText = await snapshot.read(PROCESS);
-  if (declarationText === null) return error("the product declares no process model: docs/process.md is missing, so there is no workflow to check the plan against", "declare the process model first (UC-002)");
-  const declaration = readDocument(declarationSchema, PROCESS, declarationText);
-  const instanceAt = (commit) => (context.instance.host ? context.instance.host.readSnapshot(commit) : Promise.resolve(context.instance.snapshot));
-  const workflow = await productWorkflow(declaration, instanceAt, (await context.instance.snapshot.read("SPEC.md")) ?? "");
+  const { declaration, workflow } = await workflowOf(context);
+  if (declaration === null) return error("the product declares no process model: docs/process.md is missing, so there is no workflow to check the plan against", "declare the process model first (UC-002)");
   if (workflow === null) {
     return error(`the product has no workflow: the instance holds no model at ${declaration.fields.model_file} at ${declaration.fields.model_version}, the model and commit it declared`,
       "declare a model the instance's catalogue holds, at a version that holds it (UC-031)");
   }
 
-  const schemas = artifactSchemas();
-  const architecture = await Promise.all(snapshot.paths.filter((each) => ARCHITECTURE_FILE.test(each)).sort()
-    .map(async (each) => readDocument(/\/ARC-/.test(each) ? schemas.decision : schemas.module, each, (await snapshot.read(each)) ?? "")));
-  const designs = (id) => architecture.find((document) => (document.id ?? document.fields?.id) === id)?.fields?.designs ?? [];
-  const moduleIds = architecture.filter((document) => String(document.id ?? document.fields?.id).startsWith("MOD-")).map((document) => document.id ?? document.fields?.id);
+  const architecture = await architectureFiles(snapshot);
   const highest = Math.max(0, ...snapshot.paths.map((each) => Number(ITEM_ID.exec(each)?.[1].slice(4) ?? 0)));
-  const drafted = (draft?.steps ?? []).map((each, index) => ({ ...each, id: `ITM-${String(highest + index + 1).padStart(3, "0")}` }));
-  const idOfTitle = new Map(drafted.map((each) => [each.title, each.id]));
+  const { steps, order } = draftedPlan(draft, architecture, (_, index) => `ITM-${String(highest + index + 1).padStart(3, "0")}`);
   const files = new Map();
-  for (const each of drafted) {
-    const implemented = asList(each.implements);
-    const system = implemented.includes("system");
-    const subsystem = implemented.filter((name) => name.startsWith("ARC-"));
-    const level = system ? "system" : subsystem.length ? "subsystem" : "module";
-    const named = system ? moduleIds : subsystem.length ? subsystem.flatMap(designs) : implemented;
-    const tests = system ? ["system", "release"] : [each.level];
-    const list = (key, values) => (values.length ? [`${key}:`, ...values.map((value) => `  - ${value}`)] : [`${key}: []`]);
-    const after = asList(each.after).map((title) => idOfTitle.get(title)).filter(Boolean);
-    files.set(`docs/plan/${each.id}-${slugOf(each.title)}.md`, [ "---", `id: ${each.id}`, `title: ${String(each.title).replace(/[:\n]/g, " ")}`, `level: ${level}`, ...list("realises", []), ...list("modules", named),
-      ...list("builds_on", after), ...list("tests", tests), "origin: []", "---", `# ${each.id} ${each.title}`, ""].join("\n"));
+  try {
+    for (const each of steps) files.set(each.path, writeDocument(artifactSchemas().item, each));
+    files.set(ORDER, writeDocument(planOrderSchema, order));
+  } catch (failed) {
+    return [finding({ artifact: PLAN, line: 1, kind: "error", rule: PLAN_RULE, what: `the drafted plan cannot be written as the plan's files: ${failed.message}`,
+      fix: "name modules, a subsystem's decision or system under implements, and the level of the tests" })];
   }
-  const orderText = ["## Order", "", "| Step | Phase |", "| --- | --- |", ...drafted.map((each) => `| ${each.id} | ${each.phase} |`), ""].join("\n");
-  files.set(ORDER, orderText);
-  const stepDocuments = [...files].filter(([each]) => each !== ORDER).map(([each, content]) => readDocument(schemas.item, each, content));
   const source = { paths: [...snapshot.paths.filter((each) => !each.startsWith("docs/plan/")), ...files.keys()], read: async (each) => files.get(each) ?? snapshot.read(each) };
-  const titleOf = new Map(drafted.map((each) => [each.id, each.title]));
+  const titleOf = new Map(steps.map((each) => [each.id, each.title]));
   const named = (value) => String(value).replace(/ITM-\d{3,}/g, (id) => (titleOf.has(id) ? `the step "${titleOf.get(id)}"` : id));
-  return (await planFindings(readDocument(planOrderSchema, ORDER, orderText), stepDocuments, architecture, workflow, source))
+  return (await planFindings(order, steps, architecture, workflow, source))
     .map((each) => finding({ artifact: named(each.artifact), line: each.line, kind: each.kind, rule: each.rule, what: named(each.what), fix: named(each.fix) }));
 }
 
+/**
+ * The writer plan-steps(result, context) -> Promise<WriteOutcome> — the drafted plan of a job of the kind `draft-plan` through savePlan (UC-045 step 5): `result.draft` is the answer of the kind, which plan-checks
+ * has checked, read as draftedPlan reads it. The drafted plan is the whole plan: a drafted step whose title is that of a step of the product's plan keeps that step's identifier, every other is new, and every
+ * step of the plan the draft does not hold is removed. `architecture` the decisions and module files of the job's snapshot; `workflow` the product's (workflowOf); `head` the snapshot's commit; `trailers`
+ * provenanceLines of the job. A draft without steps writes nothing and its outcome names no commit. Otherwise commits once, to the product's default branch; the outcome names the commit and the written files.
+ * Throws what savePlan throws.
+ */
+async function planSteps(result, context) {
+  const { snapshot, host } = context.product;
+  if (asList(result.draft?.steps).length === 0) return { commits: [], files: [], pullRequest: null, shown: null, notes: [] };
+  const architecture = await architectureFiles(snapshot);
+  const { workflow } = await workflowOf(context);
+  const existing = await Promise.all(snapshot.paths.filter((each) => PLAN_STEP.test(each)).sort().map(async (each) => readDocument(artifactSchemas().item, each, (await snapshot.read(each)) ?? "")));
+  const kept = new Map(existing.map((each) => [String(each.fields.title), each.id]));
+  const { steps, order } = draftedPlan(result.draft, architecture, (entry) => kept.get(String(entry.title)) ?? null);
+  const stays = new Set(steps.map((each) => each.id).filter(Boolean));
+  const removed = existing.map((each) => each.id).filter((id) => !stays.has(id));
+  const trailers = provenanceLines({ agentM: context.agentM, jobId: context.jobId, kind: context.kind.name, participant: result.drafter ?? { name: "none", model: null }, rounds: result.rounds.length });
+  const { commit, written } = await savePlan(host, { steps, order, removed }, { architecture, workflow, head: snapshot.commit, trailers });
+  return { commits: [commit], files: written, pullRequest: null, shown: null, notes: [] };
+}
+
 const MODULE_FILE = /^docs\/architecture\/MOD-[^/]+\.md$/;
+// The architecture's module files at a snapshot, by path, each read with the module schema: the one read of them that backlog-checks, backlog-items and sprint-record share.
+export const moduleFiles = async (snapshot) => Promise.all(snapshot.paths.filter((each) => MODULE_FILE.test(each)).sort()
+  .map(async (each) => readDocument(artifactSchemas().module, each, (await snapshot.read(each)) ?? "")));
 
 /**
  * The check backlog-checks(draft, context) -> Promise<Finding[]> — backlogFindings on the drafted items of a job of the kind `propose-items` (UC-032 step 3). The draft is the answer of the kind,
@@ -239,8 +309,8 @@ async function backlogChecks(draft, context) {
   const schemas = artifactSchemas();
   const documents = (pattern, schema) => Promise.all(snapshot.paths.filter((each) => pattern.test(each)).sort()
     .map(async (each) => readDocument(schema, each, (await snapshot.read(each)) ?? "")));
-  const existing = await documents(BACKLOG_ITEM, schemas.item);
-  const architecture = await documents(MODULE_FILE, schemas.module);
+  const existing = await documents(ITEM_FILE, schemas.item);
+  const architecture = await moduleFiles(snapshot);
   const highest = Math.max(0, ...snapshot.paths.map((each) => Number(ITEM_ID.exec(each)?.[1].slice(4) ?? 0)));
   const drafted = asList(draft?.items).map((each, index) => ({ ...each, id: `ITM-${String(highest + index + 1).padStart(3, "0")}` }));
   const idOfTitle = new Map([...drafted.map((each) => [each.title, each.id]), ...existing.map((each) => [each.fields.title, each.id])]);
@@ -252,9 +322,50 @@ async function backlogChecks(draft, context) {
     .map((each) => finding({ artifact: named(each.artifact), line: each.line, kind: each.kind, rule: each.rule, what: named(each.what), fix: named(each.fix) }));
 }
 
+const AFFECTED_RULE = "ACCEPTING A USE CASE PUTS THE MODULES IT CHANGES INTO THE BACKLOG";
+
+/**
+ * The step leave-out-named-modules(draft, context) -> Promise<{ draft, findings }> — of the items a job of the kind `check-affected-modules` drafted (UC-008 step 6), leaves out each item for a
+ * module that an item not yet done names: an item of docs/backlog/ of the job's snapshot whose state `itemStates` gives is not `done`, from the approval statuses, the change queues, the product's
+ * jobs and its pull requests ("unknown" where the host gives none). A drafted item is left out when one of its modules is so named; each item left out gives a warning that names the item not done
+ * and the module. The draft keeps its shape, `{ items: [...] }`, with the items that stay in their order. A draft without items stays as it is.
+ */
+async function leaveOutNamedModules(draft, context) {
+  const { snapshot, host, address } = context.product;
+  const drafted = asList(draft?.items);
+  if (drafted.length === 0) return { draft, findings: [] };
+  const items = await Promise.all(snapshot.paths.filter((each) => ITEM_FILE.test(each)).sort()
+    .map(async (each) => readDocument(artifactSchemas().item, each, (await snapshot.read(each)) ?? "")));
+  const states = itemStates(items, null, { statuses: statuses(snapshot), queues: await queues(snapshot), jobs: await listJobs([{ address, snapshot }], new Map()),
+    pullRequests: await pullRequestsOf(host), gates: [], workflow: null });
+  const notDone = new Set(states.filter((each) => each.state !== "done").map((each) => each.item));
+  const namedBy = new Map();
+  for (const item of items.filter((each) => notDone.has(each.id))) for (const module of asList(item.fields.modules)) if (!namedBy.has(module)) namedBy.set(module, item.id);
+  const findings = [];
+  const kept = drafted.filter((entry) => {
+    const named = asList(entry?.modules).filter((module) => namedBy.has(module));
+    for (const module of named) {
+      findings.push(finding({ artifact: String(entry.title), line: 1, kind: "warning", rule: AFFECTED_RULE, what: `${module} is named by ${namedBy.get(module)}, which is not done`,
+        fix: `the change of ${module} belongs to ${namedBy.get(module)}: no item is added for it` }));
+    }
+    return named.length === 0;
+  });
+  return { draft: { ...draft, items: kept }, findings };
+}
+
 const SPEC_PATH = "SPEC.md";
 const NOT_REALISED = "not yet realised by an item";
 const EXISTING_ITEMS = "existing items";
+
+// The requirements the SPEC of a snapshot holds, in its order; a requirement is accepted when the SPEC holds it. None where the snapshot has no SPEC.md.
+const specRequirements = async (snapshot) => [...parseSpec((await snapshot.read(SPEC_PATH)) ?? "").requirements.values()];
+
+// What an item names, accepted or not, as the pages read it to derive an item's state: the approval statuses, and every requirement the SPEC holds as accepted.
+async function acceptanceOf(snapshot) {
+  const accepted = new Map(statuses(snapshot));
+  for (const { name } of await specRequirements(snapshot)) accepted.set(name, { id: name, kind: "requirement", status: "accepted" });
+  return accepted;
+}
 
 // A requirement as the SPEC states it: its name and source, its rule, its check; a field it lacks is left out.
 const stated = ({ name, source, rule, check }) => [`**${name}**${source === null ? "" : ` *(${source})*`}`, rule, check === null ? null : `*Check:* ${check}`].filter((line) => line !== null).join("\n");
@@ -277,10 +388,10 @@ async function backlogInputs(context) {
   const part = (name, text, paths, artifacts) => ({ name, text, size: 0, sources: unique(paths.flatMap((path) => sourcesFor(context, path))), required: true, ...(artifacts ? { artifacts } : {}) });
   const filesOf = async (pattern) => Promise.all(snapshot.paths.filter((each) => pattern.test(each)).sort().map(async (path) => ({ path, text: (await snapshot.read(path)) ?? "" })));
 
-  const requirements = [...parseSpec((await snapshot.read(SPEC_PATH)) ?? "").requirements.values()];
+  const requirements = await specRequirements(snapshot);
   const useCases = await Promise.all([...statuses(snapshot)].filter(([, { kind, status }]) => kind === "use-case" && status === "accepted").sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(async ([path, { id }]) => ({ id, path, text: (await snapshot.read(path)) ?? "" })));
-  const items = (await filesOf(BACKLOG_ITEM)).map((file) => ({ ...file, document: readDocument(schemas.item, file.path, file.text) }));
+  const items = (await filesOf(ITEM_FILE)).map((file) => ({ ...file, document: readDocument(schemas.item, file.path, file.text) }));
   const realised = new Set(items.flatMap(({ document }) => asList(document.fields.realises)));
   const unrealised = [...requirements.map(({ name }) => name), ...useCases.map(({ id }) => id)].filter((name) => !realised.has(name));
 
@@ -309,7 +420,7 @@ const lower = (value) => String(value ?? "").toLowerCase();
 
 /**
  * The check sprint-record-checks(draft) -> Finding[] — on the draft of a job of the kind `close-sprint`, which has the shape of closeSprint's `close`; every such job is an agent's, so every draft is an
- * agent's review (UC-041 1a). An error, each with its rule, for:
+ * agent's review (UC-041 steps 2 to 6). An error, each with its rule, for:
  * - a review whose `sources` are null or empty (AN AGENT'S REVIEW NAMES WHERE ITS FEEDBACK CAME FROM);
  * - a name in `tookPart` whose feedback no feedback line and no source records, and an empty `tookPart` with no feedback line that says that no stakeholder took part (the same rule);
  * - an empty retrospective (A SPRINT ENDS WITH A RETROSPECTIVE);
@@ -350,21 +461,31 @@ function sprintRecordChecks(draft) {
 }
 
 /**
- * The writer sprint-record(result, context) -> Promise<WriteOutcome> — an agent's close of the sprint the draft names, through closeSprint (UC-041 step 6): the draft, `result.draft`, is closeSprint's `close`, which
- * sprint-record-checks has checked; `facts` are those of the same sprint as the recipe sprint-facts computes them (its own function); `architecture` the module files of the job's snapshot; `head` the snapshot's
- * commit; `trailers` provenanceLines of the job, the participant's name among them — the closer's. The proposals of the retrospective are written as lines of the sprint's record and nothing else is written.
- * Commits once, to the product's default branch; the outcome names the commit and the record. Throws what closeSprint throws.
+ * The writer sprint-record(result, context) -> Promise<WriteOutcome> — an agent's close of the sprint the job's parameter `sprint` names, the one the recipe sprint-facts reads, through closeSprint (UC-041 step 6):
+ * the draft, `result.draft`, which sprint-record-checks has checked, is closeSprint's `close` with its `sprint` that of the parameter, whatever the draft holds; `facts` are those of the same sprint as the recipe sprint-facts computes them (its own function); `architecture` the module files of the job's snapshot; `head` the snapshot's
+ * commit; `trailers` provenanceLines of the job, the participant's name among them — the closer's; `instance` the host of the instance's SPEC. The proposals of the retrospective stay proposals: lines of the
+ * sprint's record, and each change to the process an open entry of the instance's SPEC, as closeSprint writes it.
+ * A review that sprint-record-checks finds under AN AGENT'S REVIEW NAMES WHERE ITS FEEDBACK CAME FROM — no source named, or no statement that no stakeholder took part when none did — is refused with
+ * ReviewRefused { findings }, those findings, and nothing is written: the job runner calls the writer also when nobody attends and its loop ended with the finding open.
+ * Otherwise the outcome names the record's commit, then each entry's, and the record; its notes name each entry and each change not proposed. Throws what closeSprint throws.
  */
 async function sprintRecord(result, context) {
   const { snapshot, host } = context.product;
-  const close = result.draft;
-  const { facts } = await sprintInputs(context, { sprint: close?.sprint });
-  const schemas = artifactSchemas();
-  const architecture = await Promise.all(snapshot.paths.filter((each) => ARCHITECTURE_FILE.test(each) && /\/MOD-/.test(each)).sort()
-    .map(async (each) => readDocument(schemas.module, each, (await snapshot.read(each)) ?? "")));
+  const { name, facts } = await sprintInputs(context, context.params);
+  const close = { ...result.draft, sprint: name };
+  const unnamed = sprintRecordChecks(close).filter((each) => each.rule === REVIEW_RULE);
+  if (unnamed.length) {
+    throw new WorkPlansError("ReviewRefused", { findings: unnamed }, `The review of sprint ${name} is not recorded: ${unnamed.map((each) => each.what).join("; ")}.`);
+  }
+  const architecture = await moduleFiles(snapshot);
   const trailers = provenanceLines({ agentM: context.agentM, jobId: context.jobId, kind: context.kind.name, participant: result.drafter ?? { name: "none", model: null }, rounds: result.rounds.length });
-  const { commit, written } = await closeSprint(host, close, { facts, architecture, head: snapshot.commit, trailers });
-  return { commits: [commit], files: written, pullRequest: null, shown: null, notes: [] };
+  // The instance's SPEC takes the retrospective's changes to the process; a product that is its own instance — the job's instance at the product's address — through the product's host,
+  // the one whose commits the job's result carries.
+  const web = (side) => side?.snapshot?.repository?.web ?? null;
+  const instance = web(context.product) !== null && web(context.product) === web(context.instance) ? host : context.instance.host;
+  const { commit, written, entries = [], notes = [] } = await closeSprint(host, close, { facts, architecture, head: snapshot.commit, trailers, instance });
+  return { commits: [commit, ...entries.map((one) => one.commit)], files: written, pullRequest: null, shown: null,
+    notes: [...entries.map((one) => `A change of the retrospective is proposed as entry ${String(one.entry).padStart(2, "0")} of the queue ${one.queue}.`), ...notes] };
 }
 
 const BACKLOG_RULE = "THE BACKLOG LIVES IN THE PRODUCT REPOSITORY";
@@ -376,12 +497,11 @@ const TEST_LEVELS = ["unit", "component", "system", "release"];
  * use cases it realises; `## Outcome` its `outcome`, `## Acceptance` one bullet for each entry of `acceptance`; `builds_on` its `buildsOn`; `class` and `of` are not written, an entry classed duplicate is saved like
  * the others. Its `tests` are the levels its acceptance names as unit, component, system or release tests and its `level` the highest of them (unit: module, component: subsystem, system or release: system); a
  * subsystem's `integrates` is the one decision that all its modules follow. An entry whose acceptance names no level, or whose modules follow no one decision at the level subsystem, is refused with ItemsRefused
- * { findings } and nothing is written. Commits once, to the product's default branch; the outcome names the commit and the files, and holds the warnings of saveItems as notes, one line each: the item, "warning:" and what it says. Throws what saveItems throws.
+ * { findings } and nothing is written. A draft without items writes nothing and its outcome names no commit. Otherwise commits once, to the product's default branch; the outcome names the commit and the files, and holds the warnings of saveItems as notes, one line each: the item, "warning:" and what it says. Throws what saveItems throws.
  */
 async function backlogItems(result, context) {
   const { snapshot, host } = context.product;
-  const schemas = artifactSchemas();
-  const architecture = await Promise.all(snapshot.paths.filter((each) => MODULE_FILE.test(each)).sort().map(async (each) => readDocument(schemas.module, each, (await snapshot.read(each)) ?? "")));
+  const architecture = await moduleFiles(snapshot);
   const followed = (name) => asList(architecture.find((one) => one.id === name)?.fields.follows);
   const refusals = [];
   const items = asList(result.draft?.items).map((entry) => {
@@ -398,10 +518,11 @@ async function backlogItems(result, context) {
       sections: [{ heading: "## Outcome", text: `\n${entry.outcome ?? ""}\n\n` }, { heading: "## Acceptance", text: `\n${acceptance.map((line) => `- ${line}`).join("\n")}\n` }] };
   });
   if (refusals.length) throw new WorkPlansError("ItemsRefused", { findings: refusals }, `The items are not saved: ${refusals.map((one) => `${one.artifact} ${one.what}`).join("; ")}.`);
+  if (items.length === 0) return { commits: [], files: [], pullRequest: null, shown: null, notes: [] };
   const trailers = provenanceLines({ agentM: context.agentM, jobId: context.jobId, kind: context.kind.name, participant: result.drafter ?? { name: "none", model: null }, rounds: result.rounds.length });
   const { commit, written, warnings } = await saveItems(host, { items, removed: [] }, { architecture, head: snapshot.commit, trailers });
   return { commits: [commit], files: written, pullRequest: null, shown: null, notes: warnings.map((one) => `${one.artifact} warning: ${one.what}`) };
 }
 
-/** workStrategies: MOD-job-runner's Partial<Strategies> with the recipes architecture-and-model, backlog-inputs and sprint-facts, the checks plan-checks, backlog-checks and sprint-record-checks and the writers backlog-items and sprint-record, the seven built so far. */
-export const workStrategies = { recipes: { "architecture-and-model": architectureAndModel, "backlog-inputs": backlogInputs, "sprint-facts": sprintFactsRecipe }, checks: { "plan-checks": planChecks, "backlog-checks": backlogChecks, "sprint-record-checks": sprintRecordChecks }, writers: { "backlog-items": backlogItems, "sprint-record": sprintRecord } };
+/** workStrategies: MOD-job-runner's Partial<Strategies> with the recipes architecture-and-model, backlog-inputs and sprint-facts, the checks plan-checks, backlog-checks and sprint-record-checks, the step leave-out-named-modules and the writers plan-steps, backlog-items and sprint-record. */
+export const workStrategies = { recipes: { "architecture-and-model": architectureAndModel, "backlog-inputs": backlogInputs, "sprint-facts": sprintFactsRecipe }, checks: { "plan-checks": planChecks, "backlog-checks": backlogChecks, "sprint-record-checks": sprintRecordChecks }, steps: { "leave-out-named-modules": leaveOutNamedModules }, writers: { "plan-steps": planSteps, "backlog-items": backlogItems, "sprint-record": sprintRecord } };

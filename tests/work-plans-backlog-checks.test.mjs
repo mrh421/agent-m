@@ -87,15 +87,17 @@ test("backlog-checks — a drafted item that realises nothing is an error naming
 
 // TST-616003 · level: unit · module: MOD-work-plans
 // guards: UC-032; A BACKLOG ITEM NAMES THE MODULES IT CHANGES
-// given: the sound draft's first entry changing MOD-ghost, which the product's architecture lacks; then changing no module; then, as the counter-proof, changing MOD-store and MOD-ghost
+// given: the sound draft's first entry changing MOD-ghost, which the product's architecture lacks; then changing no module; then changing MOD-store and MOD-ghost; and, as the counter-proof, changing MOD-store alone
 // input: the check backlog-checks on each draft
-// expect: for the first two, one error A BACKLOG ITEM NAMES THE MODULES IT CHANGES "the item names no module the architecture describes" on the item "Store the thesis"; for the counter-proof, no finding
+// expect: for the first two, one error A BACKLOG ITEM NAMES THE MODULES IT CHANGES "the item names no module the architecture describes" on the item "Store the thesis"; for MOD-store and MOD-ghost, one error with the same rule, "the item names MOD-ghost, which the architecture does not describe"; for the counter-proof, no finding
 // Planted fault: reading the architecture from nothing (every item then names no module), or never from the snapshot's module files, fails the counter-proof or the first case.
 test("backlog-checks — a drafted item that names no module the product's architecture describes is an error", async () => {
   for (const modules of [["MOD-ghost"], []]) {
     assert.deepEqual(brief(await run([entry("Store the thesis", { modules })])), [[the("Store the thesis"), "error", MODULES, "the item names no module the architecture describes"]]);
   }
-  assert.deepEqual(await run([entry("Store the thesis", { modules: ["MOD-store", "MOD-ghost"] })]), []);
+  assert.deepEqual(brief(await run([entry("Store the thesis", { modules: ["MOD-store", "MOD-ghost"] })])),
+    [[the("Store the thesis"), "error", MODULES, "the item names MOD-ghost, which the architecture does not describe"]]);
+  assert.deepEqual(await run([entry("Store the thesis", { modules: ["MOD-store"] })]), []);
 });
 
 // TST-616004 · level: unit · module: MOD-work-plans
@@ -181,13 +183,13 @@ test("backlog-checks — a draft without items has no finding, and a product wit
 // guards: UC-032
 // given: the module's workStrategies
 // input: its recipes, checks and writers
-// expect: the check backlog-checks stands beside plan-checks and sprint-record-checks, and the recipes (architecture-and-model, backlog-inputs, sprint-facts) and writers (backlog-items, ITM-617, and sprint-record) are those built before: nothing already registered changes
+// expect: the check backlog-checks stands beside plan-checks and sprint-record-checks, and the recipes (architecture-and-model, backlog-inputs, sprint-facts) and writers (plan-steps, ITM-614, backlog-items, ITM-617, and sprint-record) are those built before: nothing already registered changes
 // Planted fault: replacing the checks object instead of adding to it removes plan-checks and sprint-record-checks.
 test("workStrategies — adds the check backlog-checks and changes no registration", () => {
   assert.equal(typeof workStrategies.checks?.["backlog-checks"], "function");
   assert.deepEqual(Object.keys(workStrategies.checks).sort(), ["backlog-checks", "plan-checks", "sprint-record-checks"]);
   assert.deepEqual(Object.keys(workStrategies.recipes), ["architecture-and-model", "backlog-inputs", "sprint-facts"]);
-  assert.deepEqual(Object.keys(workStrategies.writers), ["backlog-items", "sprint-record"]);
+  assert.deepEqual(Object.keys(workStrategies.writers), ["plan-steps", "backlog-items", "sprint-record"]);
 });
 
 // TST-616011 · level: unit · module: MOD-work-plans

@@ -73,8 +73,7 @@ const spanOf = (group, name) => find(group, (node) => node.localName === "span" 
 // guards: UC-020; AN UNGROUPED ITEM IS SHOWN AT THE TOP LEVEL
 // given: the fixture on the default branch main: DELTA RULE named by no group, EPSILON RULE added by the open entry and named by no group, ZETA RULE added by it and named by a group, GHOST RULE named by a group but by no requirement
 // input: the public trace/specification route rendered at the ref main
-// expect: each requirement once, with its status, in the order of the tree: the top level first (DELTA RULE in SPEC, EPSILON RULE proposed), then Lending rules (ALPHA RULE
-//         change proposed; below it, in Loans, BETA RULE removal proposed, ZETA RULE proposed), then Membership rules (GAMMA RULE in SPEC, GHOST RULE as an unknown member)
+// expect: each requirement once, with its status, in the order of the tree: the top level first (DELTA RULE in SPEC, EPSILON RULE proposed), then Lending rules (ALPHA RULE change proposed; below it, in Loans, BETA RULE removal proposed, ZETA RULE proposed), then Membership rules (GAMMA RULE in SPEC, GHOST RULE as an unknown member)
 test("every requirement appears once in the tree of the group file, with its status", async () => {
   const target = await render(treeHost({ trees: { main: FILES } }));
   assert.deepEqual(rowsOf(target), [
@@ -90,8 +89,7 @@ test("every requirement appears once in the tree of the group file, with its sta
 // guards: UC-020
 // given: the fixture on main; UC-001 realises ALPHA RULE, UC-002 realises GAMMA RULE, none realises BETA RULE, DELTA RULE or the added EPSILON RULE
 // input: the route rendered at main
-// expect: the groups in the order of the file, the group below another inside it; Lending rules holds 3 requirements (those of Loans too), 2 that no use case realises (BETA RULE, and ZETA RULE,
-//         which the entry would add and nothing realises yet); Loans holds 2, 2; Membership rules holds 1 (GHOST RULE is no requirement), 0 that no use case realises
+// expect: the groups in the order of the file, the group below another inside it; Lending rules holds 3 requirements (those of Loans too), 2 that no use case realises (BETA RULE, and ZETA RULE, which the entry would add and nothing realises yet); Loans holds 2, 2; Membership rules holds 1 (GHOST RULE is no requirement), 0 that no use case realises
 test("each group shows how many requirements it holds and how many of them no use case realises", async () => {
   const target = await render(treeHost({ trees: { main: FILES } }));
   const all = groups(target);
@@ -204,8 +202,7 @@ test("without a group file every requirement stands at the top level", async () 
 // guards: UC-020
 // given: the fixture with a second queue, newer than the first (2026-10-10), whose open entry proposes the section "## Lending" with BETA RULE alone, so that it withdraws ALPHA RULE, which the older queue's entry changes
 // input: the route rendered at main
-// expect: ALPHA RULE reads "removal proposed", the status the first entry that names it gives (the queues are taken newest first, as MOD-spec-changes gives them), and not "change proposed"; known positive:
-//         with the older queue alone it reads "change proposed"
+// expect: ALPHA RULE reads "removal proposed", the status the newest entry that names it gives (the last in the order MOD-spec-changes' queues gives them: folder names, then entry numbers), and not "change proposed"; known positive: with the older queue alone it reads "change proposed"
 test("of two open entries that name a requirement the first gives its status", async () => {
   const newer = "docs/spec-freigaben/2026-10-10_withdraw";
   const files = {

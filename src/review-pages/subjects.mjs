@@ -11,11 +11,10 @@
 
 import { statuses } from "../approvals/index.mjs";
 import { personAccount, personSource } from "../source-register/index.mjs";
-import { queues } from "../spec-changes/index.mjs";
 import { parseSpec, sectionText } from "../spec-document/index.mjs";
 import { blobSha } from "../text-tools/index.mjs";
 import { defaultSnapshot } from "./common.mjs";
-import { entryId, sourcesOf } from "./spec-entries.mjs";
+import { entryAt, sourcesOf } from "./spec-entries.mjs";
 
 const SPEC = "SPEC.md";
 // What was read for a context when its route was drawn: { facts } — the facts of the subject, or null where the page names none.
@@ -59,12 +58,12 @@ async function requirementFacts({ snapshot }, kind, params) {
     params: { requirements: [requirement.name], version: await sectionVersion(spec, requirement.section) } };
 }
 
-// The facts of a SPEC change entry's page: the requirements of its proposal that the SPEC holds, and the blob of the section of the first of them, which the job reads.
+// The facts of a SPEC change entry's page: the requirements of its proposal that the SPEC holds, and the blob of the section of the first of them, which the job reads. The entry
+// is read from its own queue alone (entryAt).
 async function entryFacts({ snapshot }, kind, id) {
-  const all = await queues(snapshot);
-  const queue = all.find((candidate) => candidate.entries.some((item) => entryId(candidate.folder, item.number) === id));
-  const item = queue?.entries.find((each) => entryId(queue.folder, each.number) === id);
-  if (!item) return null;
+  const found = await entryAt(snapshot, id);
+  if (!found) return null;
+  const { item } = found;
   const spec = (await snapshot.read(SPEC)) ?? "";
   const held = parseSpec(spec).requirements;
   const requirements = [...parseSpec((await snapshot.read(item.proposal.path)) ?? "").requirements.keys()].filter((name) => held.has(name));

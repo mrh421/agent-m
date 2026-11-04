@@ -98,12 +98,13 @@ const subjectOf = (key, title) => ({
   key, title, kind: "converse", entry: "use-cases", paramsFor: () => ({ page: `The page shows ${title}.`, target: title }), draftRoute: null, withhold: null, refuses: [],
 });
 
-// The bar started on a page of the instance with one participant offered; resolves once it is drawn.
+// The bar started on a page of the instance with one participant offered, this browser's endpoint drafter-a, declared with its place, context and model; resolves once
+// it is drawn. The instance's participant list, which the bar does not read for its offer, holds drafter-a too.
 async function drawnBar() {
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: new Storage() });
   Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: new Storage() });
   const store = openStore("alice/agent-m");
-  writeSetting(store, "endpoint:ep1", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture" });
+  writeSetting(store, "endpoint:drafter-a", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture", place: "Anthropic, USA", context: 200000 });
   writeSetting(store, "github-token", { value: "github_pat_FIXTURE0123456789abcdef", name: "alice", expires: "2027-01-01" });
   const target = document.createElement("div");
   const current = { subject: subjectOf("use-case:UC-007", "UC-007 Derive use cases") };
@@ -117,7 +118,7 @@ async function drawnBar() {
 
 // TST-600034 · level: unit · module: MOD-prompt-bar
 // guards: UC-049
-// given: one participant offered, drafter-a on the endpoint ep1; the bar started with a main-page route as its subject
+// given: one participant offered, this browser's endpoint drafter-a, declared with its place "Anthropic, USA", its context and its model; the bar started with a main-page route as its subject
 // input: startPromptBar, until the bar is drawn
 // expect: `target` holds exactly one element, the bar's root, and its style declares `position` as `fixed`
 test("the bar's root element is positioned fixed", async () => {
@@ -152,10 +153,9 @@ test("the bar's root element spans the width of the window", async () => {
 
 // TST-600037 · level: unit · module: MOD-prompt-bar
 // guards: UC-049
-// given: as TST-600034; the endpoint ep1 answers "Done."; the bar's root element is kept
+// given: as TST-600034; the endpoint drafter-a answers "Done."; the bar's root element is kept
 // input: the route changes — the subject the frame hands over becomes "use-case:UC-008" — and a message "go on" is sent
-// expect: the answer "Done." is shown, `target` still holds the same root element, which is the only element in it, and its style still declares
-// position fixed, bottom 0, left 0 and right 0
+// expect: the answer "Done." is shown, `target` still holds the same root element, which is the only element in it, and its style still declares position fixed, bottom 0, left 0 and right 0
 test("the bar stays fixed when the route changes and a message is sent on the new route", async () => {
   endpointAnswers("Done.");
   const it = await drawnBar();

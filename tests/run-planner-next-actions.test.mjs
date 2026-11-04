@@ -2,11 +2,9 @@
 // while the product has no CI configuration of Agent M's (`facts.ci.configured` false), start the kind `set-up-ci` and nothing else until its pull request is merged; start the kind `implement` for
 // every selected step or item that `startable` admits and whose modules use only modules already done, each on a route of a holder of the implementing role in the item's role assignment who may
 // receive its content that reaches the product's resources (`facts.resourceNeeds`), as many as `jobs at once` allows; the steps of a phase only once the gate before it is recorded; resume a job
-// whose gate has been decided; [...] It starts nothing that depends on a failed job while the others go on, and nothing after a person stopped the run. It starts nothing whose condition depends
-// on a fact that is `"unknown"`: on a host that does no server operations [...] it computes only the resumptions of jobs whose gate is recorded, the holds at a limit and the refusals [...]
-// `refuse` names the modules of a cycle in the modules' uses, before anything starts." And `Action` — `{ do: "start" | "resume" | "hold" | "finish" | "refuse", kind: string | null, worksOn:
-// string | null, route: string | null, participant: string | null, job: string | null, reason: string | null }`. With UC-043 and the item's Outcome: the tests and `finish` are ITM-978, the
-// holds at a limit ITM-979, so no test here asks for them.
+// whose gate has been decided. It starts nothing that depends on a failed job while the others go on, and nothing after a person stopped the run. It starts nothing whose condition depends
+// on a fact that is `"unknown"`. `refuse` names the modules of a cycle in the modules' uses, before anything starts." And `Action` — `{ do: "start" | "resume" | "hold" | "finish" | "refuse",
+// kind: string | null, worksOn: string | null, route: string | null, participant: string | null, job: string | null, reason: string | null }`.
 // Run: node --test tests/run-planner-next-actions.test.mjs
 //
 // Module: MOD-run-planner

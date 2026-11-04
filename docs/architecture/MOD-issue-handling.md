@@ -9,6 +9,9 @@ uses:
   - MOD-repository-hosts.commentOnIssue
   - MOD-repository-hosts.setIssueLabels
   - MOD-repository-hosts.setIssueState
+  - MOD-repository-hosts.webLinks
+  - MOD-repository-hosts.repositoryInfo
+  - MOD-repository-hosts.readSnapshot
   - MOD-repository-hosts.Snapshot
   - MOD-mail-records.issueLabels
   - MOD-mail-records.noteText
@@ -20,7 +23,8 @@ uses:
   - MOD-trace-graph.tracesTo
   - MOD-run-planner.runStrategies
   - MOD-personal-data.pseudonymisationOf
-  - MOD-documents.loadSchema
+  - MOD-documents.artifactSchemas
+  - MOD-documents.readDocument
   - MOD-documents.Document
   - MOD-work-plans.saveItems
   - MOD-job-runner.Strategies
@@ -62,21 +66,20 @@ prefills is a document of the item schema of MOD-documents, written by Process (
 - `confirmClass(host: Host, issue: number, cls: IssueClass, reason: string | null) -> Promise<void>` — the person's one
   click on the class: sets the label `defect`, `change` or `not-reproducible` and removes the other two; for *rejected*,
   comments the reason and closes the issue. Crosses the network to the product's tracker. Errors: Access's
-  `TokenRefused`, `MissingPermission`, `RateLimited`, `Unreachable`.
+  `TokenRefused`, `PermissionMissing`, `RateLimited`, `Unreachable`.
 - `backlogItemFrom(issue: IssueText & { title: string, address: string }, cls: IssueClass, analysis: { violated: string |
-  null, modules: string[] }, changed: string[]) -> { item: Document, place: "top" | "bottom" }` — the backlog item a
+  null, modules: string[] }, changed: string[]) -> { item: Document }` — the backlog item a
   person checks before adding it (UC-033): its title from the issue's title, its outcome from the issue's description,
   its origin the issue's address, what it realises — for a bug the requirement the analysis names as violated, for a
   change the requirements `changed` names: those the entries of the queues that name this issue change or add, which
   the caller finds with MOD-spec-changes' `queues` and `entryView` —,
   and the modules the analysis names, which the person confirms or corrects (`A BACKLOG ITEM NAMES WHAT IT REALISES`, `A
-  BACKLOG ITEM NAMES THE MODULES IT CHANGES`); placed at the top for a bug and at the bottom for a change unless the
-  person moves it. Errors: `NotClassified` for an issue without a class — no item is offered.
+  BACKLOG ITEM NAMES THE MODULES IT CHANGES`). Errors: `NotClassified` for an issue without a class — no item is offered.
 - `moveToBacklog(host: Host, issue: { number: number, address: string }, item: Document, existing:
   string | null) -> Promise<{ item: string, comment: { text: string, issue: string } | null }>` — the
   person's one click *Add* (UC-033): the item — the one `backlogItemFrom` prefilled and the person checked, or, when
-  `existing` names an item, that item with this issue added to its origins — written through Process's `saveItems`; then the comment `item-added` on the issue, naming the item and its address on the
-  dashboard, and the label `backlog`, also for a second issue added to an existing item. When the token may not comment,
+  `existing` names an item, that item with this issue added to its origins — written through Process's `saveItems`; then the comment `item-added` on the issue, naming the item and the address of the item
+  file in the product's repository, and the label `backlog`, also for a second issue added to an existing item. When the token may not comment,
   the item is written all the same and the comment's text and the issue's address are returned for the person to copy
   (UC-033). Crosses the network. Errors: `saveItems`' own — nothing is written then —, and Access's.
 - `closeWithLinks(host: Host, issue: number, links: { pullRequest: string | null, commit: string | null, item: string |
@@ -107,7 +110,10 @@ labels and closes issues in the product's tracker through Access; the item is wr
 ## Uses
 
 - `MOD-repository-hosts.commentOnIssue`, `setIssueLabels`, `setIssueState` — the class, the notes and closing, with the
-  person's token; `MOD-repository-hosts.Snapshot` — the files its recipes read.
+  person's token; `MOD-repository-hosts.webLinks` — the address of the item file in the product's repository;
+  `MOD-repository-hosts.repositoryInfo`, `readSnapshot` — the default branch's head that `moveToBacklog` reads the module
+  files and an existing item from;
+  `MOD-repository-hosts.Snapshot` — the files its recipes read.
 - `MOD-mail-records.issueLabels`, `MOD-mail-records.noteText`, `MOD-mail-records.IssueText` — the labels and comments
   Agent M writes on an issue, defined once there.
 - `MOD-spec-document.parseSpec`, `MOD-spec-document.requirementNamesIn` — the requirements an issue names, with their
@@ -116,6 +122,8 @@ labels and closes issues in the product's tracker through Access; the item is wr
 - `MOD-trace-graph.traceGraph`, `MOD-trace-graph.tracesTo` — what links to them.
 - `MOD-run-planner.runStrategies` — the recipe `implementation-inputs`, reused for the modules of a fix.
 - `MOD-personal-data.pseudonymisationOf` — whether the issue's report data was rewritten without persons.
-- `MOD-documents.loadSchema`, `MOD-documents.Document` — the item schema of the prefilled item.
-- `MOD-work-plans.saveItems` — writing the item and its place in the backlog's order.
+- `MOD-documents.Document` — the prefilled item; `MOD-documents.artifactSchemas`, `MOD-documents.readDocument` — the
+  item and module schemas, the module files of the architecture that `saveItems` checks the item against, and an existing
+  item that takes this issue as a further origin.
+- `MOD-work-plans.saveItems` — writing the item.
 - `MOD-job-runner.Strategies` — the type of `issueStrategies`.

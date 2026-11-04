@@ -29,7 +29,7 @@ import * as specChanges from "../src/spec-changes/index.mjs";
 import { documentFindings, loadSchema, readDocument } from "../src/documents/index.mjs";
 import { withStoredGraph } from "./stored-graph-fake.mjs";
 
-const { openQueueOf, proposeSection, queues, entryView } = specChanges;
+const { proposeSection, queues, entryView } = specChanges;
 
 const text = (...lines) => `${lines.join("\n")}\n`;
 const gitBlob = (body) => { const bytes = Buffer.from(body, "utf8"); return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex"); };

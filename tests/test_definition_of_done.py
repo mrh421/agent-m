@@ -77,7 +77,7 @@ def of_group(group: str) -> list[dict]:
 
 
 class TestDefinitionOfDone(unittest.TestCase):
-    # TST-788001 - level: release - module: MOD-product-process
+    # TST-788001 · level: release · module: MOD-product-process
     # guards: THE DEFAULT DEFINITION OF DONE IS THE JOB RULES
     # given: this repository's docs/process.md, which declares no condition, and the pull-request cases of the group default beside this file
     # input: workflowOf of the declaration, then doneCheck over each case's facts and its own gate records
@@ -89,7 +89,7 @@ class TestDefinitionOfDone(unittest.TestCase):
                 self.assertEqual(len(result["done"]), JOB_RULES, result["done"])
                 self.assertEqual(result["findings"], loaded["case"]["expected"])
 
-    # TST-788002 - level: release - module: MOD-product-process
+    # TST-788002 · level: release · module: MOD-product-process
     # guards: A PRODUCT DECLARES ITS DEFINITION OF DONE
     # given: a copy of docs/process.md with the line `check: lint` (no list dash) under its Definition of Done, and the cases of the group declared
     # input: workflowOf of the declaration, then doneCheck over each case's facts
@@ -101,7 +101,7 @@ class TestDefinitionOfDone(unittest.TestCase):
                 self.assertEqual(result["done"][JOB_RULES:], loaded["case"]["workflowDoneExtra"])
                 self.assertEqual(result["findings"], loaded["case"]["expected"])
 
-    # TST-788003 - level: release - module: MOD-product-process
+    # TST-788003 · level: release · module: MOD-product-process
     # guards: A PULL REQUEST IS MERGED ONLY WHEN THE DEFINITION OF DONE HOLDS
     # given: every case beside this file, each missing exactly one condition or meeting all of them
     # input: doneCheck over each case's facts

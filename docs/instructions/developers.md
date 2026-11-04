@@ -4,11 +4,12 @@
 
 What every holder of the role Developers (`docs/process.md`, Roles) follows when the Scrum Master gives it one backlog
 item. The task names the item, the participant, the sprint, the folder of the participant's clone and the lines that
-end each commit.
+end each commit and pull request.
 
 ## Read first — only what your item needs, in the original, never from memory, never a summary
-1. `AGENTS.md` of the repository — the working rules every agent follows (SPEC-first; §6a: read the existing caller first, a
-   negative result counts only after a known positive, no unrequested checks).
+1. `AGENTS.md` of the repository — the working rules every agent follows (SPEC-first; §2: design principles and the
+   `file:line` path of a diagnosis; §6a: read the existing caller first, a negative result counts only after a known
+   positive, take the reading that lets you build and name it) — and the book's chapters its §1 names for your work.
 2. Your item `docs/backlog/ITM-<nnn>-*.md` as it stands on `origin/main`, and in the sprint's record
    `docs/backlog/sprints/<team>/<nn>.md` only what the Product Owner's start decision says of your item.
 3. Of `SPEC.md`, the requirements your item names under `realises` and in its text, each in full — find them by name:
@@ -25,14 +26,16 @@ names. Normally that is the file on `origin/main`; if the file has changed since
 blob (`git show <blob sha>`) and say so in your report.
 
 ## Where you work
-- Your own git worktree, in the folder your task names under `.agent/worktrees/`, and no other checkout: from the clone
-  your task names, `git fetch origin`, then `git worktree add <folder> -b item/ITM-<nnn>-<slug> origin/sprint/<team>/<nn>`,
-  and work only inside that folder.
+- Your own git worktree, in the folder your task names under `.agent/worktrees/`, and no other checkout (`AGENTS.md`
+  §5): from the clone your task names, `git fetch origin`, then
+  `git worktree add <folder> -b item/ITM-<nnn>-<slug> origin/<branch>`, where `<branch>` is the `branch` of the sprint's
+  record, and work only inside that folder.
 - The SPEC, the use cases and the architecture are accepted and binding: you change none of them, and no backlog file.
 - Build only what the item names (YOU AREN'T GONNA NEED IT, KEEP IT SIMPLE; `AGENTS.md` §2): no
   extra function, option, check or case, however useful it looks.
 - Write only the tests the item's Acceptance names.
-- Use another module only through its `index.mjs`, never through a private file of it (`DEVELOP AGAINST INTERFACES`).
+- Use another module only through its `index.mjs`, and only what your module file's `uses` names, never through a
+  private file of it (`DEVELOP AGAINST INTERFACES`).
 
 ## No discussion during the sprint
 - You ask nobody anything. A question to akmaier is allowed only when the SPEC and the use cases cannot be implemented as
@@ -47,33 +50,40 @@ blob (`git show <blob sha>`) and say so in your report.
   does not hold yet.
 
 ## How you work — the job rules, which are the Definition of Done
-1. **Red first.** Write the tests the item's Acceptance names. Each test case carries the test declaration that
-   MOD-test-document's file gives, as comment lines directly before it: first `// TST-<nnn> · level: <level> · module:
-   MOD-<slug>`, then `key: value` lines, `guards:` with the requirement it guards among them, with its expected result
-   readable without running it. Take an identifier no test of the repository uses yet. Commit only these tests, push the branch and open a pull request into
-   `sprint/<team>/<nn>`: `gh pr create --repo akmaier/agent-m --base sprint/<team>/<nn> --head item/ITM-<nnn>-<slug>
-   --title "ITM-<nnn>: <title>"`. CI must be red on this commit (`gh pr checks`).
+1. **Red first.** Write the tests the item's Acceptance names, and put every changed expectation of an existing test into
+   the same commit. Each test case carries the test declaration that MOD-test-document's file gives, as comment lines
+   directly before it: first `// TST-<nnn> · level: <level> · module: MOD-<slug>`, then `key: value` lines, `guards:`
+   with the requirement it guards among them, with its expected result readable without running it. Its identifier is
+   `TST-<item number><three digits>`, such as `TST-1255001`. Commit only these tests, push the branch and open a pull
+   request into the sprint's branch: `gh pr create --repo akmaier/agent-m --base <branch> --head item/ITM-<nnn>-<slug>
+   --title "ITM-<nnn>: <title>"`. CI must be red on this commit, in your new tests and nowhere else (`gh pr checks`). A
+   refactoring item is green on every commit instead (`A REFACTORING JOB BEGINS WITHOUT A FAILING TEST`).
 2. **Green.** Implement in the folders of your item's modules (`src/<slug>/`), as the module files describe, only the
-   functions your item needs. Where code under `docs/assets/` does this today, take it as the model; the old file stays
-   exactly as it is. Making the dashboard call the modules is a separate change between jobs. Push; CI must be green.
-3. **Only your scope changes:** your modules' folders and the test files that name your modules — new tests, and an
-   existing test that names your module only where how it prepares its fixture must change, or where your item names
-   the test and the accepted module file changes the behaviour it asserts, then also its expected result —;
-   no test helper, no file under `docs/` (`AN IMPLEMENTATION JOB CHANGES ONLY ITS MODULES`). Every other existing test
-   stays green unchanged, unless your item names an expected result it changes.
+   functions your item needs. Push the next commit only once the pull request's run of the last one has started, so
+   each commit gets a run of its own; CI must be green on the last.
+3. **Only your scope changes,** as `AN IMPLEMENTATION JOB CHANGES ONLY ITS MODULES` gives it; a refactoring changes no
+   expected result (`A REFACTORING JOB CHANGES NO EXPECTED RESULT`). If a test whose header names a module your item does
+   not list would have to change, stop and report it instead of changing it.
 4. **Counter-proofs.** For every new test, plant a fault in the code it guards, run the test, see it fail, remove the
    fault; record each — test, fault, failing output in one line — in the pull request's description.
 5. **CI within two minutes** (`A PULL REQUEST'S CI RUNS WITHIN TWO MINUTES`): unit tests that run in well under a second
    each; nothing in them waits, sleeps or reaches the network.
 6. **Local runs** only of your own tests and of the existing tests that import the files you changed, file by file. CI
-   runs the whole suite.
-7. **Commits** say what they do and end with `Item: ITM-<nnn> · Agent M at <the sprint commit you branched from> ·
-   <your participant name> (<your model>)` and the lines your task names.
-8. **Do not merge.** The Product Owner decides the merge; the Scrum Master carries it out.
+   runs the whole suite. A failure your change did not cause is not worked around: show that it fails on the sprint's
+   branch too, and report it.
+7. **Commits** say what they do and end with `Agent-M-Participant: <your participant name>`,
+   `Agent-M-Model: <your model id>` and the lines your task names.
+8. **The pull request's description** gives the outcome, for each failure the item fixes its path (`AGENTS.md` §2), the
+   red and the green run, the counter-proofs, the gaps you noted, each reading you took with the sentence it reads, and
+   for a removed test the test that keeps guarding what it guarded; it ends with the lines your task names. It names no
+   `JOB-` identifier: the Definition-of-Done check takes the first one it finds as the pull request's job.
+9. **Do not merge,** push to no branch but your item's, and never force-push. The Product Owner decides the merge; the
+   Scrum Master carries it out.
 
 ## An item of release or system tests
 When the task gives you an item of release or system tests, you implemented none of the behaviour it tests
-(`RELEASE TESTS ARE NOT WRITTEN BY THE IMPLEMENTER`), and the rules above hold with these differences:
+(`RELEASE TESTS ARE NOT WRITTEN BY THE IMPLEMENTER`; the trailers of the commits that built it name who did), and the
+rules above hold with these differences:
 - Read, besides your item, the use case it names in full, the requirements that use case realises, and how the
   dashboard reaches the behaviour: the view file and the existing test that drives it. Reach it that way; build no other.
 - Write a system test that walks the use case's main flow and each alternative flow it names, and one release test for
@@ -85,19 +95,8 @@ When the task gives you an item of release or system tests, you implemented none
 - A test that fails because the behaviour does not do what the use case says is a finding, not a test to bend: mark it
   `{ todo: "FINDING <id> — <what the code does instead>" }` and list it in your report.
 
-## A change between jobs
-When the task names a change between jobs instead of an item (`WHAT NO MODULE OWNS IS CHANGED BETWEEN JOBS`), the sprint's
-record says what it changes, and the rules above hold with these differences:
-- It changes only files that no module owns, and each change is one of the kinds that requirement names — for instance
-  old code of the dashboard calling a module in place of its own code. No module's folder changes.
-- The branch is `between/<team>-<nn>-<slug>`, the pull request's title `Sprint <team>/<nn>, between jobs: <what it
-  changes>`, and its description names the kind of change.
-- A new test shows the dashboard reaching the module through the change, names the module it reaches, and has a
-  counter-proof. Reach the page the way the existing tests of that page do; build no other way.
-- Commits end with `Item: — (between jobs) · Agent M at <the sprint commit you branched from> · <your participant name>
-  (<your model>)` and the lines your task names.
-
 ## Your report (at most 20 lines)
-The pull request's address; its commits; the CI result of the tests-only commit (red) and of the last commit (green),
-with their addresses; the counter-proofs' count; every file you changed; the gaps you noted; and anything you could not
-build as specified, with the reason.
+It opens with the list of what you read in full; a report without it is returned. Then the pull request's address and
+its head commit; its commits; the CI result of the tests-only commit (red) and of the last commit (green), with their
+addresses; the counter-proofs' count; every file you changed; the gaps you noted and the readings you took; and
+anything you could not build as specified, with the reason.

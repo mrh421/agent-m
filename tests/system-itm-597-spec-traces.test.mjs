@@ -47,8 +47,7 @@ const storedGraph = (head) => `stored graph ${head}`;
 // guards: UC-020; A REQUIREMENT SHOWS WHAT TRACES TO IT
 // given: the dashboard without a token on a repository holding SPEC.md, a use case, a module file and a test file, which name TRACED RULE, and no change queue
 // input: the real #spec drawn; its requirement opened; closed; opened again
-// expect: drawing and opening request none of the three artifact files, and the stored graph once in all (known positive: the page shows UC-001, MOD-traced and TST-601 as links
-//         once the requirement is opened); closing and opening again request nothing
+// expect: drawing and opening request none of the three artifact files, and the stored graph once in all (known positive: the page shows UC-001, MOD-traced and TST-601 as links once the requirement is opened); closing and opening again request nothing
 test("the dashboard shows what traces to an opened requirement from the stored graph, reads no artifact, and nothing again on the next opening", async () => {
   const server = await repoServer({ files: WITHOUT_QUEUE, head: HEADS.traces });
   const page = await openDashboard({ server, hash: "#spec", token: null });
@@ -67,8 +66,7 @@ test("the dashboard shows what traces to an opened requirement from the stored g
 // guards: UC-020; A REQUIREMENT SHOWS WHAT TRACES TO IT
 // given: the dashboard without a token on the same repository with the queue 2026-10-09_traced, whose open entry changes TRACED RULE
 // input: the real #spec drawn; its requirement opened; closed; opened again
-// expect: the page draws TRACED RULE as "change proposed" (known positive), the entry's impact list made from the stored graph: drawing and opening request none of the three
-//         artifact files and the stored graph once in all; closing and opening again request nothing
+// expect: the page draws TRACED RULE as "change proposed" (known positive), the entry's impact list made from the stored graph: drawing and opening request none of the three artifact files and the stored graph once in all; closing and opening again request nothing
 test("the dashboard reads the stored graph once for the impact list of an open entry, and not again when the requirement is opened", async () => {
   const server = await repoServer({ files: FILES, head: HEADS.entry });
   const page = await openDashboard({ server, hash: "#spec", token: null });
@@ -91,7 +89,8 @@ test("the dashboard reads the stored graph once for the impact list of an open e
 // expect: the page links UC-001 (known positive) and the opened requirement has no open proposals; opening requests no file of the queue; the artifacts were read, over the whole load, in batch queries, fewer requests than files
 test("the dashboard reads the artifacts in batches when a requirement is opened, and no queue", async () => {
   const graphql = async (url, init) => {
-    if (url.pathname !== "/graphql") return null;
+    // The batch of files' texts alone; the query of the folders' entries a load reads its snapshot with (ITM-1266) is the harness's.
+    if (url.pathname !== "/graphql" || !/\bf\d+:object\(/.test(JSON.parse(init.body).query)) return null;
     const repository = {};
     for (const match of JSON.parse(init.body).query.matchAll(/(f\d+):object\(expression:("(?:[^"\\]|\\.)*")\)/g)) {
       const path = JSON.parse(match[2]).split(":").slice(1).join(":");

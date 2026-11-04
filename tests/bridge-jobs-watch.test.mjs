@@ -6,7 +6,7 @@
 // record ends as cancelled, naming that the Bridge was quit"; "POST /v1/jobs — a job the page handed over: its start record is already committed
 // ...; the Bridge takes it and runs it ..., from its record; the hand-over only spares it the wait for its next reading. Errors: invalid-request for
 // an agent this Bridge does not offer, or whose working folder is not set"; and "Every job it runs, the Bridge runs from its start record alone".
-// For UC-011 steps 2 to 5. Resuming after a gate, advancing runs, an agent's sprint close and the job list, log and cancel routes are other items'.
+// For UC-011 steps 2 to 5. Resuming after a gate, an agent's sprint close and the job list, log and cancel routes are other items'.
 // Run: node --test tests/bridge-jobs-watch.test.mjs
 //
 // Module: MOD-bridge-jobs

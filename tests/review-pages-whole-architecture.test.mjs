@@ -33,6 +33,7 @@
 // pull request.
 
 import "./site-frame-dom.mjs";
+import { until } from "./review-pages-wait.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -160,6 +161,9 @@ function fakeHost(options) {
     land(changed) { head = commitOf(new Map([...commits.get(head).tree, ...Object.entries(changed)]), head); },
     host: {
       async repositoryInfo() { return { defaultBranch: "main", visibility: "public", canWrite: true, archived: false, description: "" }; },
+      async readFileAt(path, shas) {
+        return new Map(shas.map((sha) => [sha, commits.get(sha)?.tree.get(path) ?? null]));
+      },
       async readSnapshot(ref) {
         if (ref === "main") return { ...snapshotAt(head), ref };
         if (commits.has(ref)) return snapshotAt(ref);
@@ -203,13 +207,6 @@ function find(root, match) {
 const byClass = (root, name, className) => find(root, (node) => node.localName === name && node.className.split(" ").includes(className));
 // A person's click: a browser marks it trusted (`isTrusted`); node marks every Event untrusted, as a script's.
 const click = (node) => node.dispatchEvent(Object.defineProperty(new Event("click"), "isTrusted", { value: true }));
-async function until(condition, what) {
-  for (let turn = 0; turn < 400; turn++) {
-    if (condition()) return;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  assert.fail(`waited for ${what}`);
-}
 const filesOf = (target) => byClass(target, "section", "review-file").map((section) => section.getAttribute("data-id"));
 const fileOf = (target, id) => byClass(target, "section", "review-file").find((section) => section.getAttribute("data-id") === id);
 
@@ -312,7 +309,7 @@ test("MOD-review-pages decision/all — Accept all N shown writes one record for
   const read = fake.head();
   const target = await show(fake);
   click(byClass(target, "button", "accept-all")[0]);
-  await until(() => fake.writes().length === 1, "the commit");
+  await until(target, () => fake.writes().length === 1, "the commit");
   const [{ change }] = fake.writes();
   assert.equal(change.branch, "main");
   assert.equal(change.expectedHead, read);
@@ -322,7 +319,7 @@ test("MOD-review-pages decision/all — Accept all N shown writes one record for
   assert.deepEqual(change.files.map((file) => file.text), [
     recordOf("ARC-002", "architecture-decision", A(2, "desk"), ARC2)[1], recordOf("ARC-003", "architecture-decision", A(3, "shelf"), ARC3)[1],
     recordOf("MOD-desk", "module", M("desk"), MOD_DESK)[1], recordOf("ARC-004", "architecture-decision", A(4, "barcodes"), ARC4)[1]]);
-  await until(() => byClass(target, "p", "nothing").length === 1, "the page drawn again");
+  await until(target, () => byClass(target, "p", "nothing").length === 1, "the page drawn again");
   assert.deepEqual(filesOf(target), []);
 });
 
@@ -336,11 +333,11 @@ test("MOD-review-pages decision/all — a file changed after it was shown is lef
   const target = await show(fake);
   fake.land({ [M("desk")]: MOD_DESK_EDITED });
   click(byClass(target, "button", "accept-all")[0]);
-  await until(() => fake.writes().length === 1, "the commit");
+  await until(target, () => fake.writes().length === 1, "the commit");
   assert.deepEqual(fake.writes()[0].change.files.map((file) => file.path), [
     recordOf("ARC-002", "architecture-decision", A(2, "desk"), ARC2)[0], recordOf("ARC-003", "architecture-decision", A(3, "shelf"), ARC3)[0],
     recordOf("ARC-004", "architecture-decision", A(4, "barcodes"), ARC4)[0]]);
-  await until(() => byClass(target, "p", "result").length === 1, "the message");
+  await until(target, () => byClass(target, "p", "result").length === 1, "the message");
   assert.match(byClass(target, "p", "result")[0].textContent, /MOD-desk was left out: changed since shown/);
 });
 
@@ -357,11 +354,11 @@ test("MOD-review-pages decision/all — a decision that names an open use case i
   assert.equal(byClass(fileOf(target, "ARC-002"), "section", "rests-on").length, 0, "a decision that rests on accepted artifacts has none");
   assert.equal(byClass(target, "button", "accept-all")[0].textContent, "Accept all 6 shown");
   click(byClass(target, "button", "accept-all")[0]);
-  await until(() => fake.writes().length === 1, "the commit");
+  await until(target, () => fake.writes().length === 1, "the commit");
   const written = fake.writes()[0].change.files.map((file) => file.path);
   assert.equal(written.length, 5);
   assert.ok(!written.some((path) => path.includes("ARC-005")), "no record for ARC-005");
-  await until(() => byClass(target, "p", "result").length === 1, "the message");
+  await until(target, () => byClass(target, "p", "result").length === 1, "the message");
   assert.match(byClass(target, "p", "result")[0].textContent, /ARC-005 was left out: rests on what is not accepted \(UC-002\)/);
 });
 

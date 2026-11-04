@@ -46,8 +46,7 @@ const run = (instance, inputs) => runEntry("onSourcesCommitted", envOf(instance,
 // guards: UC-016; A SOURCE VERSION IS NEVER OVERWRITTEN; AN EU LEGAL TEXT IS FETCHED FROM THE OFFICIAL REPOSITORY
 // given: SRC-ai-act, an EU legal text with the version cellar-existing (32024R1689.xhtml holding the old text), and SRC-other-law, another legal text with a version; the publication repository answers a newer text (ETag cellar-2024-07-12)
 // input: onSourcesCommitted in a run started by hand with the input source = SRC-ai-act
-// expect: outcome done, its summary naming SRC-ai-act; the publication repository is asked once; one commit on main, changing exactly docs/sources/SRC-ai-act.md and docs/sources/SRC-ai-act/cellar-2024-07-12/32024R1689.xhtml (the new bytes);
-// the entry lists cellar-existing and then cellar-2024-07-12 and keeps the row of cellar-existing line for line; SRC-other-law is untouched
+// expect: outcome done, its summary naming SRC-ai-act; the publication repository is asked once; one commit on main, changing exactly docs/sources/SRC-ai-act.md and docs/sources/SRC-ai-act/cellar-2024-07-12/32024R1689.xhtml (the new bytes); the entry lists cellar-existing and then cellar-2024-07-12 and keeps the row of cellar-existing line for line; SRC-other-law is untouched
 test("onSourcesCommitted — a run started for an entry that has a version appends the newer text as a further version, and leaves the other entries alone", async () => {
   const first = entryOf("SRC-ai-act", ADDRESS, FIRST);
   await withInstance(files({ "docs/sources/SRC-ai-act.md": first, "docs/sources/SRC-other-law.md": entryOf("SRC-other-law", ADDRESS, FIRST) }), async (instance) => {
@@ -115,8 +114,7 @@ test("onSourcesCommitted — an entry whose identifier is a bare CELEX number is
 // guards: UC-016; AN EU LEGAL TEXT IS FETCHED FROM THE OFFICIAL REPOSITORY
 // given: SRC-ai-act with a version, a push run's environment with no input; and the same entry with a run that names it
 // input: onSourcesCommitted in the push run; and in the run with the input, with a publication repository that cannot be reached
-// expect: the push run is "nothing to do" with the summary "No EU legal text is waiting for its fetch.", the publication repository not asked and nothing committed; the run with the input is failed, its summary naming SRC-ai-act and the
-// failure ("publication offline"), and nothing is committed
+// expect: the push run is "nothing to do" with the summary "No EU legal text is waiting for its fetch.", the publication repository not asked and nothing committed; the run with the input is failed, its summary naming SRC-ai-act and the failure ("publication offline"), and nothing is committed
 test("onSourcesCommitted — without the input an entry with a version is left alone; a named entry whose fetch fails writes nothing and is named", async () => {
   await withInstance(files({ "docs/sources/SRC-ai-act.md": entryOf("SRC-ai-act", ADDRESS, FIRST) }), async (instance) => {
     await withPublication({ body: BODY }, async (calls) => {

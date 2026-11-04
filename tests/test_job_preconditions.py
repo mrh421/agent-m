@@ -132,7 +132,7 @@ def result(case: dict) -> dict:
 
 
 class TestJobPreconditions(unittest.TestCase):
-    # TST-445100 - level: release - module: system
+    # TST-445100 · level: release · module: system
     # guards: ARCHITECTURE IS DESIGNED ONLY AGAINST ACCEPTED USE CASES
     # given: Markdown fixture products with use-case approval records present or absent
     # input: prepareJob("derive-architecture") with MOD-approvals' architecture-ready precondition
@@ -144,7 +144,7 @@ class TestJobPreconditions(unittest.TestCase):
             with self.subTest(case=item["name"]):
                 self.assertEqual(result(item["case"]), item["case"]["expected"])
 
-    # TST-445101 - level: release - module: system
+    # TST-445101 · level: release · module: system
     # guards: ARCHITECTURE IS DESIGNED ONLY AGAINST ACCEPTED USE CASES
     # given: the expected results in the Markdown fixture cases
     # input: the blocking finding and the accepted-use-cases parts

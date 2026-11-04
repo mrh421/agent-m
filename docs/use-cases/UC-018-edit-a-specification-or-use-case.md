@@ -27,7 +27,6 @@ realises:
   - A GITLAB PRODUCT IS WRITTEN WITH A TOKEN
   - ONE CLICK PER DECISION
   - EVERY STEP EXPLAINS ITSELF
-  - A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE
 ---
 # UC-018 Edit a specification or a use case in the dashboard
 
@@ -70,11 +69,10 @@ current text, accepted in UC-006. Requirements move because understanding moves 
 6. **Use case:** Agent M commits the edited file to the default branch under the author's own
    account. Its SHA changes; no approval record names the new SHA, so the dashboard shows it as open,
    or as changed since acceptance.
-   **Requirement:** Agent M adds an entry to the author's open queue of today under
-   `docs/spec-freigaben/` — or starts one, if there is none without an accepted entry — with the
+   **Requirement:** Agent M adds an entry to the section's queue under
+   `docs/spec-freigaben/` — or starts the queue, if there is none — with the
    complete SPEC section as edited, its rationale from the *Why* field, its impact list, and the
-   index line naming the section it replaces, in one commit under the author's account. A second edit
-   of the same section replaces that entry instead of adding another.
+   index line naming the section it replaces, in one commit under the author's account.
    `SPEC.md` is not touched.
 7. The dashboard shows the commit as a link. For a requirement it opens the new entry in the
    approval view: current section, proposal and difference side by side, ready for UC-006.

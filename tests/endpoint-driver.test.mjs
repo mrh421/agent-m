@@ -168,7 +168,7 @@ test("TST-316-001: OpenAI driver sends the prepared prompt once and returns repo
   assert.equal(calls[0].url, "https://models.example.test/v1/chat/completions");
   assert.equal(calls[0].init.headers.Authorization, "Bearer secret-key");
   assert.equal(calls[0].url.includes("secret-key"), false, "the key is never in the URL");
-  assert.deepEqual(JSON.parse(calls[0].init.body), { model: "tiny-model", messages: [{ role: "user", content: INPUT.prompt }] });
+  assert.deepEqual(JSON.parse(calls[0].init.body), { model: "tiny-model", messages: [{ role: "user", content: INPUT.prompt }], stream: false });
   assert.equal(calls[0].init.body.includes(INPUT.parts[0].text), false, "the driver does not append parts already in prompt");
 });
 

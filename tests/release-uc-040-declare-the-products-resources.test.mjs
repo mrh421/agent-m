@@ -132,8 +132,7 @@ const named = (check) => check.match(/tests\/[A-Za-z0-9_.-]+/g) ?? [];
 // guards: UC-040; RELEASE TESTS ARE NOT WRITTEN BY THE IMPLEMENTER
 // given: UC-040's `realises` list and the UC-040 system test
 // input: read the declarations of the system test
-// expect: the use case realises 26 requirements, each once (known positive); the system test declares every step of the main flow, 1 to 9, and each alternative 1a, 1b, 2a, 2c, 3a, 4a, 4b, 4c, 7a, 7b, 7c, 9a and
-//   9b, and every declaration of it is at level system
+// expect: the use case realises 26 requirements, each once (known positive); the system test declares every step of the main flow, 1 to 9, and each alternative 1a, 1b, 2a, 2c, 3a, 4a, 4b, 4c, 7a, 7b, 7c, 9a and 9b, and every declaration of it is at level system
 test("TST-1041101: the system test declares every step and every alternative flow of UC-040", () => {
   const realised = ucRealises();
   assert.equal(realised.length, 26, "known positive: the use case realises twenty-six requirements");
@@ -184,9 +183,7 @@ test("TST-1041110: every automatic requirement UC-040 realises is checked by evi
 // guards: UC-040; A PRODUCT DECLARES ITS RESOURCES; THE INSTANCE DECLARES ITS OWN RESOURCES
 // given: this browser keeps the product with its token; the product's docs/resources.md names the repository dlls (MIT, the Acme organisation) and the compute resource cluster (runner gpu); the instance's names shared-llm and cluster
 // input: open #resources/product=<the product>; then open #resources
-// expect: step 1 "Agent M shows the declared resources grouped by kind, each with its pin, licence, maintainer and route": the first page is headed "Resources", has the groups Repository and Compute, shows dlls with
-//   "Pin: <the commit>", "Licence: MIT", "Maintainer: the Acme organisation", "Route: read on its host" and cluster with "Route: runner:gpu"; a folded "What is this?" (closed) names what a resource, a requirement source and a
-//   participant are; 1b "Settings → Instance resources": the second is headed "Instance resources", lists the instance's two resources and not dlls; neither page writes anything
+// expect: step 1 "Agent M shows the declared resources grouped by kind, each with its pin, licence, maintainer and route": the first page is headed "Resources", has the groups Repository and Compute, shows dlls with "Pin: <the commit>", "Licence: MIT", "Maintainer: the Acme organisation", "Route: read on its host" and cluster with "Route: runner:gpu"; a folded "What is this?" (closed) names what a resource, a requirement source and a participant are; 1b "Settings → Instance resources": the second is headed "Instance resources", lists the instance's two resources and not dlls; neither page writes anything
 test("release · UC-040 1–2 and 1b: the page shows the declared resources by kind, folded explanation included, and the instance has a list of its own", async (t) => {
   const page = await visit(t, FRAGMENT);
   assert.equal(heading(page), "Resources");
@@ -211,10 +208,7 @@ test("release · UC-040 1–2 and 1b: the page shows the declared resources by k
 // guards: UC-040; A PRODUCT DECLARES ITS RESOURCES; A RESTRICTED RESOURCE IS REFERENCED, NEVER COPIED; A RESOURCE ENTRY NAMES ITS SECRET, NOT ITS VALUE
 // given: the page of TST-1041102; alice/dlls2 is readable with the product's token and holds a file whose text is a sentinel
 // input: choose the kind repository, name "tools", paste https://github.com/alice/dlls2, press "+ Add resource"; type the licence "MIT", the maintainer "the Acme organisation" and the secret "ci:DLLS_TOKEN" into the row; press "Save" once; press "Check" on tools
-// expect: step 3 "Agent M reads the current commit ... and pins it": the row is pinned to the head of alice/dlls2 (the SHA-1 of "alice/dlls2#0"); nothing is committed before Save; step 8 "Save — one click ... commits the
-//   entry to docs/resources.md of the product repository: name, kind, address, pin, licence, maintainer, route, ... name of the secret — never its value, never restricted content": one commit to alice/thesis-tool,
-//   made with the product's token, changing only docs/resources.md, whose rows are the two old ones byte for byte and the new one; no other repository has a commit; no commit holds a token or the sentinel; step 7:
-//   Check says that tools stands at its pin, and writes nothing
+// expect: step 3 "Agent M reads the current commit ... and pins it": the row is pinned to the head of alice/dlls2 (the SHA-1 of "alice/dlls2#0"); nothing is committed before Save; step 8 "Save — one click ... commits the entry to docs/resources.md of the product repository: name, kind, address, pin, licence, maintainer, route, ... name of the secret — never its value, never restricted content": one commit to alice/thesis-tool, made with the product's token, changing only docs/resources.md, whose rows are the two old ones byte for byte and the new one; no other repository has a commit; no commit holds a token or the sentinel; step 7: Check says that tools stands at its pin, and writes nothing
 test("release · UC-040 2–8: a repository is added, pinned to its head and saved as one commit of docs/resources.md, with no secret and no content of the repository in it", async (t) => {
   const page = await visit(t, FRAGMENT);
   await addResource(page, "repository", "tools", "https://github.com/alice/dlls2");
@@ -239,9 +233,7 @@ test("release · UC-040 2–8: a repository is added, pinned to its head and sav
 // guards: UC-040; A COMPUTE RESOURCE IS REACHED THROUGH THE BRIDGE OR A SELF-HOSTED RUNNER; A RESOURCE DECLARES WHERE IT PROCESSES DATA
 // given: the page of TST-1041102; this browser keeps the Bridge hpc (http://127.0.0.1:4712) whose fake answers the harmless request for the partitions with debug (up) and gpu (drain)
 // input: choose the kind compute, name "alex", address "alex.nhr.fau.de", press "+ Add resource"; type the route "bridge hpc" and the place "NHR@FAU, Erlangen" into the row; press "Save"; press "Check" on alex
-// expect: step 3 "compute: ... the route: a Bridge, chosen by its name": the row has no pin (a dash); Save is not offered while the route and the place are left out; one commit holds only docs/resources.md with the
-//   row; step 7 "through the Bridge the route names, with its token, a harmless request — for a SLURM cluster the partition list": Check asks http://127.0.0.1:4712/v1/probes/partitions once, with the pairing
-//   token in a header and not in the address, shows the partitions debug (up) and gpu (drain), and writes nothing; no commit holds a token
+// expect: step 3 "compute: ... the route: a Bridge, chosen by its name": the row has no pin (a dash); Save is not offered while the route and the place are left out; one commit holds only docs/resources.md with the row; step 7 "through the Bridge the route names, with its token, a harmless request — for a SLURM cluster the partition list": Check asks http://127.0.0.1:4712/v1/probes/partitions once, with the pairing token in a header and not in the address, shows the partitions debug (up) and gpu (drain), and writes nothing; no commit holds a token
 test("release · UC-040 3, 6–8: a compute resource on a Bridge is declared with its route and place and checked by a harmless request through that Bridge", async (t) => {
   const page = await visit(t, FRAGMENT, { bridges: { hpc: "http://127.0.0.1:4712" } });
   await addResource(page, "compute", "alex", "alex.nhr.fau.de");
@@ -267,10 +259,7 @@ test("release · UC-040 3, 6–8: a compute resource on a Bridge is declared wit
 // guards: UC-040; A JOB RUNS ONLY WHERE ITS RESOURCES ARE REACHABLE
 // given: a private product with Agent M's job workflow, whose list names cluster on the runner gpu; the instance's register holds the CI agent ci-drafter on `ci runner:gpu secret CI_KEY`; the same product public
 // input: press "Check" on cluster; press "Run"; then the same Check on the public product
-// expect: 7b "The route is a self-hosted runner. The browser cannot reach it; Agent M offers a check job on that runner label through the product's workflow": the page names the job, the runner gpu and ci-drafter
-//   and offers "Run"; Check writes nothing; one press of Run gives one commit to alice/thesis-tool adding one file under docs/jobs/ and changing no other, made with the product's token; 9b "No runtime reaches the
-//   resource. The job is not offered; Agent M names the resource and the missing route": on the public product the page says that no CI agent reaches the runner gpu and that nothing can check cluster, offers no Run
-//   and writes nothing
+// expect: 7b "The route is a self-hosted runner. The browser cannot reach it; Agent M offers a check job on that runner label through the product's workflow": the page names the job, the runner gpu and ci-drafter and offers "Run"; Check writes nothing; one press of Run gives one commit to alice/thesis-tool adding one file under docs/jobs/ and changing no other, made with the product's token; 9b "No runtime reaches the resource. The job is not offered; Agent M names the resource and the missing route": on the public product the page says that no CI agent reaches the runner gpu and that nothing can check cluster, offers no Run and writes nothing
 test("release · UC-040 7b and 9b: a resource on a runner is checked by a job the person starts, and where no runtime reaches it the job is not offered", async (t) => {
   const page = await visit(t, FRAGMENT);
   await click(buttonIn(resourceNamed(page, "cluster"), "Check"));
@@ -295,9 +284,7 @@ test("release · UC-040 7b and 9b: a resource on a runner is checked by a job th
 // guards: UC-040; INSTANCE AND PRODUCT RESOURCES ARE INDEPENDENT; THE INSTANCE DECLARES ITS OWN RESOURCES
 // given: the instance's list holds shared-llm and cluster; the product's list holds dlls and cluster
 // input: on the product's page choose shared-llm in "An instance resource", press "Copy from the instance" and "Save"; on #resources change the place of shared-llm and press "Save"; on the product's page change the place of its copy and press "Save"
-// expect: 2c "the entry is copied into the product's list, where it is edited and saved like any other. The copy is not linked; a later change on either side leaves the other unchanged": only shared-llm is offered; the
-//   first Save commits the copy to the product alone and leaves the instance's list byte for byte; the change on the instance's page leaves the product's list byte for byte and commits to the instance alone (1b); the change
-//   on the product's page leaves the instance's list as the second Save wrote it
+// expect: 2c "the entry is copied into the product's list, where it is edited and saved like any other. The copy is not linked; a later change on either side leaves the other unchanged": only shared-llm is offered; the first Save commits the copy to the product alone and leaves the instance's list byte for byte; the change on the instance's page leaves the product's list byte for byte and commits to the instance alone (1b); the change on the product's page leaves the instance's list as the second Save wrote it
 test("release · UC-040 1b and 2c: an instance resource is copied into the product's list, and a later change on either side leaves the other list unchanged", async (t) => {
   const page = await visit(t, FRAGMENT);
   const choice = byTag(byTag(page.main(), "label").find((each) => each.textContent.trim().startsWith("An instance resource")), "select")[0];
@@ -331,9 +318,7 @@ test("release · UC-040 1b and 2c: an instance resource is copied into the produ
 // guards: UC-040; A PINNED RESOURCE MOVES ONLY WHEN A PERSON MOVES IT
 // given: the product's list pins dlls and a second repository, other, to the commit of 40 "b"; alice/dlls stands at its head (the SHA-1 of "alice/dlls#0")
 // input: press "Check" on dlls; press "Check" on dlls and "Move" by a click a script makes; press "Move" as a person
-// expect: 9a "A newer state exists upstream — a newer commit. The dashboard shows it beside the pin ...; the pin changes only when the author presses Move — one click — which commits the new pin to docs/resources.md":
-//   Check shows the head beside the pin and the button Move and writes nothing; the script's click writes nothing; the person's one click gives one commit, to alice/thesis-tool, changing only docs/resources.md and in
-//   it only the pin of dlls (other and cluster byte for byte); the entry then reads "Pin: <the head>"
+// expect: 9a "A newer state exists upstream — a newer commit. The dashboard shows it beside the pin ...; the pin changes only when the author presses Move — one click — which commits the new pin to docs/resources.md": Check shows the head beside the pin and the button Move and writes nothing; the script's click writes nothing; the person's one click gives one commit, to alice/thesis-tool, changing only docs/resources.md and in it only the pin of dlls (other and cluster byte for byte); the entry then reads "Pin: <the head>"
 test("release · UC-040 9a: a newer state upstream is shown beside the pin, and the pin moves in one click of the person and in no other way", async (t) => {
   const other = DLLS.replace("| dlls | repository | https://github.com/alice/dlls |", "| other | repository | https://github.com/alice/other |");
   const page = await visit(t, FRAGMENT, { productFiles: { "docs/resources.md": list("thesis-tool", DLLS, other, CLUSTER), ...WORKFLOW } });
@@ -358,9 +343,7 @@ test("release · UC-040 9a: a newer state upstream is shown beside the pin, and 
 // guards: UC-040; A PINNED RESOURCE MOVES ONLY WHEN A PERSON MOVES IT; ONE CLICK PER DECISION
 // given: https://github.com/alice/hidden is not readable with the stored token; the product's list names shared-llm on `bridge workstation`, and this browser keeps no Bridge of that name
 // input: press "Check" on shared-llm; add the repository "hidden" at that address
-// expect: 7a "The Bridge the route names does not answer. Agent M names the reason ... and saves nothing": the entry says that this browser does not keep Bridge workstation, and nothing is committed; 3a "A private
-//   repository is not readable with the stored token. Agent M says so ... nothing is saved until the check succeeds or the author saves it unchecked": the page says the head of the repository could not be read,
-//   the row stands in the form without a pin, Save is not offered, and nothing is committed
+// expect: 7a "The Bridge the route names does not answer. Agent M names the reason ... and saves nothing": the entry says that this browser does not keep Bridge workstation, and nothing is committed; 3a "A private repository is not readable with the stored token. Agent M says so ... nothing is saved until the check succeeds or the author saves it unchecked": the page says the head of the repository could not be read, the row stands in the form without a pin, Save is not offered, and nothing is committed
 test("release · UC-040 3a and 7a: what cannot be reached is named, and nothing is saved by the check or the failed read", async (t) => {
   const page = await visit(t, FRAGMENT, { productFiles: { "docs/resources.md": list("thesis-tool", DLLS, LLM), ...WORKFLOW } });
   await click(buttonIn(resourceNamed(page, "shared-llm"), "Check"));

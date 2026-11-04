@@ -8,7 +8,9 @@
 // page and, on the default branch, the open requirement, or the group with the names it holds, as `requirements`, the person's own source where the product links one".
 // Run: node --test tests/prompt-bar-one-kind.test.mjs
 //
-// Module: MOD-prompt-bar · MOD-trace-pages · MOD-site-frame
+// Module: MOD-prompt-bar
+// Module: MOD-trace-pages
+// Module: MOD-site-frame
 // Guards: UC-049; UC-019; THE PERSON WHO PROMPTS IS A SOURCE; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; A SPEC EDIT IS SAVED AS A PROPOSAL; A DRAFTED CHANGE IS SHOWN AGAINST THE CURRENT TEXT
 // Level: component
 //
@@ -114,7 +116,7 @@ const CONVERSE = "You answer a person's message about the page they are looking 
 const CHANGE_REQUIREMENTS = "You change requirements of a product";
 const CHANGE_USE_CASE = "You change a use case of a product";
 
-// The model endpoint ep1 behind the global fetch: it answers the drafts given in turn (the last again), and keeps every request.
+// The model endpoint drafter-a behind the global fetch: it answers the drafts given in turn (the last again), and keeps every request.
 let requests = [];
 const realFetch = globalThis.fetch;
 function endpointAnswers(...drafts) {
@@ -144,12 +146,13 @@ const useCasePage = () => ({ key: `use-case/id=UC-007/product=${encodeURICompone
   paramsFor: () => ({ page: "The page shows UC-007 Derive use cases.", useCase: "UC-007", version: "0123456789abcdef0123456789abcdef01234567" }),
   draftRoute: `draft/subject=${encodeURIComponent(`use-case/id=UC-007/product=${encodeURIComponent(PRODUCT_WEB)}`)}`, withhold: null, refuses: [] });
 
-// A page of a product: the instance with its register, a store keeping the endpoint ep1 and the product's token, and the bar started with the subject given.
+// A page of a product: the instance with its register, which the bar does not read for its offer, a store declaring the endpoint drafter-a — its place, context and
+// model, as the bar offers it (UC-049 1) — and the product's token, and the bar started with the subject given.
 function page(subject) {
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: new Storage() });
   Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: new Storage() });
   const store = openStore("alice/agent-m");
-  writeSetting(store, "endpoint:ep1", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture" });
+  writeSetting(store, "endpoint:drafter-a", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture", place: "Anthropic, USA", context: 200000 });
   writeSetting(store, "github-token:alice/thesis-tool", { value: "github_pat_FIXTURE0123456789abcdef", name: "alice", expires: "2027-01-01" });
   const instance = fakeRepo(INSTANCE_WEB, { "docs/participants.md": REGISTER });
   const product = fakeRepo(PRODUCT_WEB, { "SPEC.md": SPEC, ".github/workflows/agent-m-jobs.yml": "name: agent-m-jobs\n" });
@@ -221,10 +224,10 @@ test("TST-1360002: a hand-over to change-requirements runs in the tab without a 
 });
 
 // TST-1360003 · level: component · module: MOD-prompt-bar
-// guards: UC-049; UC-019 4b; THE PERSON WHO PROMPTS IS A SOURCE
+// guards: UC-049; UC-019; THE PERSON WHO PROMPTS IS A SOURCE
 // given: the requirements page, and no source of the person that the product links; the same hand-over to change-requirements
 // input: Send "the loan should say when it is overdue"
-// expect: one request only, the conversation's — its answer shown —; the page names the finding under THE PERSON WHO PROMPTS IS A SOURCE; no draft is kept and nothing is written
+// expect: one request only, the conversation's — its answer shown —; the page names the finding under THE PERSON WHO PROMPTS IS A SOURCE (UC-019 step 4b); no draft is kept and nothing is written
 test("TST-1360003: a hand-over to change-requirements without the person's own source names the finding and runs nothing", async () => {
   endpointAnswers({ answer: "I hand this on.", handOver: { kind: "change-requirements", works_on: [LOAN], task: "say when it is overdue" } }, { candidates: [] });
   const subject = requirementsPage({ source: null });
@@ -239,8 +242,8 @@ test("TST-1360003: a hand-over to change-requirements without the person's own s
 });
 
 // TST-1360004 · level: component · module: MOD-prompt-bar · MOD-job-runner
-// guards: UC-049 3b; A PARTICIPANT THAT WRITES TO A REPOSITORY NEVER RECEIVES A MAIL
-// given: a page whose subject refuses propose-edit and hand-over, as a page of mail does; an endpoint whose answer holds, in its JSON, an edit and a hand-over to change-use-case
+// guards: UC-049; A PARTICIPANT THAT WRITES TO A REPOSITORY NEVER RECEIVES A MAIL
+// given: a page whose subject refuses propose-edit and hand-over, as a page of mail does (UC-049 step 3b); an endpoint whose answer holds, in its JSON, an edit and a hand-over to change-use-case
 // input: Send "answer the reporter"
 // expect: one request only; no hand-over is shown or carried out, no "Review the draft" is offered, no draft is kept, nothing is written
 test("TST-1360004: on a page that refuses hand-over and propose-edit, an answer that holds them hands nothing on", async () => {

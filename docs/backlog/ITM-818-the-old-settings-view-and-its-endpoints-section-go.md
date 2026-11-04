@@ -22,29 +22,34 @@ origin:
 
 ## Outcome
 
-ITM-810 moves the three settings Checks onto the live settings pages. `docs/assets/dashboard/settings-view.mjs` and
-`settings/endpoints.mjs` cannot go with it yet, because tests of other modules still read them:
-- `tests/review-core.d/authority.test.mjs` (MOD-review-pages). Its known positive needs `saveCollaborators` and
-  `savePseudonymisation`, which only `settings-view.mjs` calls. They are in `writes.mjs`, which ITM-713 removes.
-- `tests/review-core.test.mjs:209`. It names `MOD-review-core`, MOD-approvals takes it over (ITM-690), and it asserts
-  that the dashboard's files contain `gitlabRole(`.
-- `tests/load-per-view.test.mjs`, "Clear everything also removes the kept file texts" (MOD-site-frame), whose handler was
-  `settings-view.mjs`'s.
-- `tests/review-core.d/dashboard-app.test.mjs` (MOD-site-frame), eight cases on the old token texts. ITM-810's draft
-  named a keeper for each, and moved `productTokenName` and `productTokenDescription` into a test of MOD-settings-pages.
+`docs/assets/dashboard/settings-view.mjs` and `docs/assets/dashboard/settings/endpoints.mjs` were removed by `28d00c697`,
+and no file of `src/` or `tests/` reads them; only comments and fixture items name them. That commit removed nine cases of
+`tests/review-core.d/dashboard-app.test.mjs` and `tests/load-per-view.test.mjs` and named the keeper of one: the GitLab
+server check, moved to `tests/repository-hosts.test.mjs:870`. For the other eight, neither the commit nor a test names the test that keeps its
+requirement:
+- load-per-view's "Clear everything also removes the kept file texts", whose keepers TST-819001 and TST-819002 are
+  (`tests/settings-pages-clear-everything.test.mjs`, `tests/settings-pages-clear-everything-live.test.mjs`);
+- dashboard-app's "A GITLAB PRODUCT USES A PROJECT ACCESS TOKEN — the GitLab check reports reach, branch and role…",
+  "THE TOKEN LINK IS PREFILLED · ONE GITHUB TOKEN SERVES EVERY FEATURE…", "THE REPOSITORY CHOICE IS SPELLED OUT…",
+  "ONE GITHUB TOKEN SERVES EVERY FEATURE — the link, the steps and the guidance…", "UC-014: setup names only the
+  instance", and the two cases of "A PRODUCT'S TOKEN IS NAMED AFTER THE PRODUCT".
 
-While team 2's ITM-702 changes MOD-group-document, team 1 may not change MOD-review-pages, whose file uses it
-(`SPRINTS OF DIFFERENT TEAMS CHANGE NO MODULE THE OTHER CHANGES OR USES`). Once ITM-713 and ITM-690 have moved their
-readers, this item:
-- re-points or removes the two MOD-site-frame tests, each case naming its keeper;
-- then removes both files, as MOD-settings-pages' Parts say;
-- searches the readers again by every name a harness loads them under (sprint 74's agreement).
+This item names, for each of the eight, the test of MOD-settings-pages, MOD-site-frame or MOD-repository-hosts that
+keeps its requirement, and where none keeps it, adds one to the module's tests.
 
 ## Acceptance
 
 - No file reads `settings-view.mjs` or `settings/endpoints.mjs`, and both are removed.
 - Every removed case names the test that keeps its requirement.
-
-**Noted at ITM-819's gate (sprint team1/76, 2026-10-17, po-opus).** load-per-view's case "Clear everything also removes the
-kept file texts" (`tests/load-per-view.test.mjs:352`) reads the old handler's source. TST-819001 and TST-819002 pin the
-live *Clear everything*, so this item may drop that case, naming them as its keepers.
+- **Read at sprint team1/138's probe** (developer-sonnet-j, not pushed; no moved expectation, no break). Both files are
+  already gone, so the item adds no behaviour. It is declared as refactoring: CI is green on every commit, and no
+  existing expected result changes.
+- Its one new test file, of MOD-settings-pages, keeps what no test keeps of A PRODUCT'S TOKEN IS NAMED AFTER THE
+  PRODUCT (SPEC.md:778-783) and UC-001 step 3: `productTokenName` stays within 40 characters, a longer name drops the
+  owner and then the end of the repository's name, as UC-001:62-63 says (the removed case's "…" is not in that text);
+  `productTokenDescription` stays within 1024 characters.
+- The pull request names, for each of the eight cases, its keeper: TST-819001, TST-819002, TST-476076, TST-472734,
+  TST-476073, TST-588001, TST-588002, TST-627002, TST-627004, TST-627005, TST-478029 and the new test. A half of a case
+  that no accepted text asks for any more (the old exact `note` and `tokenUsed`, a link written from
+  `requiredPermissions`, the instance named once as its own product) is named there as gone with the old view, with no
+  test. A half that an accepted sentence still asks for and no test keeps is a finding.

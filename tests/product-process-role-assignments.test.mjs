@@ -315,6 +315,22 @@ test("roleAssignmentFindings — a role that needs a person and has none is an e
   for (const f of [...agent, ...none]) assert.ok(f.what.includes("Product Owner"), f.what);
 });
 
+// TST-1372001 · level: unit · module: MOD-product-process
+// guards: UC-048; A PROCESS MODEL ORGANISES PEOPLE AND AGENTS
+// given: known positives first — team1, whose Developers, which team-scrum fills by an agent, are dev-a and dev-b; team1 with its Scrum Master, which either may fill, held by alice, a person; then team1 with its Developers dev-a and alice
+// input: roleAssignmentFindings of each, alone
+// expect: no finding for the first two; for the third, one error naming A PROCESS MODEL ORGANISES PEOPLE AND AGENTS on the row of Developers (line 9), its text naming Developers and alice and not dev-a
+test("roleAssignmentFindings — a person holding a role that an agent fills is an error; a role either may fill takes a person", async () => {
+  assert.deepEqual(brief(await team1Findings(TEAM1)), [], "known positive: agents hold Developers");
+  assert.deepEqual(brief(await team1Findings(replaced(TEAM1, 8, "| Scrum Master | dev-b |", "| Scrum Master | alice |"))), [],
+    "known positive: a person holds Scrum Master, which either may fill");
+  const found = (await team1Findings(replaced(TEAM1, 9, "| Developers | dev-a, dev-b |", "| Developers | dev-a, alice |")))
+    .filter((f) => f.rule === PEOPLE_AND_AGENTS);
+  assert.deepEqual(brief(found), [["docs/role-assignments/team1.md", 9, "error", PEOPLE_AND_AGENTS]]);
+  assert.ok(found[0].what.includes("Developers") && found[0].what.includes("alice"), found[0].what);
+  assert.ok(!found[0].what.includes("dev-a"), found[0].what);
+});
+
 // ---------------------------------------------------------------- holdsRole
 
 // TST-472438 · level: unit · module: MOD-product-process

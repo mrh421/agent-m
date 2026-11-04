@@ -123,12 +123,46 @@ export function productHostFollowingStore({ store }) {
   };
 }
 
-// viewAddress(slug) -> the address of a view module: `../<slug>/index.mjs`, relative to the folder of the frame; preloads.mjs
-// names the same address in an entry page's block.
-const viewAddress = (slug) => new URL(`../${slug}/index.mjs`, import.meta.url).href;
+// viewAddress(slug) -> the address of a view module: `../<slug>/routes.mjs`, relative to the folder of the frame — the view's routes, whose
+// strategies it imports only for a job (View: loadStrategies); preloads.mjs names the same address in an entry page's block.
+const viewAddress = (slug) => new URL(`../${slug}/routes.mjs`, import.meta.url).href;
 export { viewAddress };
 
 // loadView(slug) -> Promise<View> — the `view` a view module provides. Rejects with the loader's error for a module that is not served.
 export async function loadView(slug) {
   return (await import(viewAddress(slug))).view;
+}
+
+// What each route `module` of the page loads beyond the page's preloads, as the page's block holds it (preloads.mjs, the element
+// `route-preloads`): by route name, its modules and the files they fetch, as paths relative to the page. Read once; a page without it,
+// or with it empty, or outside a browser, has none.
+let routeData = null;
+function routePreloads(name) {
+  if (routeData === null) {
+    const element = globalThis.document?.getElementById?.("route-preloads") ?? null;
+    routeData = element?.textContent ? JSON.parse(element.textContent) : {};
+  }
+  return routeData[name] ?? { modules: [], files: [] };
+}
+
+// The links the frame has put in the page's head, by address, so that each file is asked for once.
+const linked = new Set();
+function preloadLink(href, attributes) {
+  if (linked.has(href) || !globalThis.document?.head) return;
+  linked.add(href);
+  const link = document.createElement("link");
+  for (const [name, value] of Object.entries(attributes)) link.setAttribute(name, value);
+  link.setAttribute("href", href);
+  document.head.append(link);
+}
+
+// loadRoute(route) -> Promise<Route> — the route the frame shows, embeds or asks for its subject (MOD-site-frame's Route `module`): for a route that
+// names `module`, every module and file it loads beyond the page's preloads asked for at once — a `modulepreload` and a `preload` link each —, then
+// the route `module` gives; any other route as it is. Rejects with the loader's error for a route file that is not served.
+export async function loadRoute(route) {
+  if (typeof route?.module !== "function") return route;
+  const { modules, files } = routePreloads(route.name);
+  for (const href of modules) preloadLink(href, href.endsWith(".json") ? { rel: "modulepreload", as: "json" } : { rel: "modulepreload" });
+  for (const href of files) preloadLink(href, { rel: "preload", as: "fetch", crossorigin: "" });
+  return route.module();
 }

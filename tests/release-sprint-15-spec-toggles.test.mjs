@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { TOKEN, openDashboard, repoServer } from "./app-harness.mjs";
+import { TOKEN, openDashboard, repoServer, writeRequests } from "./app-harness.mjs";
 
 const SPEC = `# Read-only toggles
 
@@ -24,9 +24,6 @@ const FILES = {
   [`docs/spec-freigaben/${QUEUE}/index.md`]: "# Queue\n\n**Zieldatei aller Einträge:** `SPEC.md`\n",
   [`docs/spec-freigaben/${QUEUE}/entscheidungen.md`]: "# Decisions\n",
 };
-// A write is a request that is not a GET, except the batch of reads: a POST to GitHub's /graphql, which answers with file texts and changes nothing.
-const BATCH_OF_READS = /^(write|other|handler) POST https:\/\/api\.github\.com\/graphql(\?|$)/;
-const writes = (server) => server.requests.filter((request) => /^(write|other|handler) (?!GET )/.test(request) && !BATCH_OF_READS.test(request));
 
 // The group of the tree, the body that holds its requirements, the control that opens it and the requirement's own control.
 function controls() {
@@ -64,7 +61,7 @@ test("the release dashboard toggles current requirements without writes with or 
     await requirement.fire("click", { isTrusted: true });
     assert.match(detail?.textContent ?? "", /The current rule is readable\./,
       `${label}: the third requirement click reopens its detail`);
-    assert.deepEqual(writes(server), [], `${label}: the overview and its controls make no write request`);
+    assert.deepEqual(writeRequests(server), [], `${label}: the overview and its controls make no write request`);
     assert.deepEqual(server.writes, [], `${label}: the repository remains unchanged`);
   }
 });

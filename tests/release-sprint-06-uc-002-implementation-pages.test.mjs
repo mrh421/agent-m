@@ -451,7 +451,7 @@ async function typeSection(target, heading, text) {
 }
 // The author presses Save, once; the page's requests run to their end.
 async function pressSave(page) {
-  saveOf(page.target).dispatchEvent(new Event("click"));
+  saveOf(page.target).dispatchEvent(Object.defineProperty(new Event("click"), "isTrusted", { value: true }));
   await settle(page.product);
 }
 

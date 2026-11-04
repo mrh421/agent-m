@@ -59,7 +59,7 @@ export function product({ files = {}, web = PRODUCT, logs = {}, pulls = [], runs
     const read = async (path) => (tree.has(path) ? tree.get(path) : null);
     if (!storedOf.has(sha)) storedOf.set(sha, storedGraphReadOn({ commit: sha, paths: [...tree.keys()], read }));
     return { repository: { server: "github", origin: "https://github.com", path: "org/product", web }, ref, commit: sha, paths: [...tree.keys()],
-      read, readOn: storedOf.get(sha), blob: (path) => (tree.has(path) ? blobSha(tree.get(path)) : null) };
+      read, readMany: async () => {}, readOn: storedOf.get(sha), blob: (path) => (tree.has(path) ? blobSha(tree.get(path)) : null) };
   };
   const entry = (sha) => ({ commit: sha, parents: commits.get(sha).parent ? [commits.get(sha).parent] : [], author: { account: null, name: "x" }, date: commits.get(sha).date,
     message: commits.get(sha).message, changes: [] });

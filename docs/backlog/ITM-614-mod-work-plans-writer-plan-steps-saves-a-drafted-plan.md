@@ -6,6 +6,8 @@ realises:
   - UC-045
 modules:
   - MOD-work-plans
+  - MOD-site-frame
+  - MOD-prompt-bar
 builds_on:
   - ITM-613
 tests:
@@ -22,7 +24,9 @@ origin:
 The writer `plan-steps` — the drafted plan through `savePlan`, with the job's provenance lines — and `savePlan` itself, as MOD-work-plans' file states them. `savePlan` is not built.
 It adds its strategy to `workStrategies`, which ITM-610 builds and registers, and changes no registration. With it, `draft-plan` comes closer to being prepared without `UnknownStrategy`.
 
-**Not ready for a sprint yet.** Its readings are settled before it is selected: the functions it calls are read against MOD-work-plans' Uses; the tests of every input and output form it changes are grepped; every path it builds is checked to be reachable through the real host.
+**The readings.** `savePlan` (MOD-work-plans.md:215-220) calls `planFindings`, `nextIdentifier`, `readHistory`, `commitFiles`, `writeDocument` and, for the writer, `provenanceLines`; each is MOD-work-plans' own or among its Uses. Its sibling `saveItems` (`src/work-plans/saves.mjs:323`) and the writer `backlog-items` are the forms it follows.
+
+**The reading of the scope.** With `plan-steps` handed, the kind `draft-plan` no longer meets the `UnknownStrategy` `plan-steps`, which TST-572006 asserts as its known positive: `assert.equal(await unknownStrategyOf("draft-plan"), "plan-steps")` in `tests/site-frame-start-hand-over-main.test.mjs:52` and `tests/site-frame-start-hand-over-review.test.mjs:64`, tests of MOD-site-frame and MOD-prompt-bar. The item changes them, so it names those two modules (`A BACKLOG ITEM NAMES THE MODULES IT CHANGES`), and `AN IMPLEMENTATION JOB CHANGES ONLY ITS MODULES` then allows the change. In them, TST-572006 takes as its known positive a kind whose strategy no set hands, or a planted one; no code of their folders changes.
 
 ## Acceptance
 

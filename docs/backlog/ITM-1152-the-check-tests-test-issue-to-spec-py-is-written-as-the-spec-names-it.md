@@ -10,7 +10,7 @@ builds_on:
   - ITM-582
   - ITM-584
 tests:
-  - unit
+  - release
 origin:
   - developer-sonnet-g's release tests of UC-038 (ITM-965, pull request #1188, head 2ec69bc7), finding TST-965202
 ---
@@ -21,11 +21,11 @@ origin:
 ## Outcome
 
 The SPEC names `tests/test_issue_to_spec.py` as the Check of `EVOLUTION ENTERS THROUGH THE SPECIFICATION`
-(SPEC.md:840-843), and the file does not exist. TST-965202 found it, and marks it `todo`. The behaviour it checks is
-MOD-issue-handling's (MOD-issue-handling.md:40-41): an issue classed as a change becomes a change of requirements first,
-and a code change second. `src/issue-handling` does not exist on `main` or on `sprint/team2/97`: `confirmClass` is
-ITM-582, and the change drafted and saved as a queue naming the issue is ITM-584. So the file is written once they are
-built.
+(SPEC.md:863-866), and the file does not exist. TST-965202 found it, and marks it `todo`
+(`tests/release-uc-038-turn-mails-into-issues.test.mjs:50`, `:94-95`). The behaviour it checks is MOD-issue-handling's:
+an issue classed as a change becomes a change of requirements first, and a code change second. What it checks is on
+`main`: `confirmClass` (ITM-582, #1255, `src/issue-handling/classes.mjs`) and the change drafted and saved as a queue
+naming the issue (ITM-584, #1379, `src/maintenance-pages/issues.mjs`).
 - The file is written as the SPEC words the check. Data in a Markdown file and code in the Python file (AGENTS.md §7), as
   `tests/test_conversation_not_recorded.py` does.
 - A case that fails on the code as it stands is a finding. It is marked as the repository's release tests mark one, and

@@ -41,9 +41,9 @@ with ITM-597's gate, which adds `MOD-spec-changes.entryView` to MOD-trace-pages'
   (`b43da779`). The view classifies nothing itself, as the cut from ITM-597 asks.
 - **The grep, full output read:** `grep -rn "Open proposals\|queues(\|entryView" src/trace-pages tests` finds three
   tests whose expected results change:
-  - `tests/trace-pages-specification.test.mjs:589-597`: no Open proposals section, known positive its use cases;
-  - `:602-611` (TST-597015): no section, no stale note and no queue read;
-  - `tests/system-itm-597-spec-traces.test.mjs:77`: no "Open proposals" in the page.
+  - `tests/trace-pages-specification.test.mjs:478-487`: no Open proposals section, known positive its use cases;
+  - `:492-503` (TST-597015): no section, no stale note and no queue read;
+  - `tests/system-itm-597-spec-traces.test.mjs:107`: no "Open proposals" in the page.
   No release test is among them.
 - **Reads, against the token budget** (sprint 66). On the first opening at the default branch, `queues` and one
   `entryView` per open entry read through the version's snapshot.
@@ -76,9 +76,9 @@ requirement at a version, with a token API calls on the person's budget. `queues
 reads them through the snapshot's `readMany` first. `Snapshot.readMany` is MOD-repository-hosts' interface, in
 MOD-spec-changes' Uses, so no draft is needed. A committed test with a fixture of many queues counts the reads.
 
-**Waits for ITM-677 (2026-10-17, po-opus, sprint team1/69).** Its rework's draft of the batching showed that `queues` is
-MOD-spec-changes' shared reader. Batching it changes the notifications, UC-019's requirement page and five release tests.
-So the batching is cut out into ITM-677, with its release tests in ITM-678 by another participant, and this item takes
-MOD-spec-changes out of its modules again. Pull request #715 stays open, its gate rejected
-(`docs/gates/20261017-0930-development-release-testing-91e4.md`). Once ITM-677 is merged, it is merged with the sprint
-branch in new commits, and the gate is decided again with the committed count.
+**ITM-677 is merged (#732).** Its rework's draft of the batching showed that `queues` is MOD-spec-changes' shared
+reader, so the batching was cut out into ITM-677, and this item took MOD-spec-changes out of its modules again. Pull
+request #715 is still open, its gate rejected (`docs/gates/20261017-0930-development-release-testing-91e4.md`); it is
+brought up to `main` in new commits, and the gate is decided again with the committed count. On `main` an opened
+requirement still shows no Open proposals section: `tests/trace-pages-specification.test.mjs:487` and `:503` assert its
+absence.

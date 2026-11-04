@@ -88,13 +88,13 @@ test("without a token, the gaps page is drawn from SPEC.md and the stored graph 
 // guards: UC-020; THE TRACEABILITY MATRIX IS DERIVED
 // given: the same product, kept in this browser with its own token
 // input: the address #trace/key=gaps/ref=main/product=<the product> is opened
-// expect: the page shows the same lists and rows as without a token; the product is asked for 6 REST calls (the 4 above, SPEC.md through the contents API and the graph stored on trace-cache through the contents API,
-//         contents/<commit>.json.gz?ref=trace-cache) and for no GraphQL batch — none of the files of the graph (MOD-direct's file, UC-001's, the test's) is asked for — and for no file from the raw host; every request carries the product's token
+// expect: the page shows the same lists and rows as without a token; the product is asked for 6 REST calls (the 4 above, SPEC.md through the contents API and the graph stored on trace-cache through the contents API, contents/<commit>.json.gz?ref=trace-cache) and for no GraphQL batch but greenToMerge's request beside its information, which names no file (ITM-1170) — none of the files of the graph (MOD-direct's file, UC-001's, the test's) is asked for — and for no file from the raw host; every request carries the product's token
 test("with a token, the gaps page is drawn from SPEC.md and the stored graph through the contents API: six REST calls and no batch", async (t) => {
   const page = await visit(t, GAPS, { token: true });
   assert.deepEqual(lists().map(linesOf), [["DELTA RULE"], ["DELTA RULE"], ["DELTA RULE"], [], []]);
   assert.match(mainText(), /ALPHA RULEUC-001noneMOD-directTST-501DELTA RULEnonenonenonenone/);
-  assert.deepEqual(counted(page.product()), { api: 6, graphql: 0, raw: 0 });
+  // ITM-1170: the one GraphQL request is greenToMerge's, beside the repository's information; it names no file.
+  assert.deepEqual(counted(page.product()), { api: 6, graphql: 1, raw: 0 });
   assert.equal(page.product().filter((request) => /\/contents\/[0-9a-f]{40}\.json\.gz\?ref=trace-cache$/.test(request.path)).length, 1, "the stored graph, read from trace-cache");
   assert.deepEqual(page.product().filter((request) => GRAPH_FILES.some((file) => request.path.includes(encodeURIComponent(file)) || request.path.includes(file))), [], "no file of the graph is read");
   assert.deepEqual(page.product().filter((request) => request.authorization !== `Bearer ${TOKEN}`), []);
@@ -105,7 +105,7 @@ test("with a token, the gaps page is drawn from SPEC.md and the stored graph thr
 // guards: UC-020; THE TRACEABILITY MATRIX IS DERIVED
 // given: the gaps page opened at main, once without and once with a token (the two cases above), then the address of a view the page does not draw, which asks the product for nothing
 // input: the address #trace/key=gaps/ref=main/product=<the product> is opened a second time, at the same commit of main
-// expect: the page shows the same lists; the product is asked for 4 REST calls, with a token and without — and for no GraphQL batch and no file, SPEC.md included, not through the contents API with a token either: the frame keeps the product's host across the navigation (ITM-669), so a blob it has read is not read again, and the graph of the commit is kept as well
+// expect: the page shows the same lists; the product is asked for 4 REST calls, with a token and without — and for no GraphQL batch (with a token, only greenToMerge's request beside its information, ITM-1170) and no file, SPEC.md included, not through the contents API with a token either: the frame keeps the product's host across the navigation (ITM-669), so a blob it has read is not read again, and the graph of the commit is kept as well
 test("opening the gaps page a second time at the same commit asks for the lists' files no more", async (t) => {
   for (const token of [false, true]) {
     const page = await visit(t, GAPS, { token });
@@ -118,7 +118,7 @@ test("opening the gaps page a second time at the same commit asks for the lists'
     await until(pageIsGaps);
     await settle();
     const second = page.product().slice(first);
-    assert.deepEqual(counted(second), { api: 4, graphql: 0, raw: 0 }, token ? "with a token" : "without a token");
+    assert.deepEqual(counted(second), { api: 4, graphql: token ? 1 : 0, raw: 0 }, token ? "with a token" : "without a token");
     assert.deepEqual(lists().map(linesOf), [["DELTA RULE"], ["DELTA RULE"], ["DELTA RULE"], [], []]);
   }
 });
@@ -156,12 +156,11 @@ async function clickAlpha(t, { tokens, link = RELEASE_LINK, repositories = { [RE
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: this browser keeps the product and the instance, each with its own token; the address of the specification at the tag v1.0.0 is opened
 // input: the requirement ALPHA RULE is opened
-// expect: the instance is asked for 3 REST calls (its information, the commit of main, that commit's tree) and 1 GraphQL batch that names the two register entries, and for no file from the raw host; the product is asked for 2 REST calls
-//         (docs/sources.md through the contents API, and the graph stored on trace-cache, contents/<commit>.json.gz?ref=trace-cache) and for no GraphQL batch: UC-001's file, a file of the graph, is not read; every request carries the token of its repository
+// expect: the instance is asked for 3 REST calls (its information, the commit of main, that commit's tree), 1 GraphQL batch that names the two register entries and greenToMerge's GraphQL request beside its information, which names none (ITM-1170), and for no file from the raw host; the product is asked for 2 REST calls (docs/sources.md through the contents API, and the graph stored on trace-cache, contents/<commit>.json.gz?ref=trace-cache) and for no GraphQL batch: UC-001's file, a file of the graph, is not read; every request carries the token of its repository
 test("with tokens, an opened requirement at a released version reads the register entries in one GraphQL batch", async (t) => {
   const asked = await clickAlpha(t, { tokens: true });
-  assert.deepEqual(counted(asked.instance), { api: 3, graphql: 1, raw: 0 });
-  assert.deepEqual(asked.instance.find((request) => request.kind === "graphql").files.sort(), REGISTER_FILES);
+  assert.deepEqual(counted(asked.instance), { api: 3, graphql: 2, raw: 0 });
+  assert.deepEqual(asked.instance.filter((request) => request.kind === "graphql").map((request) => [...request.files].sort()).sort(), [[], REGISTER_FILES], "the batch of the entries, and greenToMerge's of no file (ITM-1170)");
   assert.deepEqual(counted(asked.product), { api: 2, graphql: 0, raw: 0 });
   assert.equal(asked.product.filter((request) => /\/contents\/[0-9a-f]{40}\.json\.gz\?ref=trace-cache$/.test(request.path)).length, 1, "the stored graph, read from trace-cache");
   assert.deepEqual(asked.instance.filter((request) => request.authorization !== `Bearer ${INSTANCE_TOKEN}`), []);
@@ -173,8 +172,7 @@ test("with tokens, an opened requirement at a released version reads the registe
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the same, with no token stored
 // input: the requirement ALPHA RULE is opened
-// expect: GitHub's batch query needs a token, so none is sent: the instance is asked for 3 REST calls and the 2 register entries from the raw host, one request each; the product for 2 files from the raw host — docs/sources.md and
-//         the graph stored on the branch trace-cache, <commit>.json.gz — and for no REST call: UC-001's file, a file of the graph, is not read
+// expect: GitHub's batch query needs a token, so none is sent: the instance is asked for 3 REST calls and the 2 register entries from the raw host, one request each; the product for 2 files from the raw host — docs/sources.md and the graph stored on the branch trace-cache, <commit>.json.gz — and for no REST call: UC-001's file, a file of the graph, is not read
 test("without a token, an opened requirement reads each register entry by its own request", async (t) => {
   const asked = await clickAlpha(t, { tokens: false });
   assert.deepEqual(counted(asked.instance), { api: 3, graphql: 0, raw: 2 });

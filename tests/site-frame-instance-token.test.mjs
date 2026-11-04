@@ -101,8 +101,7 @@ test("TST-869001 a token stored on the setup route is sent by the instance's req
 // guards: UC-042; A TOKEN GOES ONLY TO THE SERVER THAT ISSUED IT
 // given: the review page on the route setup in a browser that keeps the token github_pat_FIRST…
 // input: the route setup replaces it by github_pat_SECOND…; the person opens the route next
-// expect: the instance's requests of the page next are exactly one, carrying "Bearer github_pat_SECOND123456789abcdefghijkl", and no
-//   request carries the first token
+// expect: the instance's requests of the page next are exactly one, carrying "Bearer github_pat_SECOND123456789abcdefghijkl", and no request carries the first token
 test("TST-869002 a token replaced on the setup route is the one the next page sends, not the one the page started with", async () => {
   const page = await start({ settings: { "github-token": stored(TOKEN_A) } });
   onSetup = (store) => writeSetting(store, "github-token", stored(TOKEN_B));
@@ -116,8 +115,7 @@ test("TST-869002 a token replaced on the setup route is the one the next page se
 // guards: UC-042; A CLEAR IS A REAL CLEAR
 // given: the review page on the route setup in a browser that keeps the token github_pat_FIRST…
 // input: the token's setting is cleared (clearSetting, as the Clear of the Settings line does); the person opens the route next
-// expect: the instance's requests of the page next are exactly one, carrying no authorisation (null), and no request carries the
-//   cleared token
+// expect: the instance's requests of the page next are exactly one, carrying no authorisation (null), and no request carries the cleared token
 test("TST-869003 a token cleared before the next page is opened is not sent by that page", async () => {
   const page = await start({ settings: { "github-token": stored(TOKEN_A) } });
   clearSetting(page.store, "github-token");
@@ -163,9 +161,7 @@ test("TST-869005 the host a route is given refuses a commit that holds a secret 
 // guards: UC-042
 // given: the review page of acme/instance in a browser that keeps no token
 // input: the person opens the route next
-// expect: the page's context names the repository acme/instance and its host offers repositoryInfo and commitFiles as functions; the
-//   instance's requests of the page next are exactly one, carrying no authorisation (null); and no request of any test of this file
-//   reached the network
+// expect: the page's context names the repository acme/instance and its host offers repositoryInfo and commitFiles as functions; the instance's requests of the page next are exactly one, carrying no authorisation (null); and no request of any test of this file reached the network
 test("TST-869006 without a stored token the instance host is the instance's, sends no authorisation, and nothing reaches the network", async () => {
   const page = await start();
   const requests = await openRoute(page, "next");

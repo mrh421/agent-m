@@ -81,7 +81,7 @@ test("whole-spec — an empty SPEC is one empty part, a missing one and an unrea
 const part = (name, text) => ({ name, text, sources: [], required: true, size: 0 });
 const STAND_INS = {
   preconditions: { "architecture-ready": async () => null },
-  recipes: { "accepted-use-cases": async () => [part("UC-001", "U".repeat(300))], "chapters-for-architecture": async () => [part("chapters 9 to 12", "B".repeat(300))] },
+  recipes: { "accepted-use-cases": async () => [part("UC-001", "U".repeat(300))], "whole-architecture": async () => [], "chapters-for-architecture": async () => [part("chapters 9 to 12", "B".repeat(300))] },
   checks: Object.fromEntries(["document-schema", "graph-checks", "candidate-classes"].map((name) => [name, () => []])),
   steps: { "due-diligence": async (draft) => ({ draft, findings: [] }) },
   writers: { "open-files": async () => ({ commits: [], files: [], pullRequest: null, shown: null }) },

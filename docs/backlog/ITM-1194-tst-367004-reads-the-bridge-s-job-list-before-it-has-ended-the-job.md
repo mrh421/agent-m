@@ -18,18 +18,18 @@ origin:
 
 ## Outcome
 
-TST-367004 (`tests/desktop-shell-bridge-jobs.test.mjs:136`, component; MOD-desktop-shell, MOD-bridge-jobs, MOD-bridge-http)
+TST-367004 (`tests/desktop-shell-bridge-jobs.test.mjs:137`, component; MOD-desktop-shell, MOD-bridge-jobs, MOD-bridge-http)
 failed once on `5e51e2b0` and passed on the rerun of the same commit. That makes it a flaky test (SPEC.md:1560).
 
 **From the full log of job 120150727285 (lines 424-460):**
-- the assertion at :160 expected the Bridge's `GET /v1/jobs` to list `JOB-20261011-0901-aaa1` as `done`;
+- the assertion then at :160 (now :161) expected the Bridge's `GET /v1/jobs` to list `JOB-20261011-0901-aaa1` as `done`;
 - it got `running`;
 - the test had run 4.3 s.
 
 **The test's own steps:**
-1. :146 waits until the served repository's record holds `## End`.
+1. :145 waits until the served repository's record holds `## End`.
 2. Then it checks the record, the sprint file and the working folder.
-3. :159-160 ask the Bridge's job list and expect `done`.
+3. :160-161 ask the Bridge's job list and expect `done`.
 
 So the test waits on the record in the served repository, and then reads a second source, the Bridge's own state of the
 job, without waiting for it.

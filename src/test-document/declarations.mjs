@@ -95,33 +95,89 @@ export function isNamedTestFile(path) {
 export function testDeclarations(path, text) {
   const p = typeof path === "string" ? path : String(path ?? "");
   const t = typeof text === "string" ? text : String(text ?? "");
-  return p.endsWith(".md") ? markdownDeclarations(p, t) : commentDeclarations(p, t);
+  return p.endsWith(".md") ? markdownDeclarations(p, t) : commentDeclarations(p, t).filter((each) => each.id !== null);
 }
 
-// The backquotes of a line that are not escaped: an odd number opens or closes a template string that spans lines.
-const backticks = (line) => (line.match(/(?<!\\)`/g) ?? []).length;
+// unidentifiedDeclarations(path: string, text: string) -> TestDeclaration[] — every block of comment lines of a test file
+// that is written as a declaration but whose first line names no identifier: in its place, `key: value` parts with keys
+// of the declaration. Each is read as a declaration is read, with `id` `null`, in order; testDeclarations gives none of
+// them. The first line of a block is a comment line after a line that is none, so the key lines below an identifier are
+// that declaration's own. A Markdown file holds no comment lines, and yields none. It never throws on content.
+export function unidentifiedDeclarations(path, text) {
+  const p = typeof path === "string" ? path : String(path ?? "");
+  const t = typeof text === "string" ? text : String(text ?? "");
+  return p.endsWith(".md") ? [] : commentDeclarations(p, t).filter((each) => each.id === null);
+}
+
+// Whether a comment's content opens with a `key: value` part whose key is one of the declaration's.
+const opensWithField = (content) => FIELD_KEYS.includes(KEY_LINE.exec(content.split(PACK_SEPARATOR)[0].trim())?.[1]);
+
+// A `/` follows a token after which a regular expression may stand, not a division: nothing, an operator or an opening
+// bracket, or a keyword that takes a value. After a name, a number, `)` or `]` it divides.
+const REGEX_MAY_FOLLOW = /^$|[(,=:[!&|?{;+\-*%<>~^]$|\b(?:return|typeof|case|in|of|delete|void|throw|else|do|yield|await)$/;
+
+// The index of the `/` that closes the regular-expression literal opening at `line[start]`, an escaped character and a character
+// class `[…]` read as part of it; -1 where the line holds no closing `/`.
+function regexEnd(line, start) {
+  let inClass = false;
+  for (let i = start + 1; i < line.length; i += 1) {
+    const c = line[i];
+    if (c === "\\") i += 1;
+    else if (c === "[") inClass = true;
+    else if (c === "]") inClass = false;
+    else if (c === "/" && !inClass) return i;
+  }
+  return -1;
+}
+
+// Whether a template string is still open at the end of `line`, given whether one is open at its start. An unescaped backquote
+// opens or closes one; outside a template string, a backquote inside a `"…"` or `'…'` literal (an escaped quote read as part of
+// it), a regular-expression literal or after `//` opens none. The reader is no JavaScript parser: a literal ends at its line's
+// end at the latest, and a `/` with no closing `/` on its line divides.
+function templateOpenAfter(line, open) {
+  let quote = null;
+  for (let i = 0; i < line.length; i += 1) {
+    const c = line[i];
+    if (c === "\\") { i += 1; continue; }
+    if (open) { if (c === "`") open = false; continue; }
+    if (quote !== null) { if (c === quote) quote = null; continue; }
+    if (c === "`") open = true;
+    else if (c === '"' || c === "'") quote = c;
+    else if (c === "/" && line[i + 1] === "/") break;
+    else if (c === "/" && line[i + 1] !== "*" && REGEX_MAY_FOLLOW.test(line.slice(0, i).trimEnd())) {
+      const end = regexEnd(line, i);
+      if (end !== -1) i = end;
+    }
+  }
+  return open;
+}
 
 // testDeclarations for any file read by its comment lines (every language but Markdown). A comment-shaped line inside a
 // template string spanning lines is no comment line, and starts no declaration. A declaration before a loop header
 // `for (…) {` stands before the loop's body: its title is read on the line after the header. A declaration's fields end at its
 // first comment line not of their form, but its title is read on the first line after the whole block of comment lines it
 // stands in — past a `Planted fault:` line or a field's value continued over further comment lines —: every declaration of
-// the block waits for that line.
+// the block waits for that line. It reads, besides, each block whose first comment line opens with a field in place of an
+// identifier, as a declaration with `id` `null`; the caller keeps the ones it gives.
 function commentDeclarations(path, text) {
   const declarations = [];
   let current = null;
   let untitled = [];
   let inString = false;
+  let inBlock = false; // whether the line before is a comment line
   const lines = splitLines(text);
   for (let i = 0; i < lines.length; i += 1) {
     if (inString) {
       // a line inside a string literal that spans lines (a template string): no comment line of the file, whatever it holds
-      if (backticks(lines[i]) % 2 === 1) inString = false;
+      inString = templateOpenAfter(lines[i], true);
+      inBlock = false;
       continue;
     }
     const content = commentContent(lines[i]);
+    const opensBlock = !inBlock;
+    inBlock = content !== null;
     if (content === null) {
-      inString = backticks(lines[i]) % 2 === 1;
+      inString = templateOpenAfter(lines[i], false);
       if (untitled.length && LOOP_HEADER.test(lines[i])) { current = null; continue; } // the test case is the loop's body
       for (const waiting of untitled) waiting.title = titleOn(lines[i]);
       untitled = [];
@@ -134,10 +190,10 @@ function commentDeclarations(path, text) {
       current = null; // this comment line does not continue the declaration — it may still start a new one below
     }
     const parts = content.split(PACK_SEPARATOR);
-    const id = FIRST_LINE.exec(parts[0].trim());
-    if (id === null) continue;
-    current = { id: parts[0].trim(), title: null, fields: emptyFields(), path, line: i + 1 };
-    for (const part of parts.slice(1)) {
+    const id = FIRST_LINE.test(parts[0].trim()) ? parts[0].trim() : null;
+    if (id === null && !(opensBlock && opensWithField(content))) continue;
+    current = { id, title: null, fields: emptyFields(), path, line: i + 1 };
+    for (const part of id === null ? parts : parts.slice(1)) {
       const key = KEY_LINE.exec(part.trim());
       if (key !== null) applyField(current.fields, key[1], key[2]);
     }

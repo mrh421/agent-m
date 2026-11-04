@@ -69,7 +69,7 @@ text, sender or recipient (`A SENT REPLY IS NOTED IN THE ISSUE`):
 | `reply-sent` | ``Reply sent to `MAIL-…` on YYYY-MM-DD.`` |
 | `question-sent` | ``Question sent to `MAIL-…` on YYYY-MM-DD.`` |
 | `no-reply` | ``No reply to `MAIL-…`, decided on YYYY-MM-DD.`` |
-| `item-added` | ``Backlog item `ITM-…` added: <the item's address on the dashboard>`` |
+| `item-added` | ``Backlog item `ITM-…` added: <the address of the item file in the product's repository>`` |
 | `closed-with` | ``Closed with <the address of the pull request or commit>; item `ITM-…`.`` (the item part only where there is one) |
 
 **The labels** Agent M sets on an issue: `defect` — a defect against the current SPEC, also an issue analysed as a bug

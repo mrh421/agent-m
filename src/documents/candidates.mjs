@@ -30,7 +30,9 @@ const same = (a, b) => a.at(-1) !== "" && a.at(-1) === b.at(-1);
  * into one, which names every passage they came from; the sharing is followed from one candidate to the next. Then a merged candidate
  * that shares that value with an existing artifact is a duplicate of it — of the first such artifact in `existing` —, decided by rule, whatever its
  * participant proposed. Every other candidate keeps the class and the artifact its participant proposed, those of the first of
- * them for candidates merged into one. The classes stand in the order of their first candidates.
+ * them for candidates merged into one. The artifact a candidate of a one-field key is proposed as a change of is not searched: a
+ * change stands under the name of what it changes. A requirement — a key of more than one value — whose rule equals that of the
+ * requirement it is proposed as a change of is a duplicate of it all the same. The classes stand in the order of their first candidates.
  * @param {Array<{ ref: string, keys: string[], from: string[], proposed: { class: string, of: string | null } }>} candidates
  * @param {Array<{ id: string, keys: string[] }>} existing
  * @returns {Array<{ refs: string[], from: string[], class: string, of: string | null, decidedBy: "rule" | "participant" }>}
@@ -50,7 +52,12 @@ export function classifyCandidates(candidates, existing) {
 
   return groups.map((members) => {
     const first = candidates[members[0]];
-    const duplicateOf = known.find((artifact) => members.some((i) => same(keys[i], artifact.keys)));
+    // A change stands under the name of what it changes (A CHANGE IS PROPOSED UNDER THE EXISTING NAME): for a key of one field — a
+    // module's identifier, a decision's title — the artifact the first candidate is proposed as a change of is left out of the search
+    // for a duplicate. A requirement's key has more than one value, and its rule decides: one that restates the rule of the
+    // requirement it is proposed as a change of is a duplicate of that requirement all the same.
+    const changed = first.proposed.class === "change" && keys[members[0]].length === 1 ? first.proposed.of : null;
+    const duplicateOf = known.find((artifact) => artifact.id !== changed && members.some((i) => same(keys[i], artifact.keys)));
     return {
       refs: members.map((i) => candidates[i].ref),
       from: [...new Set(members.flatMap((i) => candidates[i].from))],

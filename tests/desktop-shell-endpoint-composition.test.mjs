@@ -82,7 +82,7 @@ test("TST-268001: production compose registers endpoint-test with pairing, origi
     url: "/v1/chat/completions",
     authorization: `Bearer ${KEY}`,
     body: { model: "small", messages: [{ role: "user", content: "Call agent_m_probe once. It is a harmless capability check." }], max_tokens: 64,
-      tools: [{ type: "function", function: { name: "agent_m_probe", description: "Report that tool calling works without changing anything.", parameters: { type: "object", properties: {}, additionalProperties: false } } }] },
+      tools: [{ type: "function", function: { name: "agent_m_probe", description: "Report that tool calling works without changing anything.", parameters: { type: "object", properties: {}, additionalProperties: false } } }], stream: false },
   }], "one bridge probe makes one controlled endpoint request");
   assert.equal((await readFile(join(folder, "pairing-token"), "utf8")).includes(KEY), false, "the endpoint key is absent from retained shell data");
   assert.equal(lines.join("\n").includes(KEY), false, "the endpoint key is absent from bridge logs");

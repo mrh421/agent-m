@@ -20,6 +20,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { outside } from "./site-frame-start.d/dom.mjs";
 import { ownerOf, pageWithScript, unknownStrategyOf } from "./site-frame-start.d/page.mjs";
+import { registeredAll } from "../src/job-runner/index.mjs";
 import { registerStrategies } from "../src/job-runner/index.mjs";
 
 const VIEW_A = "../tests/site-frame-start.d/view-approvals-a";
@@ -37,6 +38,7 @@ const reviewPage = () => pageWithScript({ "data-page": "review", "data-views": `
 test("TST-572001 start.mjs registers each set once however many views hand it, and the bar's sets under MOD-prompt-bar", async () => {
   reviewPage();
   await import("../src/site-frame/start.mjs?hand-over-review");
+  await registeredAll(); // the registrations the page makes before the runner first looks a strategy up
   assert.equal(ownerOf("recipes", "use-cases"), VIEW_A);
   assert.equal(ownerOf("recipes", "chapters-for-implementation"), VIEW_B);
   assert.equal(ownerOf("checks", "itm572OwnA"), VIEW_A);
@@ -53,28 +55,24 @@ test("TST-572001 start.mjs registers each set once however many views hand it, a
 // guards: UC-049
 // given: the review page of TST-572001, started
 // input: MOD-job-runner's prepareJob for each kind of the catalogue named below, in a context with no snapshot and no participant
-// expect: no kind of derive-requirements, change-requirements, derive-use-cases, change-use-case, derive-architecture,
-//   review-architecture, check-for-persons, check-resource, converse and implement meets an UnknownStrategy (implement's writer
-//   branch-and-pull-request is handed by MOD-runtimes' routeStrategies through the bar's handOverStrategies); draft-plan meets the
-//   UnknownStrategy plan-steps (a writer no set that is handed holds yet; its recipe architecture-and-model and its check plan-checks are handed by MOD-work-plans'
-//   workStrategies) — which shows that the check does detect a missing strategy
+// expect: no kind of derive-requirements, change-requirements, derive-use-cases, change-use-case, derive-architecture, review-architecture, check-for-persons, check-resource, converse, implement and draft-plan meets an UnknownStrategy (implement's writer branch-and-pull-request is handed by MOD-runtimes' routeStrategies through the bar's handOverStrategies; draft-plan's recipe architecture-and-model, check plan-checks and writer plan-steps by MOD-work-plans' workStrategies); decide-gate meets the UnknownStrategy gate-inputs (a recipe no module offers, MOD-job-catalogue) — which shows that the check does detect a missing strategy
 test("TST-572002 on a review page every kind whose strategies are all handed is prepared without UnknownStrategy", async () => {
   for (const kind of ["derive-requirements", "change-requirements", "derive-use-cases", "change-use-case", "derive-architecture",
-    "review-architecture", "check-for-persons", "check-resource", "converse", "implement"]) {
+    "review-architecture", "check-for-persons", "check-resource", "converse", "implement", "draft-plan"]) {
     assert.equal(await unknownStrategyOf(kind), null, `${kind} meets no UnknownStrategy`);
   }
-  assert.equal(await unknownStrategyOf("draft-plan"), "plan-steps");
+  assert.equal(await unknownStrategyOf("decide-gate"), "gate-inputs");
 });
 
 // TST-572003 · level: unit · module: MOD-site-frame
 // guards: UC-049
 // given: the registrations of TST-572001, and a review page with the same script tag and fragment
 // input: start.mjs is loaded a second time in the same process (under another query), as TST-531013 loads it
-// expect: the load does not reject: the sets the first load registered under view-approvals-a, view-approvals-b and MOD-prompt-bar are
-//   counted as already registered; and their owners are those of the first load
+// expect: the load does not reject: the sets the first load registered under view-approvals-a, view-approvals-b and MOD-prompt-bar are counted as already registered; and their owners are those of the first load
 test("TST-572003 a second evaluation of start.mjs counts the strategies its own owners registered as already registered", async () => {
   reviewPage();
   await import("../src/site-frame/start.mjs?hand-over-review-again");
+  await registeredAll(); // the registrations the page makes before the runner first looks a strategy up
   assert.equal(ownerOf("recipes", "use-cases"), VIEW_A);
   assert.equal(ownerOf("recipes", "chapters-for-implementation"), VIEW_B);
   assert.equal(ownerOf("recipes", "resource-check"), "MOD-prompt-bar");

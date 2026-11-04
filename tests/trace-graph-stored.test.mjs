@@ -130,8 +130,7 @@ test("storedGraph returns the graph stored for the commit, read by one readOn, a
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; THE TRACEABILITY MATRIX IS DERIVED
 // given: the sources (a) to (g) above (COMMIT, which no test of this file reads a stored graph of through storedGraph), and a source with the stored bytes asked for no commit
 // input: storedGraph(each source, COMMIT); storedGraph(source, null)
-// expect: each rejects with an error named GraphNotStored whose message says the graph is not stored yet and names the workflow "main changed"; no read and no readMany; the one readOn of
-//         ("trace-cache", "<COMMIT>.json.gz", { bytes: true }) is the only call, none for (a) and none without a commit — storedGraph never builds the graph
+// expect: each rejects with an error named GraphNotStored whose message says the graph is not stored yet and names the workflow "main changed"; no read and no readMany; the one readOn of ("trace-cache", "<COMMIT>.json.gz", { bytes: true }) is the only call, none for (a) and none without a commit — storedGraph never builds the graph
 test("storedGraph rejects with GraphNotStored where no usable graph is stored, and makes no read besides the one readOn", async () => {
   const notStored = (error) => error.name === "GraphNotStored" && /is not stored yet/.test(error.message) && /"main changed"/.test(error.message);
   for (const [name, readOn] of Object.entries(await unusable())) {

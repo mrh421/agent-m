@@ -283,8 +283,7 @@ test("TST-409104: doneCheck requires every changed code file to lie in a folder 
 // guards: EVERY ARTIFACT NAMES ITS ORIGIN
 // given: the passing pull request; one whose new test names no module; one whose new test guards nothing; one whose new test file has no declaration; and a modified test file that adds a declared test
 // input: doneCheck over each
-// expect: nothing for the passing one; a finding for the test without a module, for the one guarding nothing, and for the file without declarations, each naming the test or the file; the added declaration
-//         of a modified file is checked as a new test, an old one is not
+// expect: nothing for the passing one; a finding for the test without a module, for the one guarding nothing, and for the file without declarations, each naming the test or the file; the added declaration of a modified file is checked as a new test, an old one is not
 test("TST-409105: doneCheck requires every new test to name a requirement and a module", async () => {
   assert.deepEqual(await check(example()), [], "known positive");
   const headWith = (text) => ({ [TEST_FILE]: text });
@@ -378,8 +377,7 @@ test("TST-409108: doneCheck checks the conditions the declaration adds", async (
 // guards: A PULL REQUEST IS MERGED ONLY WHEN THE DEFINITION OF DONE HOLDS
 // given: a pull request that breaks CI, the module rule and the gate at once
 // input: doneCheck, twice, with the inputs frozen
-// expect: one finding for each rule broken, in the order of the job rules — CI, first commit, modules, new tests, gates —, each a valid finding (artifact, line 1, kind error, rule, what, fix); the same answer
-//         twice; the inputs unchanged
+// expect: one finding for each rule broken, in the order of the job rules — CI, first commit, modules, new tests, gates —, each a valid finding (artifact, line 1, kind error, rule, what, fix); the same answer twice; the inputs unchanged
 test("TST-409109: doneCheck reports every broken rule, in order, and changes nothing", async () => {
   const broken = example({ checks: [{ name: "node", state: "failure", url: "u" }] });
   broken.commits[0].ci = "success";

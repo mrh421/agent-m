@@ -7,7 +7,7 @@
 // Run: node --test tests/runtimes-pull-request.test.mjs
 //
 // Module: MOD-runtimes
-// Guards: A PULL REQUEST IS MERGED ONLY WHEN THE DEFINITION OF DONE HOLDS; CODE ENTERS THE DEFAULT BRANCH THROUGH A PULL REQUEST WITH GREEN CI; AN ARTIFACT RECORDS THE VERSION THAT PRODUCED IT; A REMOTE INTERFACE NAMES HOW IT FAILS; A BACKLOG ITEM NAMES THE MODULES IT CHANGES; UC-024; UC-049
+// Guards: A PULL REQUEST IS MERGED ONLY WHEN THE DEFINITION OF DONE HOLDS; CODE ENTERS THE DEFAULT BRANCH THROUGH A PULL REQUEST WITH GREEN CI; AN ARTIFACT RECORDS THE VERSION THAT PRODUCED IT; A REMOTE INTERFACE NAMES HOW IT FAILS; A BACKLOG ITEM NAMES THE MODULES IT CHANGES; EVERY ARTIFACT NAMES ITS ORIGIN; A BACKLOG ITEM NAMES WHAT IT REALISES; UC-024; UC-034; UC-049
 // Level: unit
 //
 // The readings of this file, each with the sentence it reads (ITM-567, sprint team1/54):
@@ -26,7 +26,13 @@
 //     the items, the order of the title — and, within a name, that of the item's `modules` as its file lists them; a module is named once. A module that only a new test declares, or only a text of the item mentions, is
 //     none of them. A name the graph does not hold gives none, and with no module the line is left out. The graph is built once for a pull request the writer opens, and not at all where a pull request is
 //     opened by none (one exists, or the host is local) or where no step and no item is named.
-// The tests TST-607001 to TST-607005 are ITM-607's; TST-567001 is the one existing test whose expected result changes (its `Modules:` line was the new tests' modules).
+//   - What the item realises and its issue (ITM-1411, sprint team1/142). UC-034 step 5.3 says: "The pull request names the item, the requirements it realises and, for an item from an issue, the issue (UC-033)."
+//     MOD-runtimes says the description holds "a description that names the job, the plan step or backlog item, its modules, the requirements its new tests guard [...] and the provenance lines"; it does not say the
+//     description holds nothing else. So the description also holds, for the steps and items the job names, the line `Realises:` — the targets of their `realises` edges in the trace graph of the job's snapshot, in the
+//     order of the names and, within a name, of the item's `realises` as its file lists them, each once, requirements and use cases alike — and the line `Issue:` — the entries of their `origin` that are an issue's
+//     address (`.../issues/<n>`, GitLab's `.../-/issues/<n>`), in the same order, each once; a requirement's name or a use case among the origins is no issue. A line with no entry is left out. They stand after
+//     `Modules:` and before `Requirements guarded by the new tests:`, which stays. The artifacts of the snapshot are read once for all of it, as for the modules.
+// The tests TST-607001 to TST-607005 are ITM-607's, TST-1411001 to TST-1411003 are ITM-1411's, TST-1426001 is ITM-1426's; TST-567001 is the one existing test whose expected result changes (its `Modules:` line was the new tests' modules).
 // Each test states its expected values in its own text; none reads them from a document. The repository server is the fake host of this file, which records every call; nothing
 // reaches the network (a fetch that fails the test replaces the real one). A name the module does not provide yet is undefined here, so that each test fails by itself. The
 // counter-proofs are recorded in the pull request.
@@ -52,8 +58,8 @@ function treeOf(commit, files, reads = null) {
 }
 
 // The job's snapshot holds a backlog item ITM-9 that changes MOD-gamma and MOD-alpha, in that order, and whose text mentions MOD-beta; and a plan step ITM-10 that changes MOD-delta and MOD-alpha.
-const artifact = (id, modules, text) => ["---", `id: ${id}`, `title: The fixture ${id}`, "level: module", "realises:", "  - UC-024", "modules:", ...modules.map((module) => `  - ${module}`), "tests:", "  - unit",
-  "origin:", "  - the fixture", "---", `# ${id} The fixture ${id}`, "", text, ""].join("\n");
+const artifact = (id, modules, text, { realises = ["UC-024"], origin = ["the fixture"] } = {}) => ["---", `id: ${id}`, `title: The fixture ${id}`, "level: module", "realises:", ...realises.map((name) => `  - ${name}`), "modules:",
+  ...modules.map((module) => `  - ${module}`), "tests:", "  - unit", "origin:", ...origin.map((entry) => `  - ${entry}`), "---", `# ${id} The fixture ${id}`, "", text, ""].join("\n");
 const BASE_FILES = {
   "tests/old.test.mjs": declared("TST-001", "MOD-alpha", "OLD RULE"),
   "tests/same.test.mjs": declared("TST-004", "MOD-alpha", "UNTOUCHED RULE"),
@@ -304,4 +310,100 @@ test("the repository's artifacts are read only for a pull request the writer ope
   const local = fakeHost({ local: true });
   assert.deepEqual(await writeRecording(local, { items: ["ITM-9"] }), [], "a local host: no docs read");
   assert.equal(local.calls.filter(([name]) => name === "openPullRequest").length, 0);
+});
+
+// ITM-1411: the job's snapshot also holds the backlog item ITM-12, which realises RULE TWO and UC-024, changes MOD-alpha and comes from two issues (GitHub's and GitLab's form of the address), naming RULE TWO among its origins too;
+// the backlog item ITM-13, which realises RULE THREE and comes from no issue (its origins are a requirement and a use case); and the plan step ITM-10 of BASE_FILES, which realises UC-024 and comes from no issue.
+const ISSUE_A = "https://github.com/acme/product/issues/14";
+const ISSUE_B = "https://gitlab.example/acme/product/-/issues/3";
+const FILES_1411 = {
+  ...BASE_FILES,
+  "docs/backlog/ITM-12-item.md": artifact("ITM-12", ["MOD-alpha"], "An item from issues.", { realises: ["RULE TWO", "UC-024"], origin: [ISSUE_A, "RULE TWO", ISSUE_B] }),
+  "docs/backlog/ITM-13-item.md": artifact("ITM-13", ["MOD-alpha"], "An item from no issue.", { realises: ["RULE THREE"], origin: ["RULE THREE", "UC-024"] }),
+};
+const BRANCH_1411 = { ...BRANCH_FILES, ...Object.fromEntries(Object.entries(FILES_1411).filter(([path]) => path.startsWith("docs/"))) };
+async function write1411(params, snapshot = treeOf(SNAPSHOT_COMMIT, FILES_1411)) {
+  const server = fakeHost({ branches: { [JOB]: treeOf("c1", BRANCH_1411) } });
+  await write(server.host, undefined, params, snapshot);
+  return server;
+}
+const linesOf = (server, prefix) => bodyOf(server).filter((line) => line.startsWith(prefix));
+
+// TST-1411001 · level: unit · module: MOD-runtimes
+// guards: EVERY ARTIFACT NAMES ITS ORIGIN; A BACKLOG ITEM NAMES WHAT IT REALISES; UC-034
+// given: the server host of TST-567001, no pull request of the branch; the job's snapshot holds the backlog item ITM-12, which realises RULE TWO then UC-024 and has the origins https://github.com/acme/product/issues/14, RULE TWO and https://gitlab.example/acme/product/-/issues/3; the branch's new tests guard NEW RULE TWO, NEW RULE ONE and NEW RULE THREE
+// input: the writer with the job's parameters { items: ["ITM-12"] }
+// expect: UC-034 step 5.3 "The pull request names the item, the requirements it realises and, for an item from an issue, the issue": the one description holds the lines "Backlog item: ITM-12", "Realises: RULE TWO, UC-024" (the requirement and the use case, in the item's order), "Issue: https://github.com/acme/product/issues/14, https://gitlab.example/acme/product/-/issues/3" (the two issues, not RULE TWO) and still "Requirements guarded by the new tests: NEW RULE TWO; NEW RULE ONE; NEW RULE THREE", each once; Modules stands before Realises, Realises before Issue and Issue before the guarded line, and a blank line and the six provenance lines still close the description
+test("the description names the requirements and use cases the item realises and the issues it comes from, beside the requirements the new tests guard", async () => {
+  const server = await write1411({ items: ["ITM-12"] });
+  const lines = bodyOf(server);
+  assert.ok(lines.includes("Backlog item: ITM-12"), "known positive: the item is named");
+  assert.deepEqual(linesOf(server, "Realises:"), ["Realises: RULE TWO, UC-024"]);
+  assert.deepEqual(linesOf(server, "Issue:"), [`Issue: ${ISSUE_A}, ${ISSUE_B}`]);
+  assert.deepEqual(linesOf(server, "Requirements guarded"), ["Requirements guarded by the new tests: NEW RULE TWO; NEW RULE ONE; NEW RULE THREE"]);
+  const at = (prefix) => lines.findIndex((line) => line.startsWith(prefix));
+  assert.ok(at("Modules:") < at("Realises:") && at("Realises:") < at("Issue:") && at("Issue:") < at("Requirements guarded"), "the lines stand in that order");
+  assert.equal(lines[lines.length - 7], "", "a blank line stands before the six provenance lines");
+});
+
+// TST-1411002 · level: unit · module: MOD-runtimes
+// guards: EVERY ARTIFACT NAMES ITS ORIGIN; A BACKLOG ITEM NAMES WHAT IT REALISES; UC-034
+// given: the server host of TST-567001, known positive first (ITM-12 gives a Realises and an Issue line); the snapshot of TST-1411001, which also holds ITM-13 (realises RULE THREE; its origins are RULE THREE and UC-024, no issue) and holds no ITM-77
+// input: the writer with { items: ["ITM-13"] }, with { items: ["ITM-77"] }, and with { instruction } (no step, no item)
+// expect: for ITM-13 the description holds "Realises: RULE THREE" and no line starting "Issue:" — a requirement or a use case among the origins is no issue —; for the unknown ITM-77 it holds "Backlog item: ITM-77" and neither a "Realises:" nor an "Issue:" line, and nothing fails; with no step and no item it holds neither line
+test("an item from no issue has no Issue line, and a name the graph does not hold or no name has neither the Realises nor the Issue line", async () => {
+  const positive = await write1411({ items: ["ITM-12"] });
+  assert.equal(linesOf(positive, "Realises:").length + linesOf(positive, "Issue:").length, 2, "known positive: ITM-12 gives both lines");
+
+  const noIssue = await write1411({ items: ["ITM-13"] });
+  assert.deepEqual(linesOf(noIssue, "Realises:"), ["Realises: RULE THREE"]);
+  assert.deepEqual(linesOf(noIssue, "Issue:"), []);
+
+  const unknown = await write1411({ items: ["ITM-77"] });
+  assert.ok(bodyOf(unknown).includes("Backlog item: ITM-77"));
+  assert.deepEqual([...linesOf(unknown, "Realises:"), ...linesOf(unknown, "Issue:")], []);
+
+  const none = await write1411({ instruction: INSTRUCTION });
+  assert.deepEqual([...linesOf(none, "Realises:"), ...linesOf(none, "Issue:")], []);
+});
+
+// TST-1411003 · level: unit · module: MOD-runtimes
+// guards: EVERY ARTIFACT NAMES ITS ORIGIN; A BACKLOG ITEM NAMES WHAT IT REALISES; UC-034
+// given: the server host of TST-567001, no pull request of the branch; the snapshot of TST-1411001, which records every path it is read at; the plan step ITM-10 (realises UC-024, no issue) and the items ITM-12 (RULE TWO, UC-024; two issues) and ITM-13 (RULE THREE; no issue)
+// input: the writer with { steps: ["ITM-10"], items: ["ITM-12", "ITM-13"] }
+// expect: "Realises: UC-024, RULE TWO, RULE THREE" — the step's, then ITM-12's, then ITM-13's, UC-024 once — and "Issue: https://github.com/acme/product/issues/14, https://gitlab.example/acme/product/-/issues/3"; the paths under docs/ that the snapshot was read at are exactly the four artifacts, each once: reading the origins costs no second read
+test("the realised requirements and the issues of the steps and items are named in the order of the names, each once, from the reading that builds the graph", async () => {
+  const reads = [];
+  const server = await write1411({ steps: ["ITM-10"], items: ["ITM-12", "ITM-13"] }, treeOf(SNAPSHOT_COMMIT, FILES_1411, reads));
+  assert.deepEqual(linesOf(server, "Realises:"), ["Realises: UC-024, RULE TWO, RULE THREE"]);
+  assert.deepEqual(linesOf(server, "Issue:"), [`Issue: ${ISSUE_A}, ${ISSUE_B}`]);
+  assert.deepEqual(reads.filter((path) => path.startsWith("docs/")).sort(), ["docs/backlog/ITM-12-item.md", "docs/backlog/ITM-13-item.md", "docs/backlog/ITM-9-item.md", "docs/plan/ITM-10-step.md"]);
+});
+
+// ITM-1426: UC-026 step 8.4 and UC-034 step 5.3 say the pull request "records the Agent M version, the participant, the model and the date"; MOD-runtimes' `routeStrategies` says the description names
+// "the provenance lines" and does not say the description holds nothing else. Reading taken: the date is the one of the job's run, `context.now` (MOD-job-runner's JobContext: "everything a strategy may read"; MOD-runtimes'
+// tabContext: "`now` is the moment of the call"), as the calendar day in UTC, `YYYY-MM-DD`. The commit's date is none the host's `readSnapshot` gives, the wall clock is not deterministic, and a job's identifier is none
+// for a job without a record. The line `Date:` stands among the lines before the blank line, so that the six provenance lines still close the description. Each test fixes `now`, not the wall clock.
+
+// TST-1426001 · level: unit · module: MOD-runtimes
+// guards: AN ARTIFACT RECORDS THE VERSION THAT PRODUCED IT; UC-026; UC-034
+// given: the server host of TST-567001, no pull request of the branch; the job JOB-20261017-1000-abcd of kind implement, whose context says it ran at 2026-10-17T10:00:00Z; then the same job with a context whose moment is 2026-11-03T23:59:59Z (the identifier unchanged); known positive first: the description of the first holds "Kind: implement" and the participant's provenance line
+// input: the writer `branch-and-pull-request` with the answer { branch: the job's id, commits: ["c1"], pullRequest: "" } in each context
+// expect: UC-026 8.4 "naming the Agent M version, the participant, the model and the date": the one description holds exactly one line starting "Date:", "Date: 2026-10-17" for the first and "Date: 2026-11-03" for the second — the day of the context's moment in UTC, not the day in the job's identifier (20261017) —, that line stands before the blank line, the six provenance lines still close the description, and the description holds no other date of the form YYYY-MM-DD
+test("the description names the date the job ran, beside the version, the participant and the model", async () => {
+  const opened = async (now) => {
+    const server = fakeHost();
+    await writer()(resultOf(), { ...contextOf(server.host), now });
+    return bodyOf(server);
+  };
+  const first = await opened(new Date("2026-10-17T10:00:00Z"));
+  assert.ok(first.includes("Kind: implement") && first.includes("Agent-M-Participant: coder-a"), "known positive: the description is there, with its provenance lines");
+  assert.deepEqual(first.filter((line) => line.startsWith("Date:")), ["Date: 2026-10-17"]);
+  const second = await opened(new Date("2026-11-03T23:59:59Z"));
+  assert.deepEqual(second.filter((line) => line.startsWith("Date:")), ["Date: 2026-11-03"], "the day of the moment, not of the identifier");
+  for (const lines of [first, second]) {
+    assert.ok(lines.findIndex((line) => line.startsWith("Date:")) < lines.length - 7, "the date stands before the blank line");
+    assert.equal(lines[lines.length - 7], "", "a blank line stands before the six provenance lines");
+    assert.equal(lines.join("\n").match(/\b\d{4}-\d{2}-\d{2}\b/g)?.length, 1, "no other date");
+  }
 });

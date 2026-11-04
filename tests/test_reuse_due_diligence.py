@@ -96,6 +96,25 @@ def record_cases() -> list[dict]:
     return loaded
 
 
+def step_record_cases() -> list[dict]:
+    named = {case["name"]: case for case in step_cases()}
+    loaded = []
+    for case in cases():
+        if case["kind"] != "step-record":
+            continue
+        source = re.search(r"^from: (.+)$", case["body"], re.M)
+        if not source or source.group(1).strip() not in named:
+            raise AssertionError(f"{case['name']} names no step case in from")
+        loaded.append({
+            "name": case["name"],
+            "step": named[source.group(1).strip()],
+            "precondition": block(case["body"], "Precondition"),
+            "input": json.loads(fence(case["body"], "Input")),
+            "expected": json.loads(fence(case["body"], "Expected Result")),
+        })
+    return loaded
+
+
 def run_due_diligence(case: dict) -> dict:
     payload = {**case["input"], "draft": case["draft"]}
     return js("""
@@ -173,6 +192,18 @@ def rows_without_lines(rows: list[dict]) -> list[dict]:
     return [{key: value for key, value in row.items() if key != "line"} for row in rows]
 
 
+def with_empty_cell(text: str, row: int, column: str) -> str:
+    """The text with one cell of one due-diligence row emptied."""
+    rows = due_diligence_rows(text)
+    names = [name for name in rows[0] if name != "line"]
+    lines = text.splitlines()
+    at = rows[row]["line"] - 1
+    cells = [cell.strip() for cell in lines[at].strip()[1:-1].split("|")]
+    cells[names.index(column)] = ""
+    lines[at] = "| " + " | ".join(cells) + " |"
+    return "\n".join(lines)
+
+
 def record_findings(path: str, text: str) -> list[dict]:
     findings = []
     for row in due_diligence_rows(text):
@@ -199,7 +230,7 @@ def record_findings(path: str, text: str) -> list[dict]:
 
 
 class TestReuseDueDiligence(unittest.TestCase):
-    # TST-446100 · level: release · module: MOD-reuse-facts
+    # TST-446100 · level: release · module: system
     # guards: A REUSE DECISION RECORDS ITS DUE DILIGENCE; A PRODUCT DECLARES ITS LICENCE; A REUSED LICENCE IS SHOWN AGAINST THE PRODUCT'S; DUE DILIGENCE IS FETCHED, NOT RECALLED
     # given: the Markdown step cases beside this file, each with fixture registry and source-repository facts
     # input: MOD-reuse-facts reuseStrategies.steps["due-diligence"] through jsrun.py
@@ -215,7 +246,7 @@ class TestReuseDueDiligence(unittest.TestCase):
                 self.assertEqual(actual["fetches"], case["expected"]["fetches"])
                 self.assertEqual(actual["connections"], case["expected"]["connections"])
 
-    # TST-446101 · level: release · module: MOD-reuse-facts
+    # TST-446101 · level: release · module: system
     # guards: DUE DILIGENCE IS FETCHED, NOT RECALLED
     # given: the Markdown record cases beside this file
     # input: each due-diligence record table as it would stand in an architecture decision
@@ -227,7 +258,26 @@ class TestReuseDueDiligence(unittest.TestCase):
             with self.subTest(case=case["name"]):
                 self.assertEqual(record_findings(case["input"]["path"], case["record"]), case["expected"]["findings"])
 
-    # TST-446102 · level: release · module: MOD-reuse-facts
+    # TST-446103 · level: release · module: system
+    # guards: DUE DILIGENCE IS FETCHED, NOT RECALLED
+    # given: the due-diligence section MOD-reuse-facts' step writes for a fixture draft (an MIT product, a chosen and an alternative npm candidate)
+    # input: the record check over the written text, then over the same text with the date read of the first row emptied, and with the address read of the second row emptied
+    # expect: the written text has no finding; each emptied cell gives exactly one finding naming the decision path, the row line and the empty column
+    def test_written_due_diligence_record_passes_and_an_emptied_fact_fails(self):
+        loaded = step_record_cases()
+        self.assertEqual(len(loaded), 1)
+        for case in loaded:
+            with self.subTest(case=case["name"]):
+                path = case["step"]["input"]["path"]
+                written = run_due_diligence(case["step"])["text"]
+                self.assertEqual(record_findings(path, written), case["expected"]["written_findings"])
+                self.assertEqual(len(case["input"]["mutations"]), len(case["expected"]["mutated_findings"]))
+                for mutation, expected in zip(case["input"]["mutations"], case["expected"]["mutated_findings"]):
+                    mutated = with_empty_cell(written, mutation["row"], mutation["column"])
+                    self.assertNotEqual(mutated, written)
+                    self.assertEqual(record_findings(path, mutated), expected)
+
+    # TST-446102 · level: release · module: system
     # guards: A TEST STATES ITS EXPECTED RESULT BEFORE IT RUNS
     # given: the Markdown cases beside this file
     # input: the case loader

@@ -96,13 +96,12 @@ test("backlogFindings — an item that names no module the architecture describe
 
 // TST-688005 · level: unit · module: MOD-work-plans
 // guards: A BACKLOG ITEM NAMES THE MODULES IT CHANGES; UC-032
-// given: counter-proofs of the test above — an item naming MOD-store; an item naming MOD-pages and MOD-store; an item naming MOD-store and MOD-ghost (the module text reads "names no module the architecture describes": it names MOD-store, which the architecture describes); and an architecture handed in as null with an item naming MOD-store
+// given: counter-proofs of the test above — an item naming MOD-store; an item naming MOD-pages and MOD-store; and an architecture handed in as null with an item naming MOD-store
 // input: backlogFindings of each alone
-// expect: no finding for the first three; for the null architecture one error ITM-001 A BACKLOG ITEM NAMES THE MODULES IT CHANGES
+// expect: no finding for the first two; for the null architecture one error ITM-001 A BACKLOG ITEM NAMES THE MODULES IT CHANGES
 test("backlogFindings — an item that names a module the architecture describes has no module finding", () => {
   assert.deepEqual(findings([item("ITM-001", { modules: ["MOD-store"] })]), []);
   assert.deepEqual(findings([item("ITM-001", { modules: ["MOD-pages", "MOD-store"] })]), []);
-  assert.deepEqual(findings([item("ITM-001", { modules: ["MOD-store", "MOD-ghost"] })]), []);
   assert.deepEqual(brief(findings([item("ITM-001")], null)), [["ITM-001", "error", MODULES, "the item names no module the architecture describes"]]);
 });
 
@@ -132,12 +131,15 @@ test("backlogFindings — an item that builds on one that builds on it in turn i
 
 // TST-688008 · level: unit · module: MOD-work-plans
 // guards: THE BACKLOG LIVES IN THE PRODUCT REPOSITORY; UC-032
-// given: the limit of the module text's sentence "builds on an item that does not exist, or on one that builds on it in turn" — a circle of three, ITM-001 on ITM-002, ITM-002 on ITM-003, ITM-003 on ITM-001: each builds on an item that exists and that does not build on it
+// given: "builds on one that builds on it in turn" read through any number of items — a circle of three, ITM-001 on ITM-002, ITM-002 on ITM-003, ITM-003 on ITM-001
 // input: backlogFindings of the three
-// expect: no finding (the sentence names the item that builds on it in turn, which in a circle of three none does)
-test("backlogFindings — a circle of three items has no finding, as the sentence states only the item that builds on it in turn", () => {
-  assert.deepEqual(findings([item("ITM-001", { builds_on: ["ITM-002"] }), item("ITM-002", { builds_on: ["ITM-003"] }),
-    item("ITM-003", { builds_on: ["ITM-001"] })]), []);
+// expect: three errors, one for each item of the circle, in the order of the items: ITM-001 "the item builds on ITM-002, which builds on it in turn", ITM-002 "... ITM-003 ...", ITM-003 "... ITM-001 ...", each under THE BACKLOG LIVES IN THE PRODUCT REPOSITORY
+test("backlogFindings — a circle of three items is an error on each of the three", () => {
+  assert.deepEqual(brief(findings([item("ITM-001", { builds_on: ["ITM-002"] }), item("ITM-002", { builds_on: ["ITM-003"] }),
+    item("ITM-003", { builds_on: ["ITM-001"] })])), [
+    ["ITM-001", "error", BACKLOG, "the item builds on ITM-002, which builds on it in turn"],
+    ["ITM-002", "error", BACKLOG, "the item builds on ITM-003, which builds on it in turn"],
+    ["ITM-003", "error", BACKLOG, "the item builds on ITM-001, which builds on it in turn"]]);
 });
 
 // TST-688009 · level: unit · module: MOD-work-plans
@@ -241,4 +243,38 @@ test("backlogFindings — over documents read from their files by MOD-documents"
   ];
   const architecture = ["MOD-store", "MOD-pages"].map((id) => readDocument(schemas.module, `docs/architecture/${id}.md`, moduleText(id)));
   assert.deepEqual(brief(findings(items, architecture)), [["ITM-002", "error", MODULES, "the item names no module the architecture describes"]]);
+});
+
+// TST-817001 · level: unit · module: MOD-work-plans
+// guards: A BACKLOG ITEM NAMES THE MODULES IT CHANGES
+// given: ITM-001 naming MOD-store (described) and MOD-ghost (not); ITM-002 naming MOD-ghost, MOD-lost and MOD-pages; counter-proof ITM-003 naming MOD-store and MOD-pages
+// input: backlogFindings of each alone
+// expect: ITM-001: one error A BACKLOG ITEM NAMES THE MODULES IT CHANGES "the item names MOD-ghost, which the architecture does not describe", line 1; ITM-002: two errors, one naming MOD-ghost and one naming MOD-lost, in that order; ITM-003: no finding
+test("backlogFindings — every module an item names that the architecture does not describe is an error naming it", () => {
+  const [only, ...rest] = findings([item("ITM-001", { modules: ["MOD-store", "MOD-ghost"] })]);
+  assert.deepEqual(rest, []);
+  assert.deepEqual([only.artifact, only.line, only.kind, only.rule, only.what],
+    ["ITM-001", 1, "error", MODULES, "the item names MOD-ghost, which the architecture does not describe"]);
+  assert.deepEqual(brief(findings([item("ITM-002", { modules: ["MOD-ghost", "MOD-lost", "MOD-pages"] })])), [
+    ["ITM-002", "error", MODULES, "the item names MOD-ghost, which the architecture does not describe"],
+    ["ITM-002", "error", MODULES, "the item names MOD-lost, which the architecture does not describe"]]);
+  assert.deepEqual(findings([item("ITM-003", { modules: ["MOD-store", "MOD-pages"] })]), []);
+});
+
+// TST-817002 · level: unit · module: MOD-work-plans
+// guards: THE BACKLOG LIVES IN THE PRODUCT REPOSITORY
+// given: a circle of four, ITM-001 on ITM-002 on ITM-003 on ITM-004 on ITM-001, and ITM-005 building on ITM-001 from outside it; counter-proofs: a chain ITM-001 on ITM-002 on ITM-003, and a diamond ITM-004 on ITM-002 and ITM-003, both on ITM-001
+// input: backlogFindings of each backlog
+// expect: for the circle, one error "the item builds on <next>, which builds on it in turn" on each of ITM-001 to ITM-004 and none on ITM-005; for the chain and the diamond, no finding
+test("backlogFindings — a circle of any length is reported on its items only; a chain or a diamond is not a circle", () => {
+  const circle = [item("ITM-001", { builds_on: ["ITM-002"] }), item("ITM-002", { builds_on: ["ITM-003"] }),
+    item("ITM-003", { builds_on: ["ITM-004"] }), item("ITM-004", { builds_on: ["ITM-001"] }), item("ITM-005", { builds_on: ["ITM-001"] })];
+  assert.deepEqual(brief(findings(circle)), [
+    ["ITM-001", "error", BACKLOG, "the item builds on ITM-002, which builds on it in turn"],
+    ["ITM-002", "error", BACKLOG, "the item builds on ITM-003, which builds on it in turn"],
+    ["ITM-003", "error", BACKLOG, "the item builds on ITM-004, which builds on it in turn"],
+    ["ITM-004", "error", BACKLOG, "the item builds on ITM-001, which builds on it in turn"]]);
+  assert.deepEqual(findings([item("ITM-001", { builds_on: ["ITM-002"] }), item("ITM-002", { builds_on: ["ITM-003"] }), item("ITM-003")]), []);
+  assert.deepEqual(findings([item("ITM-001"), item("ITM-002", { builds_on: ["ITM-001"] }), item("ITM-003", { builds_on: ["ITM-001"] }),
+    item("ITM-004", { builds_on: ["ITM-002", "ITM-003"] })]), []);
 });

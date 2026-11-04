@@ -1,8 +1,8 @@
 # Agent M's job workflow for this product, written by Agent M (docs/architecture/MOD-runtimes.md). It runs an entry of Agent M's
 # workflow entries for each event below, from a checkout of the instance at the commit named in each job. The secrets are named
 # here and never valued; they are set on the repository's secrets page. The agent works on a machine of its own, which receives
-# the key of the one participant the run names and no other secret, and keeps no token in its checkouts; on the server's runners a
-# model endpoint's job runs there as the model's own user, beside the key holder; the person's token is read only by the job that writes.
+# the key of the one participant the run names and no other secret, and keeps no token in its checkouts; where that machine can, a
+# model's run works there as the model's own user, beside the key holder; the person's token is read only by the job that writes.
 name: agent-m-jobs
 
 on:
@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: akmaier/agent-m
-          ref: c84cda6046c0bf41c9bfc52df6ad9d82b8bc14e9
+          ref: 4cbf28a02eb4c24d7f9e6006b78f02a4f24dd99f
           path: instance
       - uses: actions/setup-node@v4
         with:
@@ -63,7 +63,7 @@ jobs:
         run: node src/workflow-entries/main.mjs chooseAgentKey
   hosted-agent-0:
     # The agent's machine: the product and the instance read with the workflow's own read access, which neither checkout keeps; the one key of the participant the run
-    # names, no other secret; on the server's runners, the model's user, as whom a model endpoint's job runs (MOD-workflow-entries).
+    # names, no other secret; the model's user, as whom a model's run works where the machine can make that user (MOD-workflow-entries).
     name: Agent M's agent on hosted, key 0
     needs: hosted-plan
     if: needs.hosted-plan.outputs.agent == '0'
@@ -86,7 +86,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: akmaier/agent-m
-          ref: c84cda6046c0bf41c9bfc52df6ad9d82b8bc14e9
+          ref: 4cbf28a02eb4c24d7f9e6006b78f02a4f24dd99f
           path: instance
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -115,7 +115,7 @@ jobs:
           if-no-files-found: ignore
   hosted-agent-1:
     # The agent's machine: the product and the instance read with the workflow's own read access, which neither checkout keeps; the one key of the participant the run
-    # names, no other secret; on the server's runners, the model's user, as whom a model endpoint's job runs (MOD-workflow-entries).
+    # names, no other secret; the model's user, as whom a model's run works where the machine can make that user (MOD-workflow-entries).
     name: Agent M's agent on hosted, key 1
     needs: hosted-plan
     if: needs.hosted-plan.outputs.agent == '1'
@@ -139,7 +139,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: akmaier/agent-m
-          ref: c84cda6046c0bf41c9bfc52df6ad9d82b8bc14e9
+          ref: 4cbf28a02eb4c24d7f9e6006b78f02a4f24dd99f
           path: instance
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -189,7 +189,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: akmaier/agent-m
-          ref: c84cda6046c0bf41c9bfc52df6ad9d82b8bc14e9
+          ref: 4cbf28a02eb4c24d7f9e6006b78f02a4f24dd99f
           token: ${{ secrets.AGENT_M_TOKEN }}
           path: instance
       - uses: actions/setup-node@v4

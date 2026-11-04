@@ -101,8 +101,7 @@ test("Only participants at a place the mailbox allows are offered, and a place o
 // guards: THE PAGE NAMES WHERE IT SENDS; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; UC-038
 // given: two mails listed; the participant local-llm chosen and the name entered
 // input: nothing more
-// expect: the run panel names local-llm, where it processes data (this machine) and the parts it receives — each listed mail by its identifier, the products and their open issues —; the three checkers are listed with their places and the sentence that each
-//         receives only the rewritten texts; Run is offered once; nothing was sent to any endpoint and nothing was written
+// expect: the run panel names local-llm, where it processes data (this machine) and the parts it receives — each listed mail by its identifier, the products and their open issues —; the three checkers are listed with their places and the sentence that each receives only the rewritten texts; Run is offered once; nothing was sent to any endpoint and nothing was written
 test("The run panel names the participant's place, what it receives, and the three checkers' places", async () => {
   const f = await setup();
   await choose(f.target, "local-llm");
@@ -125,8 +124,7 @@ test("The run panel names the participant's place, what it receives, and the thr
 // guards: A MAIL BECOMES AN ISSUE ONLY BY A PERSON'S CLICK; A GENERATED ARTIFACT IS A PROPOSAL; ONE CLICK PER DECISION; UC-038
 // given: two listed mails; local-llm chosen; its answer: a proposal for each, the first a defect with one possible duplicate
 // input: a click a script makes on Run; then the person's click on Run
-// expect: the script's click sends nothing; the person's click sends one request that holds both mails; each proposal is shown in its mail's review — product, kind, title, text — and the duplicate #3 with its reason beside the first; nothing was created in any
-//         tracker: Create issue is still the person's click
+// expect: the script's click sends nothing; the person's click sends one request that holds both mails; each proposal is shown in its mail's review — product, kind, title, text — and the duplicate #3 with its reason beside the first; nothing was created in any tracker: Create issue is still the person's click
 test("One Propose sends all listed mails in one job, and each proposal is shown beside its mail", async () => {
   const f = await setup();
   await choose(f.target, "local-llm");
@@ -228,8 +226,7 @@ const rewriting = (request, { one: first, two }) => {
 // guards: REPORT DATA LEAVES THE MAILBOX ONLY REWRITTEN WITHOUT PERSONS; A REWRITTEN TEXT IS CHECKED BY THREE LLMS; UC-038
 // given: local-llm chosen; the checkers check-1 to check-3; the first rewrite names Ricky, which one checker finds; the rewrite that follows the finding does not
 // input: the person's click on Add to the issue for log.txt of the first mail, then on Run of its panel
-// expect: the panel names local-llm and the three checkers; the rewriter is asked twice and the second request carries the finding; each round is read by the three checkers; the text of the issue holds the corrected rewrite and neither Ricky nor the
-//         attachment's own text; nothing is created in any tracker
+// expect: the panel names local-llm and the three checkers; the rewriter is asked twice and the second request carries the finding; each round is read by the three checkers; the text of the issue holds the corrected rewrite and neither Ricky nor the attachment's own text; nothing is created in any tracker
 test("With three checkers a finding goes back, and only the corrected rewrite is added to the issue", async () => {
   const f = await setup({ answer: rewriting });
   await choose(f.target, "local-llm");

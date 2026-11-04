@@ -41,8 +41,7 @@ const runsOnlyTheEntry = (text) => {
 // guards: WITHOUT A TOKEN, THE INSTANCE'S WORKFLOW WRITES THE CHANGE
 // given: .github/workflows/apply-approvals.yml
 // input: its text
-// expect: it runs on a push to docs/approvals/ on main and on dispatch; its one command is `node src/workflow-entries/main.mjs onApprovalsCommitted`, with the workflow's token as GITHUB_TOKEN; it names no
-//   script of tools/; counter-proof: the text of the workflow before this item, which runs tools/apply_approvals.py, does not pass the same check
+// expect: it runs on a push to docs/approvals/ on main and on dispatch; its one command is `node src/workflow-entries/main.mjs onApprovalsCommitted`, with the workflow's token as GITHUB_TOKEN; it names no script of tools/; counter-proof: the text of the workflow before this item, which runs tools/apply_approvals.py, does not pass the same check
 test("the apply-approvals workflow runs the entry onApprovalsCommitted and nothing else", () => {
   const text = readFileSync(join(ROOT, ".github/workflows/apply-approvals.yml"), "utf8");
   assert.deepEqual(commands(text), ["node src/workflow-entries/main.mjs onApprovalsCommitted"]);

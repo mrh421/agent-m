@@ -26,6 +26,10 @@ process model. They see:
 - what is blocked;
 - which participant works on what.
 
+In a model with sprints, it shows what goes on now: each team's running sprint, its items and the jobs working on them.
+The backlog as a whole, with every item's state, and each team's last sprint with its final burn-down are on the page of
+the backlog (UC-032, step 1), which it links.
+
 Software progress is invisible unless someone makes it visible. Reporting exists so that drift is
 seen early enough to act on (book ch. 15 §2). Scrum calls the same thing transparency and
 inspection (ch. 7 §5).
@@ -33,7 +37,7 @@ inspection (ch. 7 §5).
 | Model kind | Progress measure | What the dashboard draws |
 |---|---|---|
 | planned (V-model, waterfall) | plan entries per phase | a grid of requirements × phases, each cell open, in progress or done; phases on a timeline with their gates as milestones (ch. 15 §3); beside it, the steps of the implementation plan with their states (UC-045) |
-| pulled, time boxes (Scrum) | remaining items per time box | the sprint's items, and a burn-down of remaining items per day of the sprint — one for each team's running sprint, named by its team |
+| pulled, time boxes (Scrum) | remaining items per time box | the sprint's items with their states, and a burn-down of remaining items per day of the sprint — one for each team's running sprint, named by its team |
 | pulled, WIP limit (Kanban) | items per state over time | the board with its columns and WIP limit, and a cumulative flow chart |
 
 A planned model has two plans, and they answer different questions. The grid of requirements × phases
@@ -69,7 +73,8 @@ its steps are what implementation jobs start for (UC-024).
    - *not reached*.
 
    Gates added by process requirements are marked with their requirement and source.
-4. A panel **Blocked** lists every item or plan entry that cannot move, each with its reason:
+4. A panel **Blocked** lists every item or plan entry that cannot move — in a model with sprints, every item a running
+   sprint holds that cannot move —, each with its reason:
    - a failed job;
    - a job waiting at a gate, with the role or check that decides it;
    - a requirement not yet accepted;
@@ -105,17 +110,15 @@ sequenceDiagram
 
 - **1a. The reader has no token that reaches a private product.** The dashboard says so and shows
   nothing, as in UC-008 (1a).
-- **1b. A job source cannot be reached**, for example the local bridge of another machine. Progress
-  is computed from the repository. The panel **Who works on what** says which source is missing, and
-  that jobs running there are not shown.
 - **2a. A planned product has no accepted requirements yet.** The grid shows the phases empty and
   says that the plan fills itself as requirements are accepted.
-- **2b. A Scrum product has no running sprint.** The dashboard shows the last sprint's final
-  burn-down and a link to plan the next one (UC-032).
+- **2b. A Scrum product has no running sprint.** The dashboard says so, with a link to plan the next one and a link to
+  the backlog, which shows the last sprint's final burn-down (UC-032).
 - **2c. The product changed its model** (UC-002, 3b). The chart starts at the change. Earlier
   progress stays readable in the model it was made under.
 - **2d. Only some teams of a Scrum product have a running sprint.** Each running sprint is drawn; a team without
-  one shows its last sprint's final burn-down and a link to plan the next one (UC-032).
+  one says so, with a link to plan its next one and a link to the backlog, which shows its last sprint's final burn-down
+  (UC-032).
 - **3a. A gate record names a text that has changed since.** The gate is shown as *passed on an
   earlier text*, with the difference. It does not count as passed for the current text
   (`STATUS IS DERIVED FROM THE RECORDS`).

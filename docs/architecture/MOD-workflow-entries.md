@@ -45,9 +45,6 @@ uses:
   - MOD-progress-measures.productFacts
   - MOD-runtimes.queueJob
   - MOD-runtimes.routeStrategies
-  - MOD-run-planner.runOf
-  - MOD-run-planner.nextActions
-  - MOD-run-planner.finishRun
   - MOD-run-planner.runStrategies
   - MOD-product-process.declarationSchema
   - MOD-product-process.productWorkflow
@@ -55,7 +52,6 @@ uses:
   - MOD-product-process.gateStates
   - MOD-product-process.doneCheck
   - MOD-product-process.recordGateDecision
-  - MOD-product-process.processStrategies
   - MOD-work-plans.sprintFacts
   - MOD-work-plans.workStrategies
   - MOD-issue-handling.closeWithLinks
@@ -133,6 +129,7 @@ It runs in Node, in GitHub Actions or GitLab CI, on hosted or self-hosted runner
 - `model-user.mjs` — the agent's machine split by OS user: a run in which a model works — a hand-over to a model
   endpoint, or a coding agent whose key the machine holds — run as the model's own user, beside the key holder.
 - `instance.mjs` — the entries of the instance's workflows.
+- `main-changed.mjs` — `onMainChanged`, the one entry run alike in the instance and in a product.
 - **Taken over, outside this folder** (`CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT`; the count in `docs/measurements/2026-10-17_code-outside-every-module.md`). Each file goes as stated, in this module's own implementation jobs:
   - `.github/workflows/apply-approvals.yml`, `.github/workflows/fetch-sources.yml`, `.github/workflows/main-changed.yml`, `.github/workflows/release.yml`: named here, since GitHub fixes their place; `apply-approvals.yml` runs `onApprovalsCommitted`, `main-changed.yml` runs `onMainChanged` and `release.yml` runs `onReleaseTagged`, each and nothing else, as this module states.
   - `tests/test_apply_approvals.py`: its header names this module.
@@ -148,7 +145,8 @@ Data), `onRecordsChanged` and `onDispatch` run on the agent's machine, after `ch
 by `leaveResult`, and `writeResult` and the other entries on the writing machine. MOD-test-schedule's test configuration runs
 `runTests` in each of its test jobs, which read no token, and `onTestsFinished` in its job `agent-m records` and
 `onDoneCheck` in its job `agent-m done`, the two that read the token and run no code of the product; on GitLab each file
-is included from the product's `.gitlab-ci.yml`. In the instance, one file under `.github/workflows/` runs each of its
+is included from the product's `.gitlab-ci.yml`. The file MOD-runtimes writes beside the job workflow runs
+`onMainChanged` on every push to the product's default branch. In the instance, one file under `.github/workflows/` runs each of its
 entries — `onApprovalsCommitted` on a push to `docs/approvals/`, `onSourcesCommitted` on a push to `docs/sources/` and
 on dispatch for *Fetch again* (UC-004 7a), `onReleaseTagged` on a release tag, `onMainChanged` on every push to the
 default branch — and does nothing but run it.
@@ -210,7 +208,8 @@ so; a model's command there reaches what that user can.
   on that user's side, the key holder's address (`AGENT_M_KEY_HOLDER`), and the file of a step's outputs — GitHub's `GITHUB_OUTPUT`, on
   GitLab the dotenv file `AGENT_M_OUTPUT` names; a GitLab pipeline started from the page or the API (`web`, `api`) is read
   as a start as GitHub's `workflow_dispatch` is; in the instance, the workflow's own token for the instance
-  repository and the signing secrets of a release; for `runTests`, the variables of MOD-test-schedule's *The variables of
+  repository and the signing secrets of a release; for `onMainChanged` in a product, the workflow's own token on GitHub
+  and the person's token on GitLab, and no key; for `runTests`, the variables of MOD-test-schedule's *The variables of
   a test job*; for `onTestsFinished`, the folder of the run's reports; for `onDoneCheck`, that folder and
   `AGENT_M_EXPECTED`, the rows and numbers of shards of a pull request's run as MOD-test-schedule's generated file names
   them. A secret that is missing ends the entry at once with a status that names it, before anything is written
@@ -222,21 +221,22 @@ so; a model's command there reaches what that user can.
   a model endpoint, the participant's key from its secret — a coding agent whose key a key holder can hold, as the model's
   user, through the holder (*The model's user*) —, appending its records. No person attends a job in CI: its
   kind's writer writes at once (`A CI AGENT'S DRAFT ENTERS AS OPEN`), and a kind that hands its draft back leaves it in
-  the record's end as `draft:`, from which the page shows it and a run starts the job that follows. A job whose draft
+  the record's end as `draft:`, from which the page shows it. A job whose draft
   holds a hand-over (MOD-job-runner's `hand-over`, UC-049 4f) is followed in the same run, with the same participant and
-  driver, by a job of the kind it names, where that kind is not the job's own, its result waits for a person (`review: person`) and
-  the hand-over works on no item of the backlog or step of the plan: its parameters the job's `source`, those
-  MOD-job-runner's `handOverParams` gives for what it works on, and its task as `instruction`; prepared, and run
-  unattended, so that its writer writes at once — a change of requirements as an open entry of a new queue, a use case
-  or an architecture file as open; no job writes an approval record. A hand-over of any other kind, of a kind that takes
+  driver, by a job of the kind it names, where that kind is not the job's own: its parameters the job's `source`, those
+  MOD-job-runner's `handOverParams` gives for what it works on, and its task as `instruction`; prepared with that kind's
+  preconditions and no start rule of the product's process, and run unattended, so that its writer writes at once — a
+  change of requirements as an open entry of a new queue, a use case or an architecture file as open, a change of code
+  as a pull request, which it does not merge; no job writes an approval record. A model endpoint's job of a kind that
+  changes code or runs tests works in the job's checkout of the product as `onDispatch` states — the tools of
+  MOD-checkout-tools, the same endpoint with `checkoutPrompt` for that checkout as its system prompt, `bash` refused
+  where a restricted source refuses it —, and where the record holds `declares`, the participant built from it is built
+  for the kind handed on, as `onDispatch` states. A hand-over of the job's own kind, of a kind that takes
   no instruction (MOD-job-runner's `taskRefusal`, its rule named), or one whose job does not start, is not run, and the
   job's end names it with why, as `not run: <kind> — <why>`; one whose run fails by MOD-job-runner's `failedBecause` is
   listed as `failed: <kind> — <why>`. The end lists every result of both: their commits,
   their files and pull requests, and their writers' notes. The entry resumes each
-  job of this route whose gate is now recorded (`A JOB STOPS AT EVERY GATE`); and computes the next actions of every run
-  the change concerns, from the product's facts read once, taking those of this route and queueing those of other routes
-  by their start records (`A RUN CONTINUES WITHOUT A CLICK BETWEEN ITS JOBS`). Two entries that compute the same action
-  are safe: only one taking lands. A job whose run ends by MOD-job-runner's `failedBecause` — an answer that could not be
+  job of this route whose gate is now recorded (`A JOB STOPS AT EVERY GATE`). A job whose run ends by MOD-job-runner's `failedBecause` — an answer that could not be
   read after the last round — ends `failed`, with no result, that reason and its rounds, and the entry ends `failed`. A
   job whose writer committed nothing, since its result equals the current files,
   ends done, and its end record and the entry's summary say `no change` (UC-010 4a).
@@ -256,8 +256,7 @@ so; a model's command there reaches what that user can.
   written by `agent-m records`, which runs no code of the product.
 - `onPullRequestClosed(env: CiEnvironment) -> Promise<EntryStatus>` — run by the job workflow when a pull request of a
   product is merged or closed: on a merge, the issues it names closed with links, and, on a GitLab server, when it is the
-  pull request that set up a run's CI, the project's pipeline schedule of the nightly run set from the merged schedule;
-  merged or closed, the next actions of the runs it concerns, as `onRecordsChanged` computes them.
+  pull request that set up a run's CI, the project's pipeline schedule of the nightly run set from the merged schedule.
 - `onCheckCompleted(env: CiEnvironment) -> Promise<EntryStatus>` — on a completed CI check that a gate of the product's
   workflow names as its decider: the gate's record — decided by that check, passed or not, on which commit (`A GATE NAMES
   WHO DECIDES IT`, `THE GATE IS RECORDED`) —, written through Process's `recordGateDecision`, whose push resumes the
@@ -361,16 +360,19 @@ so; a model's command there reaches what that user can.
   nothing and ends the entry `failed`, its summary naming the register entry and the failure, which the library shows
   beside the entry with *Fetch again* (UC-004 7a); nothing is guessed (`AN EU LEGAL TEXT IS FETCHED FROM THE OFFICIAL
   REPOSITORY`).
-- `onMainChanged(env: CiEnvironment) -> Promise<EntryStatus>` — in the instance, on every push to the default branch: what
-  a page would otherwise derive from that commit at the moment it is opened, computed once and stored as records the page
-  reads. It reads the commit's snapshot once.
+- `onMainChanged(env: CiEnvironment) -> Promise<EntryStatus>` — in the instance and in a product alike, on every push to
+  the default branch of the repository it runs in: what a page would otherwise derive from that commit at the moment it is
+  opened, computed once and stored as records the page reads, on that repository's branches. It reads the commit's
+  snapshot once. In a product it reads the instance as the entries of the job workflow do, through the checkout of the
+  instance at the commit its file names, connected as `productFacts`' `instanceAt`.
   - It adds the commit's graph and the impact lists of its decision and module files that are not accepted
     (MOD-trace-graph's `publishGraph`). Each such file comes with the text it was last accepted at and that text's commit:
     MOD-approvals' `statuses` names the files, and `lastAcceptedText` gives each one's text, read once per file here.
-  - It adds the commit's overview and the facts its files alone give (MOD-progress-measures' `publishOverview`): what
-    the main page's cards and the specification's waiting entries need — the stage shares, what waits, the model, the
-    build with every pull request taken into account and the records of its jobs, the change queues not yet in the SPEC
-    —, so that no page lists the pull requests or reads every queue when it is opened.
+  - It adds the commit's overview and the views of the progress and the backlog page
+    (MOD-progress-measures' `publishOverview`): what the main page's cards and the specification's waiting entries need —
+    the stage shares, what waits, the model, the build with every pull request taken into account and the records of its
+    jobs, the change queues not yet in the SPEC —, and what Implementation's progress and backlog show, so that no page
+    lists the pull requests or reads every queue, item or record when it is opened.
   - A file the branches already hold for that commit is left as it is: `nothing to do`. A failure of one leaves the other
     written and ends the entry `failed`, naming it. The pages never derive the graph themselves (MOD-trace-graph's
     `storedGraph`), so the workflow tries a failed entry again, and runs on a schedule as well, every 15 minutes, for the
@@ -395,7 +397,7 @@ machine pushes —; on the hosted agent's machine copies the checkouts into the 
 files and the summary back from there as that user; reads pull requests and closes issues through the server's API, since the local clone
 does no server operation; in a test job, reads the commit's test files and runs the product's test command, which writes
 the job's report; appends result records to the branch `test-results`; on GitLab, sets the project's pipeline
-schedule. It also reads the instance's process models at the commit the product's declaration names, through the
+schedule; for `onMainChanged`, adds what it stores to the branches `trace-cache` and `overview-cache`. It also reads the instance's process models at the commit the product's declaration names, through the
 checkout of the instance, which fetches that commit. In the instance: reads approval records, change queues, `SPEC.md`
 and `docs/sources/`; writes `SPEC.md`
 sections with their decisions and the fetched texts of sources. Reads secrets only from the environment.
@@ -429,10 +431,8 @@ sections with their decisions and the fetched texts of sources. Reads secrets on
   context carries.
 - `MOD-job-ledger.JobRecord`, `RecordPart`, `newJobId`, `startRecord`, `takeJob`, `appendToRecord`, `jobState` — the
   records of the jobs it takes, their parameters, and their ends with a draft handed back.
-- `MOD-runtimes.queueJob` — queueing the actions of other routes.
-- `MOD-progress-measures.productFacts` — the product's facts, read once per entry, from which the next actions of its
-  runs are computed.
-- `MOD-run-planner.runOf`, `nextActions`, `finishRun` — the runs, their next actions, and a run's end on `finish`.
+- `MOD-runtimes.queueJob` — queueing the close of a sprint an agent closes, in `onSchedule`.
+- `MOD-progress-measures.productFacts` — the product's facts, read once per entry.
 - `MOD-trace-graph.publishGraph`, `MOD-approvals.statuses`, `lastAcceptedText`, `MOD-progress-measures.publishOverview` —
   the records `onMainChanged` stores for each commit of the default branch.
 - `MOD-product-process.declarationSchema`, `productWorkflow`, `gateSchema`, `gateStates`, `doneCheck` — the workflow,
@@ -452,6 +452,6 @@ sections with their decisions and the fetched texts of sources. Reads secrets on
 - The strategies registered with the runner: `MOD-approvals.approvalStrategies`, `MOD-spec-changes.specStrategies`,
   `MOD-artifact-edits.editStrategies`, `MOD-source-register.sourceStrategies`, `MOD-reuse-facts.reuseStrategies`,
   `MOD-resource-list.resourceStrategies`, `MOD-work-plans.workStrategies`, `MOD-run-planner.runStrategies`,
-  `MOD-product-process.processStrategies`, `MOD-test-schedule.scheduleStrategies`,
+  `MOD-test-schedule.scheduleStrategies`,
   `MOD-result-records.resultStrategies`, `MOD-issue-handling.issueStrategies`, `MOD-runtimes.routeStrategies`. The
   strategies of the mail kinds are not registered: no mail reaches CI.

@@ -1,11 +1,11 @@
 # Module: MOD-site-frame
 # Guards: PROGRESS AND JOB STATE ARE DERIVED, NOT STORED
 # Level: component
-"""SPEC §13 PROGRESS AND JOB STATE ARE DERIVED, NOT STORED — for the item states of the Backlog tab (ITM-147); the job states
+"""SPEC §13 PROGRESS AND JOB STATE ARE DERIVED, NOT STORED — for the item states of a running sprint, which the route progress shows (ITM-147, ITM-1252); the job states
 are checked here by ITM-085.
 
 Everything the process dashboard shows is computed from the repositories and the runtimes. In the app harness
-(tests/app-harness.mjs), the real dashboard shows the Backlog tab of a fixture product with one team, its running sprint,
+(tests/app-harness.mjs), the real dashboard shows the route progress of a fixture product with one team, its running sprint,
 three items and a fake of GitHub's pulls API; then all local storage and the cached file texts are deleted and the page is
 loaded again: it shows the same page and the same item states. Counter-proof: a state planted into local storage changes
 nothing shown.
@@ -39,12 +39,22 @@ const files = {
   "docs/backlog/ITM-003-three.md": item("ITM-003", ["RULE NOT ACCEPTED"]),
 };
 const pr = (number, ref, merged = null) => ({ number, title: `${ref}: work`, head: { ref: `team/${ref}`, sha: "b".repeat(40) },
-  base: { ref: "sprint/team1/01" }, state: merged ? "closed" : "open", created_at: "2026-10-01T10:00:00Z", merged_at: merged,
+  base: { ref: "sprint/team1/01" }, state: merged ? "closed" : "open", created_at: "2026-10-01T10:00:00Z", updated_at: merged ?? "2026-10-01T10:00:00Z", merged_at: merged,
   merge_commit_sha: merged ? "f".repeat(40) : null, body: "developer-x · started from sprint/team1/01" });
 const PRS = [pr(1, "ITM-001"), pr(2, "ITM-002", "2026-10-01T11:00:00Z")];
-const pulls = async (url, init) => url.pathname === `/repos/${REPO}/pulls` && init.method === "GET"
-  ? new Response(JSON.stringify(PRS.filter((p) => !url.searchParams.get("base") || p.base.ref === url.searchParams.get("base"))),
-    { status: 200, headers: { "Content-Type": "application/json" } }) : null;
+const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+// GitHub's pulls API as the route progress asks it: the open ones and, by the search's total_count, the closed ones updated since the earliest start of a running sprint.
+const pulls = async (url, init) => {
+  if (url.origin === "https://api.github.com" && url.pathname === "/search/issues") {
+    const query = url.searchParams.get("q") ?? "", since = /updated:>=(\S+)/.exec(query)?.[1];
+    const found = PRS.filter((p) => (!query.includes("is:closed") || p.state === "closed") && (!query.includes("is:open") || p.state === "open")
+      && (!since || Date.parse(p.updated_at) >= Date.parse(since)));
+    return json({ total_count: found.length, incomplete_results: false, items: [] });
+  }
+  if (url.pathname !== `/repos/${REPO}/pulls` || init.method !== "GET") return null;
+  const base = url.searchParams.get("base"), state = url.searchParams.get("state") ?? "open";
+  return json(PRS.filter((p) => !base || p.base.ref === base).filter((p) => state === "all" || p.state === state));
+};
 const server = () => repoServer({ files, handlers: [pulls] });
 // The item states as the team's panel shows them: each row of its sprint's items carries data-item and the state's badge.
 const states = (html) => {
@@ -63,10 +73,10 @@ async function withPlanted(entries, f) {
   try { return await f(); } finally { Object.defineProperty = define; }
 }
 const caches = fakeCaches();
-const first = await openDashboard({ server: await server(), hash: "#backlog", caches });
-const kept = await openDashboard({ server: await server(), hash: "#backlog", caches });
-const cleared = await openDashboard({ server: await server(), hash: "#backlog", caches: fakeCaches(), token: null });
-const withState = await withPlanted(planted, async () => openDashboard({ server: await server(), hash: "#backlog", caches }));
+const first = await openDashboard({ server: await server(), hash: "#progress", caches });
+const kept = await openDashboard({ server: await server(), hash: "#progress", caches });
+const cleared = await openDashboard({ server: await server(), hash: "#progress", caches: fakeCaches(), token: null });
+const withState = await withPlanted(planted, async () => openDashboard({ server: await server(), hash: "#progress", caches }));
 const out = { first: first.main(), kept: kept.main(), cleared: cleared.main(), planted: withState.main(), states: states(first.main()),
   plantedStates: states(withState.main()) };
 process.stdout.write(JSON.stringify(out));

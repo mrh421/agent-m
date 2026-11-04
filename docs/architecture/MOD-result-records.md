@@ -29,6 +29,7 @@ uses:
   - MOD-repository-hosts.listTags
   - MOD-text-tools.Finding
   - MOD-text-tools.finding
+  - MOD-identifiers.kindOfIdentifier
   - MOD-job-runner.Strategies
   - MOD-job-runner.JobContext
   - MOD-job-runner.Part
@@ -180,4 +181,6 @@ default branch, entering with the test's pull request:
 - MOD-repository-hosts.Host, Snapshot, readSnapshot, commitFiles, listTags — the branch `test-results`, adding to it,
   and the release tags.
 - MOD-text-tools.Finding, finding — the findings of `test-proposals`.
+- MOD-identifiers.kindOfIdentifier — whether an entry of a case's guards is a module's identifier, and whether a case's
+  identifier is a test's, for `test-proposals`.
 - MOD-job-runner.Strategies, JobContext, Part, JobResult — the form of the strategies.

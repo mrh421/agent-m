@@ -16,13 +16,14 @@ const HEADING = /^#{1,6}(?:[ \t]|$)/;
 // The line that opens or closes a fenced code block: three or more backticks or tildes, indented by three blanks at most. A
 // fence closes with the character it opened with, at least as many times, and nothing after it.
 const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
-// A name in bold, without a blank just inside the asterisks — Markdown makes no bold text of `** NAME**`.
-const BOLD_NAME = "\\*\\*([^*\\s](?:[^*\\n]*[^*\\s])?)\\*\\*";
+// A name in bold, without a blank just inside the asterisks — Markdown makes no bold text of `** NAME**`. The name may be empty:
+// `****` is the head of a requirement whose name is not written yet.
+const BOLD_NAME = "\\*\\*([^*\\s](?:[^*\\n]*[^*\\s])?)?\\*\\*";
 // A head line: the name in bold, then the source in italics in parentheses, which runs until `)*`, over further lines if need be.
 const HEAD = new RegExp(`^${BOLD_NAME}[ \\t]+\\*\\(`);
 const SOURCE_END = ")*";
 // A name in bold alone on its line: the head line of a requirement whose source is missing, when its check follows and its name is
-// in capitals.
+// in capitals or empty.
 const BARE = new RegExp(`^${BOLD_NAME}[ \\t]*$`);
 const BOLD_START = /^\*\*[^*\n]+\*\*/;
 const CHECK = /^\*Check:\*[ \t]?/;
@@ -64,8 +65,15 @@ function linesOf(text) {
 }
 
 // Whether a `*Check:*` line follows the bare name line at `i` before its requirement could have ended — at an empty line, a
-// heading, a fenced line or another line that begins in bold. Bold prose in capitals is followed by none.
+// heading, a fenced line or another line that begins in bold. Bold prose in capitals is followed by none. After an empty line, a
+// `*Check:*` line that opens the next paragraph follows too: that is how the editor opens a new requirement — `****`, an empty
+// line and `*Check:*`.
 function checkFollows(lines, i) {
+  if (i + 1 < lines.length && blank(lines[i + 1])) {
+    let next = i + 1;
+    while (next < lines.length && blank(lines[next])) next++;
+    return next < lines.length && !lines[next].fenced && CHECK.test(lines[next].text);
+  }
   for (let j = i + 1; j < lines.length; j++) {
     const line = lines[j];
     if (blank(line) || line.fenced || HEADING.test(line.text) || BOLD_START.test(line.text)) return false;
@@ -80,9 +88,13 @@ function headAt(lines, i) {
   const line = lines[i];
   if (line.fenced) return null;
   const head = HEAD.exec(line.text);
-  if (head) return namesRequirement(head[1]) ? { name: head[1], rest: line.text.slice(head[0].length) } : null;
+  if (head) {
+    const name = head[1] ?? "";
+    return namesRequirement(name) ? { name, rest: line.text.slice(head[0].length) } : null;
+  }
   const bare = BARE.exec(line.text);
-  return bare && isName(bare[1]) && checkFollows(lines, i) ? { name: bare[1], rest: null } : null;
+  const name = bare ? bare[1] ?? "" : null;
+  return name !== null && (name === "" || isName(name)) && checkFollows(lines, i) ? { name, rest: null } : null;
 }
 
 // A field from its lines: joined by line feeds and trimmed; null when nothing is left.
@@ -151,8 +163,9 @@ function requirementAt(lines, heads, i, section) {
 // is the text of the heading of level one before the first section, or "" when there is none. A section runs from its heading
 // line up to the next heading of level two, or to the end: `text.slice(start, end)` is its exact text, and `heading` its
 // heading line as written, without its line end. A requirement missing its source, rule or check is read with that field
-// null, and with `sources` or `checkPaths` empty. Two requirements of the same name are both read, and both named in their
-// sections; `requirements` holds the one read last under that name, at the place of the first.
+// null, and with `sources` or `checkPaths` empty; so is one whose name is empty (`name` is "") or that is a name alone. Two
+// requirements of the same name are both read, and both named in their sections; `requirements` holds the one read last under that
+// name, at the place of the first.
 export function parseSpec(text) {
   const all = String(text ?? "");
   const lines = linesOf(all);

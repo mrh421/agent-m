@@ -206,7 +206,7 @@ runner receives a draft that already names the existing artifacts for its change
           "text": "## 1. Reading\n\n**A SAMPLE RULE** *(Product Owner; SRC-fixture-book, ch. 8)*\nA reader reads a file whole, or says why not.\n*Check:* `tests/better.test.mjs`\n\n**ANOTHER SAMPLE RULE** *(Product Owner)*\nA reader sees the name of a file.\n*Check:* no automatic check; at review\n\n"
         },
         {
-          "name": "02-writing.md",
+          "name": "01-writing.md",
           "text": "## 2. Writing\n\n**A WRITE RULE** *(Product Owner; SRC-fixture-book, ch. 9)*\nA writer writes a file whole.\n*Check:* no automatic check; at review\n\n**A WRITER NAMES ITS FILE** *(SRC-fixture-book, ch. 8)*\nA writer names the file it wrote.\n*Check:* no automatic check; at review\n"
         }
       ],
@@ -219,9 +219,11 @@ runner receives a draft that already names the existing artifacts for its change
 
 ## architecture files are classed by their format keys
 
-The precondition is that the architecture already shows one decision by its title and one module by its identifier. The
+The precondition is that the architecture already shows decisions by their titles and modules by their identifiers. The
 draft contains decision and module files that are new, changed, duplicates, conflicts and two new module files with the
-same identifier.
+same identifier; a decision that keeps the title of the decision it changes and a module changed under its own identifier,
+which keep the class change; and a module file with the identifier of another existing module, a duplicate of it, decided
+by rule.
 
 ### Case
 
@@ -231,7 +233,10 @@ same identifier.
     "kind": "architecture-classes",
     "existing": [
       { "id": "ARC-001", "keys": ["Static client"] },
-      { "id": "MOD-reader", "keys": ["MOD-reader"] }
+      { "id": "MOD-reader", "keys": ["MOD-reader"] },
+      { "id": "ARC-002", "keys": ["Fixed layout"] },
+      { "id": "MOD-store", "keys": ["MOD-store"] },
+      { "id": "MOD-index", "keys": ["MOD-index"] }
     ],
     "files": [
       {
@@ -278,6 +283,24 @@ same identifier.
         "path": "docs/architecture/MOD-cache-b.md",
         "text": "---\nid: MOD-cache\ntitle: Cache B\nfolder: src/cache-b/\nrealises:\n  - UC-001\nfollows:\n  - ARC-001\nuses: []\nprovides:\n  - cache\n---\n# MOD-cache Cache B\n\n## Responsibility\n\nx\n\n## Parts\n\nx\n\n## Data\n\nx\n\n## Interfaces\n\nx\n\n## Files\n\nx\n\n## Uses\n\nx\n",
         "class": "new"
+      },
+      {
+        "path": "docs/architecture/ARC-014-fixed-layout-kept.md",
+        "text": "---\nid: ARC-014\ntitle: Fixed layout\nforced_by:\n  - UC-001\n---\n# ARC-014 Fixed layout\n\n## Context\n\nx\n\n## Decision\n\nx\n\n## Alternatives\n\nx\n\n## Consequences\n\nx\n",
+        "class": "change",
+        "of": "ARC-002"
+      },
+      {
+        "path": "docs/architecture/MOD-store-changed.md",
+        "text": "---\nid: MOD-store\ntitle: Store changed\nfolder: src/store/\nrealises:\n  - UC-001\nfollows:\n  - ARC-001\nuses: []\nprovides:\n  - save\n---\n# MOD-store Store changed\n\n## Responsibility\n\nx\n\n## Parts\n\nx\n\n## Data\n\nx\n\n## Interfaces\n\nx\n\n## Files\n\nx\n\n## Uses\n\nx\n",
+        "class": "change",
+        "of": "MOD-store"
+      },
+      {
+        "path": "docs/architecture/MOD-index-again.md",
+        "text": "---\nid: MOD-index\ntitle: Index again\nfolder: src/index-again/\nrealises:\n  - UC-001\nfollows:\n  - ARC-001\nuses: []\nprovides:\n  - find\n---\n# MOD-index Index again\n\n## Responsibility\n\nx\n\n## Parts\n\nx\n\n## Data\n\nx\n\n## Interfaces\n\nx\n\n## Files\n\nx\n\n## Uses\n\nx\n",
+        "class": "duplicate",
+        "of": "MOD-index"
       }
     ]
   },
@@ -314,6 +337,13 @@ same identifier.
         "decidedBy": "participant"
       },
       {
+        "refs": ["docs/architecture/ARC-014-fixed-layout-kept.md"],
+        "from": ["docs/architecture/ARC-014-fixed-layout-kept.md"],
+        "class": "change",
+        "of": "ARC-002",
+        "decidedBy": "participant"
+      },
+      {
         "refs": ["docs/architecture/MOD-reader-copy.md"],
         "from": ["docs/architecture/MOD-reader-copy.md"],
         "class": "duplicate",
@@ -333,6 +363,20 @@ same identifier.
         "class": "new",
         "of": null,
         "decidedBy": "participant"
+      },
+      {
+        "refs": ["docs/architecture/MOD-store-changed.md"],
+        "from": ["docs/architecture/MOD-store-changed.md"],
+        "class": "change",
+        "of": "MOD-store",
+        "decidedBy": "participant"
+      },
+      {
+        "refs": ["docs/architecture/MOD-index-again.md"],
+        "from": ["docs/architecture/MOD-index-again.md"],
+        "class": "duplicate",
+        "of": "MOD-index",
+        "decidedBy": "rule"
       }
     ]
   }

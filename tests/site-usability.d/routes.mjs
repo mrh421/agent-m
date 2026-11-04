@@ -30,7 +30,7 @@ export function withRoute(table, route, cases = CASES) {
 const SECTION = encodeURIComponent("## 1. Reading");
 const NAME = encodeURIComponent("A MISSING FILE IS NAMED, NEVER GUESSED AT");
 export const ROUTES = [
-  { address: "/", shows: "What waits for a person", ids: { 904: { drawn: 2, sheets: 34, targets: 35, widths: 36, diagrams: 134 }, 905: { drawn: 1, wcag: 33, diagrams: 72 } } },
+  { address: "/", shows: "Jobs", ids: { 904: { drawn: 2, sheets: 34, targets: 35, widths: 36, diagrams: 134 }, 905: { drawn: 1, wcag: 33, diagrams: 72 } } },
   { address: "#uc", shows: "UC-001", ids: { 904: { drawn: 3, sheets: 37, targets: 38, widths: 39, diagrams: 135 }, 905: { drawn: 2, wcag: 34, diagrams: 73 } } },
   { address: "#uc/UC-001", shows: "UC-001 Read a file at a pinned commit", ids: { 904: { drawn: 4, sheets: 40, targets: 41, widths: 42, diagrams: 136, box: 168 }, 905: { drawn: 3, wcag: 35, diagrams: 74 } } },
   { address: "#review/uc", shows: "Review all — Use cases", ids: { 904: { drawn: 5, sheets: 43, targets: 44, widths: 45, diagrams: 137, box: 169 }, 905: { drawn: 4, wcag: 36, diagrams: 75 } } },
@@ -73,7 +73,7 @@ export const ROUTES = [
 
 // The numbers of the generated tests that are no route's, by series: the planted cases and the tests over several routes at once.
 export const CASES = {
-  904: { routes: 1, plantedBefore: 130, plantedTable: 131, plantedButton: 132, plantedSheet: 133, diagramBefore: 166, diagramAfter: 167 },
+  904: { routes: 1, plantedBefore: 130, plantedTable: 131, plantedButton: 132, plantedSheet: 133, diagramBefore: 166, diagramAfter: 167, closedDetails: 205, openDetails: 206 },
   905: { plantedBefore: 65, plantedButton: 66, plantedImage: 67, labels: 68, ticks: 69, tickBefore: 70, plantedTick: 71, diagramBefore: 104, diagramAfter: 105, scrollEdits: 106, scrollBefore: 107, plantedScroll: 108, changedKeyboard: 109, changedRule: 110, plantedDiff: 111, plantedBrand: 112 },
 };
 

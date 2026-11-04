@@ -105,13 +105,13 @@ const alone = (sent) => sent.filter((r) => r.url.pathname !== "/graphql");
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; UC-006
 // given: a product on GitHub with 60 queues of one entry each, 58 of them decided and 2 open, and the reader's token
 // input: one call of `queues` on the snapshot
-// expect: 60 queues, newest first, the first two with their entry open and the other 58 with theirs in SPEC; exactly 3 requests, all POST https://api.github.com/graphql, naming 100, 20 and 1 files: the 60 index.md and the 60 entscheidungen.md are 120 files, which are 100 and 20; the target SPEC.md of the 2 open entries is 1 file; no file is read on its own
+// expect: 60 queues, in the order of their folders' names, the first 58 with their entry in SPEC and the last two with theirs open; exactly 3 requests, all POST https://api.github.com/graphql, naming 100, 20 and 2 files — the last the target and the rationales, whose line Issue gives each entry's issue (MOD-spec-changes, Queue): the 60 rationales are one text, one blob, read once —: the 60 index.md and the 60 entscheidungen.md are 120 files, which are 100 and 20; the target SPEC.md of the 2 open entries is 1 file; no file is read on its own
 test("TST-677001: queues reads 60 queues with a token in 3 requests, 100 files, 20 files and the target", async () => {
   const { result, sent } = await call({ token: true });
   assert.equal(result.length, 60);
-  assert.deepEqual(result.map((queue) => queue.folder), [...FOLDERS].reverse().map((folder) => `docs/spec-freigaben/${folder}`));
-  assert.deepEqual(result.map((queue) => queue.entries[0].state), [...OPEN.map(() => "open"), ...Array(58).fill("in SPEC")]);
-  assert.deepEqual(named(sent), [100, 20, 1]);
+  assert.deepEqual(result.map((queue) => queue.folder), FOLDERS.map((folder) => `docs/spec-freigaben/${folder}`));
+  assert.deepEqual(result.map((queue) => queue.entries[0].state), [...Array(58).fill("in SPEC"), ...OPEN.map(() => "open")]);
+  assert.deepEqual(named(sent), [100, 20, 2]);
   assert.equal(sent.length, 3);
   assert.deepEqual(sent.map((request) => `${request.method} ${request.url.href}`), Array(3).fill("POST https://api.github.com/graphql"));
 });
@@ -120,7 +120,7 @@ test("TST-677001: queues reads 60 queues with a token in 3 requests, 100 files, 
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the product of TST-677001 and the reader's token; the snapshot has been read by `queues` once
 // input: a second call of `queues` on the same snapshot
-// expect: no request: the texts of the 121 files are held, and a file whose blob has been read is not read again
+// expect: no request: the texts of the 122 files are held, and a file whose blob has been read is not read again
 test("TST-677002: a second read of the queues on one snapshot sends no request", async () => {
   const { sentAgain } = await call({ token: true });
   assert.equal(sentAgain, 0);
@@ -130,37 +130,36 @@ test("TST-677002: a second read of the queues on one snapshot sends no request",
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK
 // given: the product of TST-677001, public, and no token
 // input: one call of `queues` on the snapshot
-// expect: the same 60 queues as with a token; nothing is read ahead: no request to /graphql and no Authorization header, and every file on its own from GitHub's raw host: 121 reads, the 120 files of the queues and SPEC.md
-test("TST-677003: queues without a token reads nothing ahead, 121 files on their own, and gives the same queues", async () => {
+// expect: the same 60 queues as with a token; nothing is read ahead: no request to /graphql and no Authorization header, and every file on its own from GitHub's raw host: 122 reads, the 120 files of the queues, their rationales — one blob — and SPEC.md
+test("TST-677003: queues without a token reads nothing ahead, 122 files on their own, and gives the same queues", async () => {
   const withToken = await call({ token: true });
   const { result, sent } = await call({ token: false });
   assert.deepEqual(result, withToken.result);
   assert.deepEqual(named(sent), []);
-  assert.equal(alone(sent).filter((request) => request.url.origin === "https://raw.githubusercontent.com").length, 121);
-  assert.equal(sent.length, 121);
+  assert.equal(alone(sent).filter((request) => request.url.origin === "https://raw.githubusercontent.com").length, 122);
+  assert.equal(sent.length, 122);
 });
 
 // TST-677004 · level: component · module: MOD-spec-changes; MOD-repository-hosts
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the product of TST-677001 and the reader's token, on a GitHub whose /graphql answers 404 (a server that serves none)
 // input: one call of `queues` on the snapshot
-// expect: the same 60 queues; the batch is tried once for each of the two rounds of reading ahead (2 requests to /graphql, the first of 100 files and the second of 1), and every file is read on its own: 121 reads through the contents API
+// expect: the same 60 queues; the batch is tried once for each of the two rounds of reading ahead (2 requests to /graphql, the first of 100 files and the second of 2), and every file is read on its own: 122 reads through the contents API
 test("TST-677004: queues on a server that serves no /graphql gives the same queues, the batch tried in each of its two rounds", async () => {
   const withToken = await call({ token: true });
   const { result, sent } = await call({ token: true, graphql: () => json({ message: "Not Found" }, 404) });
   assert.deepEqual(result, withToken.result);
-  assert.deepEqual(named(sent), [100, 1]);
-  assert.equal(alone(sent).filter((request) => request.url.pathname.includes("/contents/")).length, 121);
-  assert.equal(sent.length, 123);
+  assert.deepEqual(named(sent), [100, 2]);
+  assert.equal(alone(sent).filter((request) => request.url.pathname.includes("/contents/")).length, 122);
+  assert.equal(sent.length, 124);
 });
 
-// TST-677005 · level: component · module: MOD-spec-changes; MOD-repository-hosts
+// TST-1302017 · level: component · module: MOD-spec-changes; MOD-repository-hosts
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; UC-019
 // given: the product of TST-677001, 2 of its 60 queues open, and the reader's token
 // input: the recipe `spec-with-queues` of specStrategies on the snapshot, as a change-requirements job prepares its input
-// expect: the part "SPEC.md with its open queues"; SPEC.md read first, on its own; then only POST https://api.github.com/graphql — 100 and 20 files as `queues` reads them
-//   (SPEC.md, its target, is held already), then the 2 open proposals in one more batch, which holds 1 file since both proposals are the same text —; no proposal read on its own
-test("TST-677005: spec-with-queues reads the open proposals in one batch, none on its own", async () => {
+// expect: the part "SPEC.md with its open queues"; SPEC.md read first, on its own; then only POST https://api.github.com/graphql — 100 and 20 files as `queues` reads them, then the rationales — one blob, SPEC.md, its target, being held already —, then the 2 open proposals in one more batch, which holds 1 file since both proposals are the same text —; no proposal read on its own
+test("TST-1302017: spec-with-queues reads the open proposals in one batch, none on its own", async () => {
   const { specStrategies } = await import("../src/spec-changes/index.mjs");
   const fake = fakeGitHub();
   const real = globalThis.fetch;
@@ -172,7 +171,7 @@ test("TST-677005: spec-with-queues reads the open proposals in one batch, none o
     const sent = fake.requests.slice(before);
     assert.equal(parts[0].name, "SPEC.md with its open queues");
     assert.deepEqual(alone(sent).map((request) => request.url.pathname), ["/repos/alice/product/contents/SPEC.md"], "only SPEC.md, read first, on its own");
-    assert.deepEqual(named(sent), [100, 20, 1]);
+    assert.deepEqual(named(sent), [100, 20, 1, 1]);
   } finally {
     globalThis.fetch = real;
   }

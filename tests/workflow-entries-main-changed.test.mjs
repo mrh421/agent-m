@@ -131,7 +131,7 @@ test("onMainChanged adds the graph of the pushed commit to trace-cache in one co
     assert.equal(status.outcome, "done", status.summary);
     const after = cacheHead(f);
     assert.equal(git(f.origin, "rev-parse", `${after}^`), before);
-    assert.deepEqual(git(f.origin, "diff", "--name-only", before, after).split("\n"), [`${f.head}.impacts.json`, `${f.head}.json.gz`, "latest.json"]);
+    assert.deepEqual(git(f.origin, "diff", "--name-only", before, after).split("\n"), [`${f.head}.gaps.json`, `${f.head}.impacts.json`, `${f.head}.json.gz`, `${f.head}.references.json.gz`, "latest.json"]);
     assert.equal(JSON.parse(git(f.origin, "show", `${after}:latest.json`)).commit, f.head, "latest.json names the commit of the graph stored last");
     const graph = graphFromText(gunzipSync(gitBytes(f.origin, `${after}:${f.head}.json.gz`)).toString("utf8"), f.head);
     assert.deepEqual([graph?.nodes.has("A THING IS DONE"), graph?.nodes.has("UC-001")], [true, true]);
@@ -285,24 +285,21 @@ test("onMainChanged hands publishGraph exactly the files not accepted, each with
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the instance of the first impact test, whose branch overview-cache holds only its first commit
 // input: onMainChanged
-// expect: one new commit on overview-cache, on the head it read, that adds exactly "<commit>.json" and "<commit>.facts.json" (the facts of ITM-1117, whose content ITM-1118 pins) and writes "latest.json" naming the commit; storedOverview-shaped content: { commit, shares, waiting } of main's commit, the six stages in their order; the origin's main is untouched
+// expect: one new commit on overview-cache, on the head it read, that adds exactly "<commit>.json" and the views "<commit>.backlog.json.gz", "<commit>.progress.json.gz" (ITM-1260) and "<commit>.schedule.json.gz" (ITM-1265) — no "<commit>.facts.json" — and writes "latest.json" naming the commit; the summary names the overview and the views; storedOverview-shaped content: { commit, shares, waiting } of main's commit, the six stages in their order; the origin's main is untouched
 test("onMainChanged adds the overview of the commit to overview-cache once", async () => {
   await withInstance({ commits: await impactCommits() }, async (f) => {
     const before = overviewHead(f);
     const status = await run(f);
     assert.equal(status.outcome, "done");
-    assert.match(status.summary, new RegExp(`Added the overview and the facts of ${f.head} to overview-cache\\.`), "the summary names both files");
+    assert.match(status.summary, new RegExp(`Added the overview and the views of progress and backlog of ${f.head} to overview-cache\\.`), "the summary names the overview and the views");
     const after = overviewHead(f);
     assert.equal(git(f.origin, "rev-parse", `${after}^`), before);
-    assert.deepEqual(git(f.origin, "diff", "--name-only", before, after).split("\n"), [`${f.head}.facts.json`, `${f.head}.json`, "latest.json"]);
+    assert.deepEqual(git(f.origin, "diff", "--name-only", before, after).split("\n"), [`${f.head}.backlog.json.gz`, `${f.head}.json`, `${f.head}.progress.json.gz`, `${f.head}.schedule.json.gz`, "latest.json"]);
     assert.equal(JSON.parse(git(f.origin, "show", `${after}:latest.json`)).commit, f.head, "latest.json names the commit");
     const overview = JSON.parse(git(f.origin, "show", `${after}:${f.head}.json`));
     assert.equal(overview.commit, f.head);
     assert.equal(overview.shares.length, 6);
     assert.ok(Array.isArray(overview.waiting));
-    const facts = JSON.parse(git(f.origin, "show", `${after}:${f.head}.facts.json`));
-    assert.deepEqual([facts.format, facts.commit], [1, f.head]);
-    assert.equal(Array.isArray(facts.jobs) && Array.isArray(facts.items) && Array.isArray(facts.queues), true);
     assert.equal(git(f.origin, "rev-parse", "main"), f.head);
   });
 });
@@ -319,7 +316,7 @@ test("onMainChanged on a commit it stored already is nothing to do", async () =>
     refetch(f);
     const status = await run(f);
     assert.equal(status.outcome, "nothing to do", status.summary);
-    assert.match(status.summary, new RegExp(`overview-cache holds the overview and the facts of ${f.head} already\\.`), "the summary names both files, held already");
+    assert.match(status.summary, new RegExp(`overview-cache holds the overview and the views of progress and backlog of ${f.head} already\\.`), "the summary names the overview and the views, held already");
     assert.deepEqual([cacheHead(f), overviewHead(f)], heads);
   });
 });
@@ -334,7 +331,7 @@ test("a failing overview leaves the graph and the impact lists written and ends 
     const status = await run(f);
     assert.equal(status.outcome, "failed");
     assert.match(status.summary, /overview-cache/);
-    assert.deepEqual(git(f.origin, "ls-tree", "--name-only", "trace-cache").split("\n").filter((name) => name.startsWith(f.head)).sort(), [`${f.head}.impacts.json`, `${f.head}.json.gz`]);
+    assert.deepEqual(git(f.origin, "ls-tree", "--name-only", "trace-cache").split("\n").filter((name) => name.startsWith(f.head)).sort(), [`${f.head}.gaps.json`, `${f.head}.impacts.json`, `${f.head}.json.gz`, `${f.head}.references.json.gz`]);
     assert.equal(git(f.origin, "branch", "--list", "overview-cache"), "");
   });
 });
@@ -343,9 +340,10 @@ test("a failing overview leaves the graph and the impact lists written and ends 
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the workflow file .github/workflows/main-changed.yml
 // input: its header comment read
-// expect: it names the overview of the main page and the facts the commit's files alone give, both added to the branch overview-cache (known positive: it still names the graph and the impact lists of trace-cache)
-test("the header of the workflow main-changed names the stored facts beside the overview", () => {
+// expect: it names the overview of the main page of that commit, added to the branch overview-cache, and no facts (no commit's facts file is stored); known positive: it still names the graph and the impact lists of trace-cache
+test("the header of the workflow main-changed names the overview, and no stored facts", () => {
   const header = readFileSync(new URL("../.github/workflows/main-changed.yml", import.meta.url), "utf8").split("\n").filter((line) => line.startsWith("#")).join(" ").replace(/#\s*/g, " ").replace(/\s+/g, " ");
   assert.match(header, /graph of the pushed commit and the impact lists/);
-  assert.match(header, /overview of the main page of that commit and the facts its files alone give[^.]*overview-cache/);
+  assert.match(header, /overview of the main page of that commit to the branch overview-cache/);
+  assert.doesNotMatch(header, /facts/);
 });

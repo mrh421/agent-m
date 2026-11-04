@@ -17,22 +17,17 @@
 //   - stageShares is async.
 
 import { statuses } from "../approvals/index.mjs";
-import { queues } from "../spec-changes/index.mjs";
 import { reportsAwaitingAcceptance } from "../release-evidence/index.mjs";
 import { resultsAt } from "../result-records/index.mjs";
-import { factsPath, factsText } from "./stored.mjs";
+import { backlogView, progressView, scheduleView } from "./views.mjs";
+import { LATEST, OVERVIEW_BRANCH, buildInProgress, buildStates, currentStage, gzipped, latestOverview, openSpecChanges, storedOverview, viewFile, waitingForAPerson, waitingQueues, waitingReviewed } from "./stored.mjs";
+
+export { currentStage, buildInProgress, waitingForAPerson, storedOverview, latestOverview, waitingQueues } from "./stored.mjs";
 
 // The human-readable kind MOD-progress-measures' waitingForAcceptance names a reviewed file by (Interfaces), keyed by
 // MOD-approvals' own kind (approval-record.schema.md). A kind with no entry here — release-report — names no
 // reviewed file this item derives a wait from.
 const REVIEWED_KINDS = { "use-case": "use case", "architecture-decision": "architecture decision", module: "module" };
-
-// The statuses MOD-approvals derives that still wait for the person's acceptance — not accepted.
-const WAITING_STATUSES = new Set(["open", "changed"]);
-
-// Every queue's folder, docs/spec-freigaben/<slug>/ (MOD-spec-changes, Data), stripped to build an entry's
-// identifier, spec-<slug>-<NN> (MOD-approvals, Data: the approval record's path for an entry of a change queue).
-const QUEUE_FOLDER_PREFIX = "docs/spec-freigaben/";
 
 // The states of a SPEC change entry that a person's acceptance has decided (MOD-spec-changes, Data).
 const DECIDED_ENTRIES = new Set(["approved", "in SPEC"]);
@@ -42,28 +37,6 @@ const RELEASE_TAG = /^v\d{4}\.\d+\.\d+$/;
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const unknown = (what) => ({ share: null, detail: `the ${what} unknown` });
-
-// The entries of the queues that are open — the SPEC changes that wait for a person: { kind, id, path, blob }.
-function openSpecChanges(queueList) {
-  return queueList.flatMap((queue) => {
-    const slug = queue.folder.slice(QUEUE_FOLDER_PREFIX.length);
-    return queue.entries
-      .filter((entry) => entry.state === "open")
-      .map((entry) => ({
-        kind: "SPEC change",
-        id: `spec-${slug}-${String(entry.number).padStart(2, "0")}`,
-        path: entry.proposal.path,
-        blob: entry.proposal.blob,
-      }));
-  });
-}
-
-// The reviewed files of the kinds given whose status is open or changed: { kind, id, path }.
-function waitingReviewed(statusMap, kinds) {
-  return [...statusMap]
-    .filter(([, status]) => Object.hasOwn(kinds, status.kind) && WAITING_STATUSES.has(status.status))
-    .map(([path, status]) => ({ kind: kinds[status.kind], id: status.id, path }));
-}
 
 // ---------------------------------------------------------------- the six stages
 
@@ -154,72 +127,6 @@ export async function stageShares(facts) {
   return stages.map(([stage, { share, detail }]) => ({ stage, share: full ? 1 : share, detail }));
 }
 
-/**
- * currentStage(shares) -> string | null — the first stage that is not full: a share below 1, or none. Null when every stage is full.
- * @param {Array<{ stage: string, share: number | null }>} shares
- */
-export function currentStage(shares) {
-  return shares.find(({ share }) => share === null || share < 1)?.stage ?? null;
-}
-
-// ---------------------------------------------------------------- the build
-
-// The states of the plan's steps or items in progress that a job of `rows` (the job rows by identifier) works on, in the plan's order.
-const buildStates = (facts, rows) => facts.plan.states.filter((state) => state.state === "in progress" && rows.has(state.job));
-
-/**
- * buildInProgress(facts) -> Array<{ item, job, participant, state, elapsed, reachable }> — the steps or items in progress that a job
- * works on, in the plan's order: the job's participant, its state as its record and the live state give it, its elapsed time in
- * seconds, and whether its runtime answers. An item whose pull request is merged is done and is not listed.
- * @param {object} facts MOD-progress-measures' Facts
- */
-export function buildInProgress(facts) {
-  const rows = new Map(facts.jobs.map((row) => [row.record.id, row]));
-  return buildStates(facts, rows).map((state) => {
-    const row = rows.get(state.job);
-    return { item: state.item, job: state.job, participant: row.record.participant, state: row.state, elapsed: row.elapsed,
-      reachable: row.source.reachable };
-  });
-}
-
-// ---------------------------------------------------------------- what waits for a person
-
-// The participants that hold each role, by role, in the role assignments of the facts.
-function holdersByRole(assignments) {
-  const holders = new Map();
-  for (const row of assignments.flatMap((assignment) => assignment.sections.flatMap((section) => section.rows ?? []))) {
-    holders.set(row.cells.Role, [...(holders.get(row.cells.Role) ?? []), ...row.cells.Participants]);
-  }
-  return holders;
-}
-
-// The pending gates a person decides: { kind: "gate", id, path }.
-function gatesOfAPerson(facts) {
-  if (!facts.workflow || facts.workflow === "unknown") return [];
-  const people = new Set(facts.participants.filter((participant) => participant.type === "person").map((participant) => participant.name));
-  const holders = holdersByRole(facts.assignments);
-  const pending = new Set(facts.gateStates.filter((state) => state.state === "pending").map((state) => state.gate));
-  return facts.workflow.gates
-    .filter((gate) => pending.has(gate.name) && (holders.get(gate.decider) ?? []).some((holder) => people.has(holder)))
-    .map((gate) => {
-      const waiting = facts.jobs.find((row) => row.state === "waiting at a gate"
-        && row.record.gates.some((reached) => reached.gate === gate.name && reached.resumedBy === null));
-      return { kind: "gate", id: gate.name, path: waiting ? waiting.record.path : facts.declaration.path };
-    });
-}
-
-/**
- * waitingForAPerson(facts) -> Array<{ kind: "use case" | "SPEC change" | "gate" | "failed job", id, path }> — what waits for a
- * person in the product: its open or changed use cases, its open SPEC change entries, its pending gates whose deciding role a person
- * holds, and its failed jobs; `path` is the file or record each concerns.
- * @param {object} facts MOD-progress-measures' Facts
- */
-export function waitingForAPerson(facts) {
-  const changes = openSpecChanges(facts.queues).map(({ kind, id, path }) => ({ kind, id, path }));
-  const failed = facts.jobs.filter((row) => row.state === "failed").map((row) => ({ kind: "failed job", id: row.record.id, path: row.record.path }));
-  return [...waitingReviewed(facts.statuses, { "use-case": "use case" }), ...changes, ...gatesOfAPerson(facts), ...failed];
-}
-
 // ---------------------------------------------------------------- what waits for acceptance
 
 /**
@@ -232,7 +139,7 @@ export function waitingForAPerson(facts) {
  * @returns {Promise<Array<{ kind: string, id: string, path: string, blob: string }>>}
  */
 export async function waitingForAcceptance(host, snapshot) {
-  const specChanges = openSpecChanges(await queues(snapshot));
+  const specChanges = openSpecChanges((await waitingQueues(snapshot)).queues);
   const reviewed = waitingReviewed(statuses(snapshot), REVIEWED_KINDS).map((file) => ({ ...file, blob: snapshot.blob(file.path) }));
   const report = await reportsAwaitingAcceptance(host, snapshot);
   const releaseReport = report ? [{
@@ -242,9 +149,6 @@ export async function waitingForAcceptance(host, snapshot) {
 }
 
 // ---------------------------------------------------------------- the overview of a commit, stored
-
-// The branch that holds the overviews, one `<commit>.json` for each commit of the default branch (MOD-progress-measures, Data).
-const OVERVIEW_BRANCH = "overview-cache";
 
 // The name of the declared model a card names, or null where none was read.
 const modelName = (facts) => (typeof facts.model?.name === "string" ? facts.model.name : null);
@@ -263,10 +167,11 @@ async function storedBuild(snapshot, facts) {
 const undecidedQueues = (facts) => (Array.isArray(facts.queues) ? facts.queues : []).filter((queue) => queue.entries.some((entry) => entry.state !== "in SPEC"));
 
 /**
- * publishOverview(host, snapshot, facts) -> Promise<{ commit: string, written: boolean }> — adds `<commit>.json` and `<commit>.facts.json` to the branch `overview-cache` by commitFiles, in one commit on the head
- * it read: the stage shares, what waits for a person, the declared model's name, the build (storedBuild) and the change queues with an entry not in the SPEC yet from `facts`, and the facts the commit's files
- * alone give (stored.mjs), `facts` being read with the scope `all` at the snapshot's commit. A file the branch holds already is left as it is, and the other is added; `written` is false when the branch holds
- * both. Crosses the network; fails as commitFiles fails, and with the host's NotFound where the repository has no such branch.
+ * publishOverview(host, snapshot, facts) -> Promise<{ commit: string, written: boolean }> — adds `<commit>.json`, `<commit>.progress.json.gz`, `<commit>.backlog.json.gz` and
+ * `<commit>.schedule.json.gz` to the branch `overview-cache` by commitFiles, in one commit on the head it read: the stage shares, what waits for a person, the declared model's name, the build
+ * (storedBuild) and the change queues with an entry not in the SPEC yet from `facts`, and the views of the progress, the backlog and the schedule page (views.mjs), gzipped, `facts` being read with the
+ * scope `all` at the snapshot's commit. A file the branch holds already is left as it is; `written` is false when the branch holds all four — scheduleView's entry adds the schedule's view to the
+ * files of publishOverview, "in the same commit as the other views". Crosses the network; fails as commitFiles fails, and with the host's NotFound where the repository has no such branch.
  * @param {object} host MOD-repository-hosts' Host @param {object} snapshot the product's snapshot @param {object} facts
  */
 export async function publishOverview(host, snapshot, facts) {
@@ -280,69 +185,14 @@ export async function publishOverview(host, snapshot, facts) {
     files.push({ path: `${commit}.json`, text: `${JSON.stringify(overview)}
 ` });
   }
-  if (!branch.paths.includes(factsPath(commit))) files.push({ path: factsPath(commit), text: await factsText(snapshot, facts) });
+  const now = new Date();
+  for (const [page, view] of [["progress", progressView], ["backlog", backlogView], ["schedule", scheduleView]]) {
+    const path = viewFile(commit, page);
+    if (!branch.paths.includes(path)) files.push({ path, bytes: await gzipped(JSON.stringify(view(facts, now))) });
+  }
   // latest.json names the commit of the overview stored last, which a page shows while its head's own is not stored yet (latestOverview).
   if (files.length > 0) files.push({ path: LATEST, text: `${JSON.stringify({ commit })}\n` });
   if (files.length === 0) return { commit, written: false };
   await host.commitFiles({ branch: OVERVIEW_BRANCH, expectedHead: branch.commit ?? null, message: `Overview of ${commit}`, files });
   return { commit, written: true };
-}
-
-// The overviews read in this page, by the snapshot they were read for: a commit's overview does not change once it is stored, so the overview of one snapshot is read once
-// however many views ask for it. One that is missing or failed is not kept, and is read again at the next call.
-const OVERVIEWS = new WeakMap();
-
-const isFile = (value) => value !== null && typeof value === "object" && typeof value.path === "string" && typeof value.text === "string";
-
-/**
- * storedOverview(snapshot) -> Promise<{ shares, waiting, model, build: { states, records }, queues } | null> — the overview stored for the snapshot's commit, read with the
- * snapshot's readOn in one request, once for each snapshot; null where the branch or the file is missing or holds another format (not JSON, another shape, another commit, or an
- * overview without the model, the build and the queues).
- * @param {object} snapshot
- */
-export function storedOverview(snapshot) {
-  if (snapshot === null || typeof snapshot !== "object") return Promise.resolve(null);
-  if (!OVERVIEWS.has(snapshot)) {
-    const reading = readOverview(snapshot);
-    OVERVIEWS.set(snapshot, reading);
-    reading.then((held) => { if (held === null) OVERVIEWS.delete(snapshot); }, () => OVERVIEWS.delete(snapshot));
-  }
-  return OVERVIEWS.get(snapshot);
-}
-
-const LATEST = "latest.json";
-
-/**
- * latestOverview(snapshot) -> Promise<{ commit, shares, waiting, model, build, queues } | null> — the overview stored last on the branch, whichever commit it is of, as the file
- * latest.json names it: what a page shows while the overview of its head is not stored yet, never deriving one itself. Null where the branch, `latest` or that overview is missing.
- * @param {object} snapshot
- */
-export async function latestOverview(snapshot) {
-  if (typeof snapshot?.readOn !== "function") return null;
-  let named;
-  try { named = await snapshot.readOn(OVERVIEW_BRANCH, LATEST); } catch (error) { if (error?.name === "NotFound") return null; throw error; }
-  let commit = "";
-  try { commit = typeof named === "string" ? String(JSON.parse(named)?.commit ?? "") : ""; } catch { return null; }
-  if (!/^[0-9a-f]{40}$/.test(commit)) return null;
-  const held = await readOverview({ readOn: snapshot.readOn, commit });
-  return held && { commit, ...held };
-}
-
-async function readOverview(snapshot) {
-  if (typeof snapshot.readOn !== "function" || typeof snapshot.commit !== "string") return null;
-  let text;
-  try {
-    text = await snapshot.readOn(OVERVIEW_BRANCH, `${snapshot.commit}.json`);
-  } catch (error) {
-    if (error?.name === "NotFound") return null;
-    throw error;
-  }
-  if (typeof text !== "string") return null;
-  let held;
-  try { held = JSON.parse(text); } catch { return null; }
-  if (held === null || typeof held !== "object" || held.commit !== snapshot.commit || !Array.isArray(held.shares) || !Array.isArray(held.waiting)) return null;
-  const { build } = held;
-  if (!(held.model === null || typeof held.model === "string") || !Array.isArray(build?.states) || !Array.isArray(build?.records) || !build.records.every(isFile)
-    || !Array.isArray(held.queues)) return null;
-  return { shares: held.shares, waiting: held.waiting, model: held.model, build: { states: build.states, records: build.records }, queues: held.queues };
 }

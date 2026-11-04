@@ -53,22 +53,22 @@ const TOPIC_TEXTS = {
 const flat = (text) => text.replace(/\s+/g, " ").trim();
 const kids = (node) => [...node.childNodes].filter((child) => child.nodeType === 1);
 
-// TST-1225001 · level: unit · module: MOD-site-frame
+// TST-1302001 · level: unit · module: MOD-site-frame
 // guards: EVERY STEP EXPLAINS ITSELF; UC-026; UC-027
 // given: the frame's explanations.md
 // input: its topics
 // expect: it holds each of the eighteen topics test-level-unit … test-level-user, test-occasion-every-commit … test-occasion-on-demand, schedule-field-nightly … schedule-field-minutes, schedule-secrets and schedule-self-hosted-runner
-test("TST-1225001 — explanations.md holds a topic for each level, occasion and field of the Tests pages, and for the secrets and the runner", () => {
+test("TST-1302001 — explanations.md holds a topic for each level, occasion and field of the Tests pages, and for the secrets and the runner", () => {
   const missing = Object.keys(TOPIC_TEXTS).filter((topic) => !HELD.has(topic));
   assert.deepEqual(missing, []);
 });
 
-// TST-1225002 · level: unit · module: MOD-site-frame
+// TST-1302002 · level: unit · module: MOD-site-frame
 // guards: EVERY STEP EXPLAINS ITSELF; UC-026; UC-027
 // given: the same eighteen topics
 // input: explain(topic) for each
 // expect: a details element of the class explain whose summary reads "What is this?" and whose text holds each passage the pages showed for that topic
-test("TST-1225002 — explain returns the frame's fold of each of those topics, with the text the pages showed", () => {
+test("TST-1302002 — explain returns the frame's fold of each of those topics, with the text the pages showed", () => {
   for (const [topic, passages] of Object.entries(TOPIC_TEXTS)) {
     const fold = explain(topic);
     assert.equal(fold.localName, "details", `${topic} is a fold`);

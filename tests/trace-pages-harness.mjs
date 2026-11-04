@@ -118,14 +118,20 @@ export function doc(id, title, keys = {}, body = "") {
 // read of a path (from 1) fail as an unreachable server does. It has no write method and no repositoryInfo beyond the default branch. Each snapshot's readOn
 // serves the graph of its tree stored on trace-cache for the snapshot's commit (`commitOf(ref)`, or the commit a wrapper of the snapshot names), as the workflow "main changed"
 // stores it (tests/stored-graph-fake.mjs); `stored(ref, nth)` false (from 1) leaves the nth readOn of a ref without it, as before the workflow ran. `log.readOns` records
-// each readOn. Building that graph is the push job's work and reads nothing the log records. The commit of a ref is a SHA of its own for each Host: MOD-trace-graph's
+// each readOn. The branch `test-results` has a history of its own: one commit for each record file of its tree, in the order of the tree taken as newest first, each commit adding that file alone (readHistory with
+// `ref: "test-results"` or the commit a page of it ends at, as a page of the history is read from the parent of the page before). readSnapshot with `folders` holds only the files of those folders and the files
+// named, and a read of any other path fails with OutsideSnapshot; `log.narrowed` records each readSnapshot as [ref, folders | null]. Building that graph is the push job's work and reads nothing the log records. The commit of a ref is a SHA of its own for each Host: MOD-trace-graph's
 // storedGraph keeps a commit's graph for the page (the module), so two Hosts of one test file never share a commit.
 let hostsMade = 0;
-export function treeHost({ trees, tags = [], failing = () => false, history = [], stored = () => true }) {
-  const log = { snapshots: [], reads: [], manys: [], histories: [], fileAts: [], readOns: [] };
+export function treeHost({ trees, tags = [], failing = () => false, history = [], onDefault = [], stored = () => true }) {
+  const log = { contains: [], snapshots: [], narrowed: [], reads: [], manys: [], histories: [], fileAts: [], readOns: [] };
   const made = ++hostsMade;
   const commitOf = (ref) => createHash("sha1").update(`tree host ${made} ${ref}`).digest("hex");
   const counts = new Map();
+  const resultsPaths = Object.keys(trees["test-results"] ?? {}).filter((path) => /^runs\/[^/]+\/[^/]+\.md$/.test(path));
+  const resultsLog = resultsPaths.map((path, at) => ({ path, commit: createHash("sha1").update(`results ${made} ${path}`).digest("hex"), at }));
+  resultsLog.forEach((entry) => { entry.parents = resultsLog[entry.at + 1] ? [resultsLog[entry.at + 1].commit] : []; });
+  const outside = (path, folders) => Object.assign(new Error(`${path} lies outside what this snapshot holds — ${folders.join(", ")}`), { name: "OutsideSnapshot", path });
   const storedOf = new Map(), readOnCounts = new Map();
   const readOnOf = (ref, commit, files) => {
     const key = `${ref}\0${commit}`;
@@ -134,19 +140,23 @@ export function treeHost({ trees, tags = [], failing = () => false, history = []
   };
   return {
     log, commitOf,
-    async readSnapshot(ref) {
+    async readSnapshot(ref, options = {}) {
       log.snapshots.push(ref);
+      const folders = options?.folders ?? null;
+      log.narrowed.push([ref, folders]);
       const files = trees[ref];
       if (!files) throw Object.assign(new Error("unreachable"), { name: "Unreachable" });
+      const inside = (path) => folders === null || folders.some((folder) => path === folder || path.startsWith(`${folder}/`));
       return {
-        ref, commit: commitOf(ref), paths: Object.keys(files),
+        ref, commit: commitOf(ref), paths: Object.keys(files).filter(inside),
         async read(path) {
+          if (!inside(path)) throw outside(path, folders);
           log.reads.push(path);
           counts.set(path, (counts.get(path) ?? 0) + 1);
           if (failing(path, counts.get(path))) throw Object.assign(new Error("unreachable"), { name: "Unreachable" });
           return Object.hasOwn(files, path) ? files[path] : null;
         },
-        async readMany(paths) { log.manys.push([...paths]); },
+        async readMany(paths) { const away = paths.find((path) => !inside(path)); if (away !== undefined) throw outside(away, folders); log.manys.push([...paths]); },
         async readOn(branch, path, options) {
           log.readOns.push([branch, path]);
           readOnCounts.set(ref, (readOnCounts.get(ref) ?? 0) + 1);
@@ -156,11 +166,23 @@ export function treeHost({ trees, tags = [], failing = () => false, history = []
       };
     },
     // `history` is the commits of the default branch, newest first: { commit, date, files } with the whole tree of the commit. readHistory names those that changed a
-    // path (every commit for no path), as the Host does, newest first, up to the limit; readFileAt gives the text of the path at each commit asked, null where it has none.
+    // path (every commit for no path, and, for no path, the commits `onDefault` names after them), as the Host does, newest first, up to the limit; readFileAt gives the text of the path at each commit asked, null where it has none.
     async readHistory(path, options = {}) {
       log.histories.push([path, options]);
+      const from = options.ref === "test-results" ? 0 : resultsLog.findIndex((entry) => entry.commit === options.ref);
+      if (from >= 0 && resultsLog.length) {
+        return resultsLog.slice(from, from + (options.limit ?? resultsLog.length)).map((entry) => ({ commit: entry.commit, parents: entry.parents, author: { account: null, name: "fixture" }, date: "2026-10-01T10:00:00Z", message: "",
+          changes: options.changes === false ? [] : [{ path: entry.path, change: "added" }] }));
+      }
       const changed = history.filter((entry, index) => path === null || entry.files[path] !== history[index + 1]?.files[path]);
+      // For the repository (a null path) the default branch also holds the commits `onDefault` names, after those of `history`.
+      if (path === null) changed.push(...onDefault.filter((commit) => !changed.some((entry) => entry.commit === commit)).map((commit) => ({ commit, date: "2026-10-01T10:00:00Z", files: {} })));
       return changed.slice(0, options.limit ?? changed.length).map(({ commit, date }) => ({ commit, parents: [], author: { account: null, name: "fixture" }, date, message: "", changes: [] }));
+    },
+    // containsCommit(branch, commit): whether the default branch holds the commit, that is `history` or `onDefault` names it; every question is noted in `log.contains` as [branch, commit].
+    async containsCommit(branch, commit) {
+      log.contains.push([branch, commit]);
+      return onDefault.includes(commit) || history.some((entry) => entry.commit === commit);
     },
     async readFileAt(path, commits) {
       log.fileAts.push([path, [...commits]]);

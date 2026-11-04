@@ -25,7 +25,7 @@ const SPEC_PATH = "SPEC.md";
 const UNREADABLE = "the commit does not hold it";
 
 // A node is its place — id, kind, path, line, title and blob — and the five facts of the kinds that have them, which every other
-// kind has as null: a module its `folder` and what it `provides`, a plan step or backlog item its `level` and `tests`, a
+// kind has as null: a module its `folder` and what it `provides`, a plan step or backlog item its `level` and `tests`, a test its `level`, a
 // requirement its `sources`.
 const NO_FACTS = { folder: null, provides: null, level: null, tests: null, sources: null };
 const withFacts = (place, facts = {}) => ({ ...place, ...NO_FACTS, ...facts });
@@ -63,7 +63,7 @@ function requirementNodes(text) {
 function testFileGraph(path, text) {
   const nodes = [], edges = [];
   for (const d of testDeclarations(path, text)) {
-    nodes.push(withFacts({ id: d.id, kind: "TST", path: d.path, line: d.line, title: null, blob: null }));
+    nodes.push(withFacts({ id: d.id, kind: "TST", path: d.path, line: d.line, title: null, blob: null }, { level: textOf(d.level) }));
     for (const guarded of d.guards ?? []) edges.push(edge(d.id, guarded, "guards", d.path, d.line));
     if (kindOfIdentifier(d.module ?? "") === "MOD") edges.push(edge(d.id, d.module, "exercises", d.path, d.line));
   }

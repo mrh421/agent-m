@@ -534,7 +534,10 @@ test("release · ITM-129 UC-024: every menu entry and view of today is shown; a 
   const fileOf = (view) => VIEWS.find((v) => v.view === view)?.file;
   // A view is built where its file is on the disk, or where the app hands its address to a route of MOD-review-pages or to the fold
   // of the topic `accepting`, so that its file is gone.
-  const HANDED = new Set(["uc", "arc", "review", "spec", "how", "settings", "runs", "schedule", "generate", "release", "trace", "mail", "replies", "arrange", "process", "roles", "backlog", "get-your-own"]);
+  // The route progress of MOD-implementation-pages, which a loaded view provides, counts as built (ITM-1252), though views.mjs names a file for it.
+  // The guided pages of MOD-settings-pages that the Settings page opens — participants, library, sources, resources — are handed to their routes too.
+  const HANDED = new Set(["uc", "arc", "review", "spec", "how", "settings", "runs", "schedule", "generate", "release", "trace", "mail", "replies", "arrange", "process", "roles", "backlog", "progress", "get-your-own",
+    "participants", "library", "sources", "resources"]);
   const builtView = (view) => HANDED.has(view) || builtOnDisk(fileOf(view));
   const expected = MENU.map((e) => e.views.find(builtView)).filter(Boolean);
   assert.deepEqual(tabs, expected, "the stages' views built, in the order of the process");

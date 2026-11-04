@@ -102,14 +102,21 @@ export async function verifyCodeSignature({ platform, app, installer, file, env 
   return null;
 }
 
-const freePort = () => new Promise((resolve, reject) => {
-  const server = net.createServer();
-  server.once("error", reject);
-  server.listen(0, "127.0.0.1", () => {
-    const { port } = server.address();
-    server.close(() => resolve(port));
-  });
-});
+// `count` different free ports of loopback. All are held at once while they are found, and only then released: a port closed before the next is taken may
+// be handed out again, and two of the app's ports would then be one.
+async function freePorts(count) {
+  const servers = [];
+  try {
+    for (let index = 0; index < count; index += 1) {
+      const server = net.createServer();
+      servers.push(server);
+      await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+    }
+    return servers.map((server) => server.address().port);
+  } finally {
+    await Promise.all(servers.map((server) => new Promise((resolve) => (server.listening ? server.close(() => resolve()) : resolve()))));
+  }
+}
 
 function fetchOnce(port) {
   return new Promise((resolve) => {
@@ -200,7 +207,7 @@ export async function tunnelCheck({ platform, executable, appId, ssh2, timeout =
   let child = null;
   try {
     server = await testSshServer(ssh2);
-    const [bridgePort, reversePort, forwardPort] = [await freePort(), await freePort(), await freePort()];
+    const [bridgePort, reversePort, forwardPort] = await freePorts(3);
     const plan = (direction, remotePort) => ({ direction, jumpHost: "127.0.0.1", user: "check", sshPort: server.port, remotePort, bind: "127.0.0.1", bridgePort, keyFile: "ssh/id_ed25519" });
     const dataFolder = dataFolderIn(platform, home, appId);
     mkdirSync(dataFolder, { recursive: true });

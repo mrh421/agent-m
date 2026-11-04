@@ -103,8 +103,7 @@ const commits = (w) => { pull(w); return Number(git(w.productDir, "rev-list", "-
 // guards: A SPRINT CLOSED BY AN AGENT STARTS BY ITSELF; CLOSING A SPRINT CAN BE ASSIGNED TO A PARTICIPANT
 // given: the sprint team1/01, ended on 2026-10-12, closed by the CI agent ci-bot; team1/02, ended and closed already; team1/03, ended, closed by the person alice; team1/04, whose time box ends 2026-11-30; team1/06, ended, whose closer ghost is no participant; today is 2026-10-19
 // input: onSchedule
-// expect: outcome `done`; one new commit adds exactly one job record, of the kind close-sprint, for the participant ci-bot, on the route `ci hosted`, started by the schedule, working on ITM-001, the item the sprint selects, with the parameter sprint team1/01, queued (not taken);
-//         the sprints closed already, closed by a person and not ended get none
+// expect: outcome `done`; one new commit adds exactly one job record, of the kind close-sprint, for the participant ci-bot, on the route `ci hosted`, started by the schedule, working on ITM-001, the item the sprint selects, with the parameter sprint team1/01, queued (not taken); the sprints closed already, closed by a person and not ended get none
 // Planted fault: naming sprints without testing the closer, or ignoring `## Review`, adds records for team1/02 or team1/03; leaving the time box out adds one for team1/04.
 test("onSchedule — a sprint whose time box ended and whose closer is a CI agent gets one queued close-sprint job; closed, person-closed and running sprints get none", async () => {
   await withWorkspace(SPRINTS, async (w) => {

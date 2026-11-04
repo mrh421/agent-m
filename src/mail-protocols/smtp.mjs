@@ -5,14 +5,14 @@
 
 import { STARTTLS, TLS, normaliseSecurity, mapMailFailure, tlsOptions } from "./imap.mjs";
 
-function transportOf({ smtp, account, password }, mailer) {
+function transportOf({ smtp, smtpAccount, password }, mailer) {
   const security = normaliseSecurity(smtp, "SMTP");
   return mailer.createTransport({
     host: smtp.host,
     port: smtp.port,
     secure: security === TLS,
     requireTLS: security === STARTTLS,
-    auth: { user: account, pass: password },
+    auth: { user: smtpAccount, pass: password },
     logger: false,
     debug: false,
     tls: tlsOptions(smtp),
@@ -31,11 +31,11 @@ export async function testSmtp(connection, mailer) {
   }
 }
 
-// Sends exactly these bytes from the account to these recipients.
+// Sends exactly these bytes from the sender the connection names, else from the account, to these recipients.
 export async function sendBytes(connection, mailer, bytes, recipients) {
   const transport = transportOf(connection, mailer);
   try {
-    await transport.sendMail({ envelope: { from: connection.account, to: recipients }, raw: bytes });
+    await transport.sendMail({ envelope: { from: connection.sender?.address ?? connection.account, to: recipients }, raw: bytes });
   } catch (error) {
     mapMailFailure(error, "SMTP", connection.smtp);
   } finally {

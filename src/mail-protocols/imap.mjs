@@ -68,7 +68,11 @@ export function connectionParts(connection) {
   const password = connection.imap.password;
   const folders = Array.isArray(connection.folders) && connection.folders.length ? connection.folders : ["INBOX"];
   if (!imap || !smtp || !account || !password) throw bridgeFailure("upstream-failed", "The mail connection is incomplete.");
-  return { imap, smtp, account, password, folders };
+  // MOD-mail-routes' MailConnection: `account` logs in to both servers unless `smtpAccount` names the SMTP server's own login; a mail is from
+  // `account` unless `sender` names whom it is from.
+  const smtpAccount = connection.imap.smtpAccount || account;
+  const sender = connection.imap.sender?.address ? { name: connection.imap.sender.name || null, address: connection.imap.sender.address } : null;
+  return { imap, smtp, account, smtpAccount, sender, address: connection.address, password, folders };
 }
 
 

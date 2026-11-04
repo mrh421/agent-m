@@ -74,7 +74,7 @@ def result(case: dict) -> dict:
 
 
 class TestPromptedSource(unittest.TestCase):
-    # TST-416100 - level: release - module: system
+    # TST-416100 · level: release · module: system
     # guards: THE PERSON WHO PROMPTS IS A SOURCE
     # given: Markdown fixture cases with source register entries, links, a product SPEC and prompted candidates
     # input: personSource followed by entrySections when the prompting person has a linked source
@@ -86,7 +86,7 @@ class TestPromptedSource(unittest.TestCase):
             with self.subTest(case=item["name"]):
                 self.assertEqual(result(item["case"]), item["case"]["expected"])
 
-    # TST-416101 - level: release - module: system
+    # TST-416101 · level: release · module: system
     # guards: THE PERSON WHO PROMPTS IS A SOURCE
     # given: the linked and unlinked prompt cases
     # input: the loaded expected results

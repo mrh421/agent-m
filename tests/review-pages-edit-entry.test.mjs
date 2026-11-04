@@ -144,13 +144,13 @@ const withDecision = () => entryFiles(true);
 // guards: UC-006; UC-018; A SPEC EDIT IS SAVED AS A PROPOSAL; EDITS ARE PREPARED ON THE DASHBOARD
 // given: the open entry 01 of the queue 2026-03-01_sample, proposing the section "1. Lending" with the requirement EXPORT IS A PDF reworded
 // input: the page of the entry
-// expect: a link "Edit" to #spec-entry/id=spec-2026-03-01_sample-01/edit=1; nothing written
+// expect: a link "Edit" to #spec-entry/id=spec-2026-03-01_sample-01/edit=1/product=<the product's address, percent-encoded>; nothing written
 test("spec-entry/<id> — an open entry offers Edit", async () => {
   const fake = fakeHost();
   const target = await showEdit(fake, { id: ENTRY });
   const links = byClass(target, "a", "edit-link");
   assert.equal(links.length, 1);
-  assert.equal(links[0].getAttribute("href"), `#spec-entry/id=${ENTRY}/edit=1`);
+  assert.equal(links[0].getAttribute("href"), `#spec-entry/id=${ENTRY}/edit=1/product=${encodeURIComponent(GITHUB.web)}`);
   assert.equal(fake.writes().length, 0);
 });
 
@@ -158,8 +158,7 @@ test("spec-entry/<id> — an open entry offers Edit", async () => {
 // guards: UC-006; A SPEC EDIT IS SAVED AS A PROPOSAL; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // given: the same entry
 // input: the edit page of the entry
-// expect: the editor holds the proposal byte for byte, with a Why field and an impact list that names EXPORT IS A PDF as changed against the section that holds now when the
-//         text is edited; nothing written
+// expect: the editor holds the proposal byte for byte, with a Why field and an impact list that names EXPORT IS A PDF as changed against the section that holds now when the text is edited; nothing written
 test("spec-entry/<id>/edit — the editor opens on the entry's proposal, with a Why field and the impact list; nothing is written", async () => {
   const fake = fakeHost();
   const target = await showEdit(fake, EDIT);
@@ -175,8 +174,7 @@ test("spec-entry/<id>/edit — the editor opens on the entry's proposal, with a 
 // guards: UC-006; UC-018; A SPEC EDIT IS SAVED AS A PROPOSAL; ONE CLICK PER DECISION
 // given: the editor on the open entry, the proposal reworded again, and a Why
 // input: a click on Save
-// expect: one commit holding the entry's own proposal file, byte for byte as edited, and its rationale — no index, no new queue folder —; SPEC.md untouched; the page links the commit
-//         and the entry
+// expect: one commit holding the entry's own proposal file, byte for byte as edited, and its rationale — no index, no new queue folder —; SPEC.md untouched; the page links the commit and the entry
 test("spec-entry/<id>/edit — Save writes the entry in its own queue and makes no new one", async () => {
   const fake = fakeHost();
   const target = await showEdit(fake, EDIT);
@@ -193,7 +191,7 @@ test("spec-entry/<id>/edit — Save writes the entry in its own queue and makes 
   assert.ok(!Object.keys(fake.files()).some((path) => path.startsWith("docs/spec-freigaben/") && !path.startsWith(QUEUE)), "no second queue");
   const hrefs = find(byClass(target, "p", "entry")[0], (node) => node.localName === "a").map((node) => node.getAttribute("href"));
   assert.ok(hrefs.includes(`https://github.com/alice/thesis-tool/commit/${fake.head()}`), String(hrefs));
-  assert.ok(hrefs.includes(`#spec-entry/id=${ENTRY}`), String(hrefs));
+  assert.ok(hrefs.includes(`#spec-entry/id=${ENTRY}/product=${encodeURIComponent(GITHUB.web)}`), String(hrefs));
   // UC-006 3a: the saved entry is shown again — its page, with the saved proposal and no editor.
   await until(() => find(target, (node) => node.localName === "textarea" && !node.className.split(" ").includes("reject-reason")).length === 0 && target.textContent.includes("a PDF file, always."), "the entry to be shown again");
 });

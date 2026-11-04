@@ -122,8 +122,7 @@ const fitting = { stored: { blob: blobOf(READER_AFTER) } };
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; AN ARCHITECTURE CHANGE IS NOT ACCEPTED WITHOUT AN IMPACT LIST; UC-023
 // given: MOD-reader accepted and changed since; the branch trace-cache holds an entry for it whose blob is the file's blob, with an impact list the derivation would not give
 // input: the route module with the id all
-// expect: the stored impact list is shown; the difference is against the text at the entry's before commit; one read of the stored lists, one readFileAt of MOD-reader at before,
-//         no traceGraph read and no lastAcceptedText call
+// expect: the stored impact list is shown; the difference is against the text at the entry's before commit; one read of the stored lists, one readFileAt of MOD-reader at before, no traceGraph read and no lastAcceptedText call
 test("module/all — a fitting stored entry gives the impact list and the text at before, and no graph is read", async () => {
   const fake = fakeProduct(fitting);
   const { target } = await draw(fake, "module", { id: "all" });
@@ -161,7 +160,7 @@ test("module/<id> — a fitting stored entry gives the impact list and the text 
 // guards: A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT; AN ARCHITECTURE CHANGE IS NOT ACCEPTED WITHOUT AN IMPACT LIST; UC-023
 // given: the branch holds an entry for MOD-reader with another blob than the file's (stale)
 // input: the route module with the id all, and for MOD-reader
-// expect: the page derives both as before: the stored list is not shown, no readFileAt is made, lastAcceptedText reads the commit of the record, the graph is read
+// expect: the page derives both as before: the stored list is not shown, the one readFileAt is lastAcceptedText's, of the file at the commit of the record, no snapshot of an older commit is read, the graph is read
 test("a stale stored entry is not used: the page derives the impact list and the last accepted text", async () => {
   for (const params of [{ id: "all" }, { id: "MOD-reader" }]) {
     const fake = fakeProduct({ stored: { blob: blobOf(READER_BEFORE) } });
@@ -172,8 +171,8 @@ test("a stale stored entry is not used: the page derives the impact list and the
     assert.deepEqual(namesOf(impact), ["MOD-reader — changed"]);
     assert.ok(impact.textContent.includes("src/reader/read.mjs"), "the code files derived from the graph");
     const counts = counted(fake);
-    assert.equal(counts.readFileAt.length, 0, "no readFileAt");
-    assert.ok(counts.lastAccepted > 0, "lastAcceptedText ran");
+    assert.equal(counts.readFileAt.length, 1, "lastAcceptedText's readFileAt, and no other");
+    assert.equal(counts.lastAccepted, 0, "no snapshot of an older commit");
     assert.ok(counts.graphReads > 0, "the graph was read");
   }
 });
@@ -187,5 +186,6 @@ test("without a stored file the page derives as before", async () => {
   const fake = fakeProduct({ stored: null });
   const { target } = await draw(fake, "module", { id: "MOD-reader" });
   assert.deepEqual(namesOf(impactOf(target)), ["MOD-reader — changed"]);
-  assert.ok(counted(fake).lastAccepted > 0);
+  assert.equal(counted(fake).readFileAt.length, 1, "lastAcceptedText's readFileAt");
+  assert.equal(counted(fake).lastAccepted, 0, "no snapshot of an older commit");
 });

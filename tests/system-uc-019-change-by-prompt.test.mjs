@@ -13,7 +13,7 @@
 // Precondition: ITM-504, ITM-506, ITM-507 and ITM-508 are merged.
 // Expected result: every flow below is covered by executable evidence that asserts nothing the accepted UC-019 replaced, or is a finding
 // - a todo test below, or in the release file named - that fails now and names what the code does instead. The findings:
-// the participants offered (UC019-S9), the offer read from this browser's configuration (UC019-S14), the link to the configuration of endpoints (UC019-S15) and the count of requirements and use cases when a context is too small (UC019-S10).
+// the participants offered (UC019-S9) and the count of requirements and use cases when a context is too small (UC019-S10).
 //
 // The page, the servers and the person's actions are the harness of tests/uc-019-prompt-bar-harness.mjs: the real
 // MOD-site-frame, MOD-prompt-bar and MOD-review-pages over GitHub and a drafting endpoint served in memory; no request leaves the process.
@@ -136,13 +136,22 @@ const FLOW_EVIDENCE = {
     uc: "Agent M offers there only those that can draft text",
     evidence: [[SELF, "TST-377010"]],
   },
+  "precondition-configured-in-this-browser": {
+    uc: "is configured in this browser (UC-049)",
+    evidence: [[SELF, "TST-377016"]],
+  },
+  "3a-nothing-configured-can-draft": {
+    uc: "Nothing configured can draft text.",
+    evidence: [[SELF, "TST-377016"]],
+  },
+  "3a-links-uc-003": {
+    uc: "links to the configuration of endpoints (UC-003)",
+    evidence: [[SELF, "TST-377017"]],
+  },
 };
 
 // The parts of a flow the code does otherwise, each a todo test that fails now and names what the code does instead.
 const FLOW_FINDINGS = {
-  "precondition-configured-in-this-browser": { uc: "is configured in this browser (UC-049)", finding: "UC019-S14", file: SELF, test: "TST-377016" },
-  "3a-nothing-configured-can-draft": { uc: "Nothing configured can draft text.", finding: "UC019-S14", file: SELF, test: "TST-377016" },
-  "3a-links-uc-003": { uc: "links to the configuration of endpoints (UC-003)", finding: "UC019-S15", file: SELF, test: "TST-377017" },
   "4a-counts-of-requirements-and-use-cases": { uc: "Agent M says how many requirements or use cases there are", finding: "UC019-S10", file: SELF, test: "TST-377011" },
   "4a-counts-in-the-bar": { uc: "Agent M says how many requirements or use cases there are", finding: "UC019-S10", file: RELEASE_REQUIREMENTS, test: "TST-418121" },
 };
@@ -214,7 +223,7 @@ const filesDraft = (...files) => ({ files });
 // level: system
 // module: MOD-review-pages; MOD-site-frame; MOD-prompt-bar
 // guards: UC-019; THE PAGE NAMES WHERE IT SENDS; A PROMPTED USE-CASE CHANGE SEES ITS NEIGHBOURS
-// given: the page of UC-007 with UC-007 and UC-008 in the product, and the register offering drafter (this machine, draft text) and observer (Anthropic, USA, read the repository only)
+// given: the page of UC-007 with UC-007 and UC-008 in the product, and this browser's configuration offering the endpoint drafter (this machine, draft text) and the CLI session release-bridge:observer (Anthropic, USA, read the repository only)
 // input: the author writes "align UC-007 and UC-008 with the new rule" in the bar without naming a target, and presses Send with drafter
 // expect: before Send the bar names drafter with its place, the only participant that can draft text, and not observer, and nothing has been sent; the one request holds the instruction, the file of UC-007 as the target, the requirement A LOAN HAS A DUE DATE it realises and UC-008 as another use case; the bar names "drafter — this machine" as the destination
 test("TST-377004: UC-019 1-3 the instruction is written in the prompt bar and the open use case is the target", async () => {
@@ -386,64 +395,67 @@ test("TST-377015: UC-019 6c an unusable answer is named, its raw text folded, an
 
 // TST-377010
 // level: system
-// module: MOD-prompt-bar; MOD-participant-list
+// module: MOD-prompt-bar; MOD-browser-store
 // guards: UC-019
-// given: the register of an instance with one participant that can draft text (drafter) and one that cannot (observer), and the page of UC-007
-// input: read what the bar offers; then, in an instance whose only participant is observer, put the cursor in the bar's input, read what the page says and press its link
-// expect: the bar offers drafter only; with no participant able to draft, the bar says that no participant can do converse — the bar's one kind — and that it needs "draft text", offers no participant and no Send to choose, and its link opens the route participants (UC-017's page)
-test("TST-377010: UC-019 2 and 3a the bar offers only participants that can draft text", async () => {
-  const s = await scenario({ extraFiles: useCases });
+// given: the page of UC-007 in a browser whose configuration holds the endpoint drafter (draft text) and the CLI session release-bridge:observer (it reads the repository only), in an instance whose participant list holds a further model endpoint, listed, that can draft text; then a browser whose configuration holds the observer session only
+// input: read what the bar offers; then, in the second browser, put the cursor in the bar's input and read what the page says
+// expect: the bar offers drafter only, neither the observer session nor listed, which the participant list holds and this browser does not configure; in the second browser the bar offers no participant and no Send to choose, says that no endpoint or CLI session of this browser can do converse — the bar's one kind — and that it needs "draft text", and does not name the observer
+test("TST-377010: UC-019 2 and 3a the bar offers only what this browser configures that can draft text", async () => {
+  const rows = read("docs/participants.md").split("\n");
+  const listed = `${rows.slice(0, rows.findIndex((line) => line.startsWith("|---")) + 1).join("\n")}\n`
+    + "| listed | model endpoint | listed-model | 200000 | - | draft text | this machine | endpoint drafter |\n";
+  const s = await scenario({ extraFiles: useCases, instanceFiles: { "docs/participants.md": listed } });
   await onUseCase(s);
   assert.equal(one(barOf(s), "span", "participant").textContent, "drafter — this machine");
-  assert.equal(all(barOf(s), "option").length, 0);
-  const rows = read("docs/participants.md").split("\n");
-  const onlyObserver = `${rows.slice(0, rows.findIndex((line) => line.startsWith("|---")) + 1).join("\n")}\n`
-    + "| observer | model endpoint | observer-model | 200000 | - | read repository | Anthropic, USA | endpoint fixture |\n";
-  const none = await scenario({ extraFiles: useCases, instanceFiles: { "docs/participants.md": onlyObserver } });
+  assert.equal(all(barOf(s), "option").length, 0, "the observer session cannot draft text and listed is not configured here: nothing to choose among");
+  const none = await scenario({ extraFiles: useCases, drafting: false });
   await onUseCase(none);
   // The bar reads the page's subject when it is used (the input takes focus), so the offer now belongs to the page of the use case.
   one(barOf(none), "textarea", "instruction").dispatchEvent(new Event("focus"));
   await rest(none);
   await rest(none);
-  assert.equal(all(barOf(none), "span", "participant").length + all(barOf(none), "select", "participant").length, 0, "no participant is offered");
+  assert.equal(all(barOf(none), "span", "participant").length + all(barOf(none), "select", "participant").length, 0, "nothing is offered");
   const said = barOf(none).textContent;
-  assert.match(said, /No participant of this instance can do converse: it needs draft text\./);
+  assert.match(said, /No endpoint or CLI session of this browser can do converse: it needs draft text\./);
   assert.doesNotMatch(said, /observer/);
-  await press(none, namedButton(barOf(none), "Set up participants"));
-  assert.match(none.location.hash, /^#participants/);
 });
 
 // TST-377016
 // level: system
 // module: MOD-prompt-bar; MOD-browser-store
 // guards: UC-019
-// given: the page of UC-007, a browser whose configuration holds a model endpoint and no participant is in the instance's list
+// given: the page of UC-007, a browser whose configuration holds a model endpoint, and an instance whose participant list is empty; then a browser whose configuration holds nothing that can draft text
 // input: read what the bar offers
-// expect: the bar offers the browser's configured endpoint, named with its place; with nothing configured that can draft text it says so
-test("TST-377016: UC-019 precondition and 3a the bar offers what is configured in this browser", { todo: "FINDING UC019-S14 - the bar offers the participants of the instance's register (docs/participants.md, read by MOD-prompt-bar), not the endpoints and CLI sessions of this browser's configuration (MOD-browser-store); with none able to draft it says \"No participant of this instance can do change-use-case: it needs draft text.\"" }, async () => {
+// expect: the bar offers the browser's configured endpoint, named with its place, although the instance's list holds no participant; with nothing configured that can draft text it says that no endpoint or CLI session of this browser can do converse
+test("TST-377016: UC-019 precondition and 3a the bar offers what is configured in this browser", async () => {
   const s = await scenario({ extraFiles: useCases, instanceFiles: { "docs/participants.md": "" } });
   await onUseCase(s);
   assert.equal(all(barOf(s), "span", "participant").length + all(barOf(s), "select", "participant").length, 1, "the configured endpoint is offered");
+  assert.equal(one(barOf(s), "span", "participant").textContent, "drafter — this machine");
+  const none = await scenario({ extraFiles: useCases, drafting: false });
+  await onUseCase(none);
+  one(barOf(none), "textarea", "instruction").dispatchEvent(new Event("focus"));
+  await rest(none);
+  await rest(none);
+  assert.match(barOf(none).textContent, /No endpoint or CLI session of this browser can do converse/);
 });
 
 // TST-377017
 // level: system
 // module: MOD-prompt-bar
 // guards: UC-019
-// given: the page of UC-007 in an instance whose only participant cannot draft text
+// given: the page of UC-007 in a browser whose configuration holds nothing that can draft text
 // input: read the bar's message and press its link
-// expect: the link opens the configuration of endpoints (UC-003)
-test("TST-377017: UC-019 3a the link opens the configuration of endpoints", { todo: "FINDING UC019-S15 - the bar's link reads \"Set up participants\" and opens the route participants (#participants, UC-017's page), as TST-377010 asserts; it does not open the configuration of endpoints (UC-003)" }, async () => {
-  const rows = read("docs/participants.md").split("\n");
-  const onlyObserver = `${rows.slice(0, rows.findIndex((line) => line.startsWith("|---")) + 1).join("\n")}\n`
-    + "| observer | model endpoint | observer-model | 200000 | - | read repository | Anthropic, USA | endpoint fixture |\n";
-  const none = await scenario({ extraFiles: useCases, instanceFiles: { "docs/participants.md": onlyObserver } });
+// expect: the link reads "Set up endpoints" and opens the route endpoints, the configuration of endpoints (UC-003), not the route participants
+test("TST-377017: UC-019 3a the link opens the configuration of endpoints", async () => {
+  const none = await scenario({ extraFiles: useCases, drafting: false });
   await onUseCase(none);
   one(barOf(none), "textarea", "instruction").dispatchEvent(new Event("focus"));
   await rest(none);
   await rest(none);
-  await press(none, namedButton(barOf(none), "Set up participants"));
-  assert.match(none.location.hash, /^#settings/);
+  assert.equal(buttonsNamed(barOf(none), "Set up participants").length, 0, "the link to participants is gone");
+  await press(none, namedButton(barOf(none), "Set up endpoints"));
+  assert.match(none.location.hash, /^#endpoints/);
 });
 
 // TST-377011
@@ -488,12 +500,8 @@ const MESSAGE = "please run the correction loop for this change on GitHub Action
 const ANSWER = "This is work for GitHub Actions, where the correction loop runs.";
 test("TST-377013: UC-019 6b the work the tab does not run is handed to GitHub Actions from the bar, without a further click", async () => {
   const proposal = { answer: ANSWER, handOver: { kind: "derive-use-cases", works_on: [LOAN], task: HANDED_TASK } };
-  // The register gives the drafter the route "endpoint fixture secret FIXTURE_KEY", which a hand-over takes as "ci hosted"; the product answers its pull requests with [] and records each start of the workflow.
-  const rows = read("docs/participants.md").split("\n");
-  const register = `${rows.slice(0, rows.findIndex((line) => line.startsWith("|---")) + 1).join("\n")}\n`
-    + "| drafter | model endpoint | fixture-model | 200000 | - | draft text | this machine | endpoint fixture secret FIXTURE_KEY |\n"
-    + "| observer | model endpoint | observer-model | 200000 | - | read repository | Anthropic, USA | endpoint fixture |\n";
-  const s = await scenario({ extraFiles: useCases, answers: [proposal], instanceFiles: { "docs/participants.md": register } });
+  // This browser's endpoint drafter is called through the Bridge release-bridge and names the CI secret FIXTURE_KEY, so its message goes through the Bridge and its route is "endpoint drafter secret FIXTURE_KEY", which a hand-over takes as "ci hosted"; the product answers its pull requests with [] and records each start of the workflow.
+  const s = await scenario({ extraFiles: useCases, answers: [proposal], bridge: true, secret: "FIXTURE_KEY" });
   const starts = [], served = s.product.fetch;
   s.product.fetch = async (url, init = {}) => {
     const method = (init.method ?? "GET").toUpperCase();

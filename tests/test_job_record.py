@@ -12,7 +12,7 @@ Readings the SPEC's wording leaves, which the pull request names: a job "leaves 
 product's repository (the tab, CI and the Bridge each have their route in queueJob), and the End is appended by the runtime that runs it (the tab's is run here); a conversation held
 in the tab is the prompt bar's messages, which make a record only when the person hands the task over.
 
-Not testable as worded, which the pull request names: (1) that a run records the jobs it starts as it starts them - MOD-run-planner's nextActions and finishRun are not built, so the cases check the
+Not testable as worded, which the pull request names: (1) that a run records the jobs it starts as it starts them - the agent that carries out a run starts its jobs in a session of its own (UC-043), not code of this repository, so the cases check the
 record a run has when its jobs are written with MOD-job-ledger's own functions, and its reader; (2) that a job of the instance is recorded in the instance's repository and a job of a product in the
 product's - the repository is chosen by the page that queues the job and is the `host` queueJob is given, so the cases assert that the record lands in the host given and in no other; (3) the End record of a job
 on a Bridge, which the Bridge (MOD-bridge-jobs) writes outside this repository's fixtures; the End record of a job in CI is checked end to end (the case "taken by CI"), the tab's by the first case.
@@ -276,8 +276,7 @@ class TestJobRecord(unittest.TestCase):
     # guards: A RUN IS A JOB THAT NAMES ITS JOBS
     # given: the cases under that requirement: a run whose record lists two jobs that name it; the same with one job missing from the run's list; the same with a job that does not name the run
     # input: the records written with MOD-job-ledger's startRecord and appendToRecord, read by listJobs and runOf
-    # expect: the run is read as a job of kind run whose list holds every job it started and every one of those jobs names the run; the counter-proofs are told apart. What is checked is the record and its reader: nothing in the repository
-    # starts a run yet (MOD-run-planner's nextActions and finishRun are not built), so that a run's jobs are recorded as the run starts them cannot be checked as worded - the pull request names it.
+    # expect: the run is read as a job of kind run whose list holds every job it started and every one of those jobs names the run; the counter-proofs are told apart. What is checked is the record and its reader: no code in the repository starts a run's jobs (the agent that carries out the run starts them in a session of its own, UC-043), so that a run's jobs are recorded as the run starts them cannot be checked as worded - the pull request names it.
     def test_a_runs_record_lists_every_job_it_started_and_each_names_the_run(self):
         check(self, RUN)
 

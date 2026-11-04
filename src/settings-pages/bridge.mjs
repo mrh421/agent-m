@@ -1,9 +1,12 @@
 // MOD-settings-pages' Bridge configuration route (UC-044).  Pairing is the only operation here that contacts a
 // Bridge; the jump-host record is browser configuration and its Save button deliberately makes no request.
 
-import { allocatePort, pair, proxyConfiguration, settingsOf, tunnelCommands } from "../bridge-client/index.mjs";
+import { allocatePort, bridgeAt, pair, proxyConfiguration, settingsOf, testBridge, tunnelCommands } from "../bridge-client/index.mjs";
 import { clearSetting, listSettings, readSetting, writeSetting } from "../browser-store/index.mjs";
+import { endpointLacks } from "../prompt-bar/index.mjs";
 import { explain } from "../site-frame/index.mjs";
+import { CAPABILITIES, PRESETS } from "./participants.mjs";
+import { heads } from "./routes.mjs";
 
 function el(name, className, ...children) {
   const node = document.createElement(name);
@@ -11,6 +14,8 @@ function el(name, className, ...children) {
   node.append(...children);
   return node;
 }
+// A part of the page under its heading: the frame's panel.
+const part = (heading, ...nodes) => el("section", "panel", el("h3", null, heading), ...nodes);
 
 // The system of the browser, from its user agent: the file of the release for it is the installer or the image MOD-bridge-build makes for that platform. The macOS .zip is the updater's, and no person downloads it.
 const BRIDGE_FILE = { windows: /\.exe$/i, macos: /\.dmg$/i, linux: /\.AppImage$/i };
@@ -30,7 +35,7 @@ const megabytes = (size) => `${(size / 1e6).toFixed(1)} MB`;
 function downloadSection(context) {
   const host = context.instance?.host;
   if (typeof host?.listReleaseAssets !== "function") return null;
-  const section = el("section", "bridge-download", el("h3", null, "Get the Bridge"), explain("bridge-levels"));
+  const section = el("section", "bridge-download panel", el("h3", null, "Get the Bridge"), explain("bridge-levels"));
   return { section, done: offerFile(host, section) };
 }
 
@@ -91,6 +96,88 @@ function failureText(error) {
   return `The Bridge could not be paired: ${error?.message ?? error}.`;
 }
 
+function testFailureText(error) {
+  if (error?.name === "JumpHostMissing") return "This Bridge is reached through the jump host, and no jump host is stored. Set it up below.";
+  if (["TokenRefused", "JumpHostLoginRefused", "NoAnswer", "Timeout"].includes(error?.name)) return failureText(error).replace("pair again", "test again");
+  return `The Bridge could not be tested: ${error?.message ?? error}.`;
+}
+
+// The CLI session a Bridge offers for one agent (UC-049 1b): the place where it processes data, its context in tokens, its model and its capabilities, kept as `session:<bridge>:<agent>` in the shape of an endpoint's declaration.
+// What is kept prefills the form; where nothing is kept the capabilities are the preset of a CLI agent (UC-017), and a session lacking a place, a context or a model is named as not offered in the prompt bar.
+function sessionForm(store, bridge, agent) {
+  const key = `session:${bridge}:${agent.name}`;
+  const kept = readSetting(store, key);
+  const place = el("input", "bridge-session-place");
+  const contextSize = el("input", "bridge-session-context");
+  const model = el("input", "bridge-session-model");
+  const capabilities = CAPABILITIES.map((capability) => {
+    const box = el("input", "bridge-session-capability");
+    box.type = "checkbox";
+    box.value = capability;
+    box.checked = (Array.isArray(kept?.capabilities) ? kept.capabilities : PRESETS["CLI agent"]).includes(capability);
+    return box;
+  });
+  const lacks = el("div", "bridge-session-lacks-slot");
+  const save = el("button", "bridge-session-save btn primary", "Save session");
+  const result = el("p", "bridge-session-result");
+  place.placeholder = "Provider and country, or this machine";
+  contextSize.placeholder = "Context in tokens";
+  contextSize.inputMode = "numeric";
+  model.placeholder = "Model name";
+  place.value = kept?.place ?? "";
+  contextSize.value = kept?.context ? String(kept.context) : "";
+  model.value = kept?.model ?? "";
+  for (const input of [place, contextSize, model]) { input.autocomplete = "off"; input.spellcheck = false; }
+  const nameWhatLacks = (setting) => {
+    const missing = endpointLacks(setting);
+    lacks.replaceChildren(...(missing.length
+      ? [el("p", "notice bridge-session-lacks", `The prompt bar does not offer ${agent.name}: it lacks ${missing.join(" and ")}. Enter ${missing.length === 1 ? "it" : "them"} below and save.`)] : []));
+  };
+  nameWhatLacks(kept);
+  save.addEventListener("click", () => {
+    const value = {};
+    if (place.value.trim()) value.place = place.value.trim();
+    const tokens = Number(contextSize.value.trim());
+    if (Number.isInteger(tokens) && tokens > 0) value.context = tokens;
+    if (model.value.trim()) value.model = model.value.trim();
+    value.capabilities = capabilities.filter((box) => box.checked).map((box) => box.value);
+    try {
+      writeSetting(store, key, value);
+      result.textContent = `The session ${agent.name} of ${bridge} is kept in this browser.`;
+    } catch (error) {
+      result.textContent = `The session could not be kept: ${error?.message ?? error}.`;
+    }
+    nameWhatLacks(value);
+  });
+  return el("section", "bridge-session panel",
+    el("h4", null, "CLI session: ", el("span", "bridge-session-agent", agent.name)), lacks,
+    el("p", null, el("label", null, "Processing place ", place)),
+    el("p", null, el("label", null, "Context (tokens) ", contextSize)),
+    el("p", null, el("label", null, "Model ", model)),
+    el("p", null, "Capabilities ", ...capabilities.flatMap((box) => [el("label", null, box, ` ${box.value}`), " "])),
+    el("p", null, save), result);
+}
+
+// A Bridge this browser keeps, with *Test*: the two requests of testBridge, then a form for each CLI session the Bridge lists ready. Drawing it sends nothing.
+function keptBridge(store, entry) {
+  const test = el("button", "bridge-kept-test btn", "Test");
+  const result = el("p", "bridge-kept-result");
+  const sessions = el("div", "bridge-kept-sessions");
+  test.addEventListener("click", async () => {
+    try {
+      const settings = settingsOf(entry, readSetting(store, "jump-host"));
+      result.textContent = `Testing ${entry.name} at ${settings.address}…`;
+      const ready = (await testBridge(bridgeAt(settings))).agents.filter((agent) => agent.ready);
+      result.textContent = ready.length ? `✓ ${entry.name} offers ${ready.map((agent) => agent.name).join(", ")}.` : `✓ ${entry.name} answers and offers no CLI session that is ready.`;
+      sessions.replaceChildren(...ready.map((agent) => sessionForm(store, entry.name, agent)));
+    } catch (error) {
+      result.textContent = `✗ ${testFailureText(error)}`;
+      sessions.replaceChildren();
+    }
+  });
+  return el("section", "bridge-kept panel", el("h4", null, "Bridge: ", el("span", "bridge-kept-name", entry.name)), el("p", null, test), result, sessions);
+}
+
 function applyBridge(fields, setting) {
   fields.address.value = setting?.address ?? "http://127.0.0.1:4711";
   fields.token.value = setting?.token ?? "";
@@ -145,9 +232,7 @@ function usableJumpHost(jumpHost) {
 }
 
 export const route = {
-  name: "bridge",
-  entry: "settings",
-  title: "Bridge",
+  ...heads.bridge,
   async render(target, context, params = {}) {
     const address = el("input", "bridge-address");
     const token = el("input", "bridge-token");
@@ -375,17 +460,21 @@ export const route = {
       } catch (error) { remoteResult.textContent = error.message; }
     });
 
+    const kept = namedBridges(context.store);
     const download = downloadSection(context);
     target.replaceChildren(
+      el("section", "head", el("h2", null, "Connect a Bridge")),
       ...(download ? [download.section] : []),
-      el("h2", null, "Connect a Bridge"),
       el("p", "notice bridge-shared-origin", sharedPagesNotice(context)),
       el("p", null, "The copied pairing token is sent only to the Bridge address when you choose Pair Bridge."),
       el("p", null, el("label", null, "Bridge address ", address)),
       el("p", null, el("label", null, "Pairing token ", token, " ", show)),
       el("p", null, pairButton, " ", clear),
       explain("bridge-pairing"), result,
-      el("h3", null, "Trusted HTTPS jump host"),
+      ...(kept.length ? [part("CLI sessions of the Bridges this browser keeps",
+          el("p", null, "Test a Bridge to list the CLI sessions it offers. Declare where each processes data, its context in tokens, its model and its capabilities: the prompt bar offers a session once it has them.")),
+        ...kept.map((entry) => keptBridge(context.store, entry))] : []),
+      part("Trusted HTTPS jump host",
       httpsExplanation,
       el("p", null, el("label", null, "Host ", hostname)),
       el("p", null, el("label", null, "SSH user ", user)),
@@ -395,16 +484,16 @@ export const route = {
       el("p", null, el("label", null, "Copied Bridge token ", httpsBridgeToken, " ", showHttpsBridgeToken)),
       el("p", null, el("label", null, "Web login ", loginUser)),
       el("p", null, el("label", null, "Web password ", loginPassword, " ", showLoginPassword)),
-      el("p", null, saveJumpHost), jumpResult,
-      el("h3", null, "+ Bridge through the jump host"),
+      el("p", null, saveJumpHost), jumpResult),
+      part("+ Bridge through the jump host",
       el("p", null, "Name the Bridge as it reports itself. It takes the lowest free port of the jump host's range. The commands are setup text only; they do not start a tunnel or test HTTPS."),
       el("p", null, el("label", null, "Bridge name ", throughName)),
       el("p", null, el("label", null, "Copied Bridge token ", throughToken, " ", showThroughToken)),
       el("p", null, addThrough), throughResult,
       el("h4", null, "Tunnel commands for this Bridge"), throughCommands,
       el("h4", null, "Apache HTTPS proxy configuration for every Bridge through the jump host"), bridgeApache,
-      el("h4", null, "nginx HTTPS proxy configuration for every Bridge through the jump host"), bridgeNginx,
-      el("h3", null, "Remote session"),
+      el("h4", null, "nginx HTTPS proxy configuration for every Bridge through the jump host"), bridgeNginx),
+      part("Remote session",
       el("p", null, "Add or select a remote Bridge session. The commands and proxy configuration are setup text only; they do not start a tunnel or test HTTPS."),
       el("p", null, el("label", null, "Stored session ", remoteSessionSelect)),
       el("p", null, el("label", null, "Session name ", remoteSessionName)),
@@ -414,7 +503,7 @@ export const route = {
       el("p", null, saveRemoteSession), remoteResult,
       el("h4", null, "Tunnel commands"), remoteCommands, copyRemoteCommands,
       el("h4", null, "Apache HTTPS proxy configuration"), remoteApache,
-      el("h4", null, "nginx HTTPS proxy configuration"), remoteNginx,
+      el("h4", null, "nginx HTTPS proxy configuration"), remoteNginx),
     );
     address.focus();
     await download?.done;

@@ -4,7 +4,7 @@
 // Run: node --test tests/model-catalogue.test.mjs
 //
 // Module: MOD-model-catalogue
-// Guards: UC-002; AGENT M CARRIES THE BOOK'S CATALOGUE; THE CATALOGUE IS DATA; THE MODEL DETERMINES THE PHASES AND THE GATES; A GATE NAMES WHAT IT CHECKS; A GATE NAMES WHO DECIDES IT; A PRACTICE IS NOT A MODEL; A MODEL DEFINITION IS VALIDATED BEFORE IT IS USED; A PROCESS MODEL ORGANISES PEOPLE AND AGENTS; A ROLE NAMES HOW MANY FILL IT
+// Guards: UC-002; AGENT M CARRIES THE BOOK'S CATALOGUE; THE CATALOGUE IS DATA; THE MODEL DETERMINES THE PHASES AND THE GATES; A GATE NAMES WHAT IT CHECKS; A GATE NAMES WHO DECIDES IT; A PRACTICE IS NOT A MODEL; A MODEL DEFINITION IS VALIDATED BEFORE IT IS USED; A PROCESS MODEL ORGANISES PEOPLE AND AGENTS; A ROLE NAMES HOW MANY FILL IT; PROGRESS IS SHOWN IN THE MODEL'S OWN MEASURE
 // Level: unit
 //
 // What ITM-215 builds, and these tests state:
@@ -479,6 +479,27 @@ test("modelFindings and catalogue — a Time box of none is no time box: pulled 
 test("modelFindings — a measure that does not fit the kind of work is an error", () => {
   const text = replaced(5, "measure: items per state over time", "measure: plan entries per phase");
   assert.deepEqual(findingsOf(text), [[5, "error", MEASURE]]);
+});
+
+// TST-1373001 · level: unit · module: MOD-model-catalogue
+// guards: A MODEL DEFINITION IS VALIDATED BEFORE IT IS USED; PROGRESS IS SHOWN IN THE MODEL'S OWN MEASURE
+// given: FIXTURE, whose work is pulled under a WIP limit of 3 and names no time box, with the measure `remaining items per time box` (line 5); the shipped kanban model, which names no time box, with the same measure on its line 4; and, as the counter-proof, FIXTURE with that measure and a time box of 2 weeks (line 56) in place of its WIP limit (line 55)
+// input: modelFindings of each changed text
+// expect: FIXTURE one error, on line 5, and kanban one error, on line 4, each naming PROGRESS IS SHOWN IN THE MODEL'S OWN MEASURE — a measure per time box does not fit work without a time box —; the counter-proof no finding
+test("modelFindings — the measure remaining items per time box in pulled work that names no time box is an error", () => {
+  const perTimeBox = replaced(5, "measure: items per state over time", "measure: remaining items per time box");
+  assert.deepEqual(findingsOf(perTimeBox), [[5, "error", MEASURE]]);
+
+  const kanban = fileText(modelPath("kanban"));
+  assert.ok(kanban.includes("\nmeasure: items per state over time\n"), "the shipped kanban model measures items per state");
+  const kanbanPerTimeBox = kanban.replace("\nmeasure: items per state over time\n", "\nmeasure: remaining items per time box\n");
+  assert.deepEqual(findingsOf(kanbanPerTimeBox, modelPath("kanban")), [[4, "error", MEASURE]]);
+
+  const timeBoxed = fromLines(linesOf(perTimeBox).map((line, at) =>
+    (at === 54 ? "| WIP limit | — |" : at === 55 ? "| Time box | 2 weeks |" : line)));
+  assert.equal(linesOf(perTimeBox)[54], "| WIP limit | 3 |", "line 55 of FIXTURE");
+  assert.equal(linesOf(perTimeBox)[55], "| Time box | — |", "line 56 of FIXTURE");
+  assert.deepEqual(findingsOf(timeBoxed), [], "counter-proof: with a time box, the measure per time box fits");
 });
 
 // TST-476017 · level: unit · module: MOD-model-catalogue

@@ -70,9 +70,7 @@ const lineOfPairedBridge = (page) => byClass(page, "settings-bridge")[0];
 // guards: A BROWSER SETTING IS TESTED AND CLEARED WHERE IT IS SHOWN; UC-042
 // given: the paired Bridge stored as the setting `bridge`, and a Bridge that answers
 // input: the Settings page is drawn; Test on the line of the paired Bridge
-// expect: the line has a Test and still its Change and Clear; drawing the page makes no request; Test requests exactly /v1/pair and /v1/agents at the
-//   stored address with the stored token in the protocol header; the line then says "Works. Last successful test:" and the test is kept as
-//   `last-test:bridge` with the outcome "working"
+// expect: the line has a Test and still its Change and Clear; drawing the page makes no request; Test requests exactly /v1/pair and /v1/agents at the stored address with the stored token in the protocol header; the line then says "Works. Last successful test:" and the test is kept as `last-test:bridge` with the outcome "working"
 test("Settings — the paired Bridge is tested at its own address with its own token, and the line says it works", async (t) => {
   const store = freshStore();
   writeSetting(store, "bridge", PAIRED);
@@ -94,8 +92,7 @@ test("Settings — the paired Bridge is tested at its own address with its own t
 // guards: A BROWSER SETTING IS TESTED AND CLEARED WHERE IT IS SHOWN; UC-042
 // given: the paired Bridge, and a Bridge that refuses its token
 // input: Test on the line of the paired Bridge
-// expect: the line says "Refused." and names that the Bridge refused the token; the test is kept as `last-test:bridge` with the outcome "refused"
-//   (counter-proof of the case above: a test that cannot fail checks nothing)
+// expect: the line says "Refused." and names that the Bridge refused the token; the test is kept as `last-test:bridge` with the outcome "refused" (counter-proof of the case above: a test that cannot fail checks nothing)
 test("Settings — a Bridge that refuses the token is shown as refused", async (t) => {
   const store = freshStore();
   writeSetting(store, "bridge", PAIRED);

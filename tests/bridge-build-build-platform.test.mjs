@@ -15,7 +15,8 @@
 // npm (it "installs" a fake electron-builder, and on request a compiled addon), electron-builder (it reads the configuration it is given and writes the files
 // that configuration names, with an unpacked app), and the platform's verifiers codesign, spctl, xcrun and powershell. The packaged app is a small program that
 // does what the Bridge does at start — it reads its settings from the per-user data folder below its home and opens the tunnels with MOD-tunnels — so the tunnel
-// check runs for real, against its own test SSH server on loopback. The checkout is a made-up git repository. Nothing reaches the network, and no test sleeps.
+// check runs for real, against its own test SSH server on loopback. A case that checks only how the app is started gives it an app that records its arguments
+// and ends, so that the build ends with the app's end. The checkout is a made-up git repository. Nothing reaches the network, and no test sleeps.
 // Each test states its given / input / expect before it runs. The counter-proofs are recorded in the pull request.
 
 import test from "node:test";
@@ -138,6 +139,11 @@ http.createServer((_request, response) => { response.writeHead(401); response.en
 import(${JSON.stringify(pathToFileURL(join(ROOT, "src", "tunnels", "index.mjs")).href)}).then(({ openTunnels }) => openTunnels(path.dirname(file), settings.tunnels, settings.port));
 `;
 
+// A packaged app that records the arguments it is started with and ends with code 0, opening nothing: the tunnel check then ends as soon as it sees the app end.
+const RECORDING_APP = `#!/usr/bin/env node
+require("node:fs").appendFileSync(process.env.FAKE_LOG, JSON.stringify({ tool: "app", args: process.argv.slice(2) }) + "\\n");
+`;
+
 // The platform's verifiers. With FAKE_TAMPER a verifier is the point where the detached signature of a file changes after it was written.
 const FAKE_VERIFIER = `#!/usr/bin/env node
 const fs = require("node:fs"), path = require("node:path");
@@ -150,8 +156,9 @@ if (tool === "powershell") console.log(process.env.FAKE_NO_NAME ? "Valid" : "Val
 
 const executable = (path, content) => { writeFileSync(path, content); chmodSync(path, 0o755); };
 
-// One run's setting: the fakes on the PATH, the secrets of the platform in the environment, and the checkout, a git repository at the tag.
-function setting(platform, { env = {} } = {}) {
+// One run's setting: the fakes on the PATH, the secrets of the platform in the environment, and the checkout, a git repository at the tag. `app` is the
+// packaged app's program, the one that opens the tunnels where none is given.
+function setting(platform, { env = {}, app = fakeApp() } = {}) {
   const root = mkdtempSync(join(tmpdir(), "bridge-build-platform-"));
   const bin = join(root, "bin");
   const configs = join(root, "configs");
@@ -159,7 +166,7 @@ function setting(platform, { env = {} } = {}) {
   mkdirSync(configs);
   executable(join(bin, "npm"), FAKE_NPM);
   executable(join(root, "fake-builder"), FAKE_BUILDER);
-  executable(join(root, "fake-app"), fakeApp());
+  executable(join(root, "fake-app"), app);
   for (const tool of ["codesign", "spctl", "xcrun", "powershell"]) executable(join(bin, tool), FAKE_VERIFIER);
 
   const checkout = join(root, "checkout");
@@ -291,14 +298,19 @@ test("buildPlatform — a .node file in a package a shipped package depends on g
 
 // TST-961009 · level: unit · module: MOD-bridge-build
 // guards: THE BRIDGE IS ONE FILE PER PLATFORM; UC-044
-// given: a Linux build and a macOS build, the packaged app of each a program that records the arguments it is started with
+// given: a Linux build and a macOS build, the packaged app of each a program that records the arguments it is started with and then ends with code 0, opening no tunnel, so that each build ends when the app ends and not at the tunnel check's limit of 60 s (the tunnels are TST-961005's)
 // input: buildPlatform for each; the tunnel check starts the packaged app
-// expect: on Linux the app is started with --no-sandbox (a runner's unpacked chrome-sandbox is not set-user-id root, and Electron then refuses to start; the check measures the tunnels, not the sandbox); on macOS it is started without arguments
+// expect: on Linux the app is started with --no-sandbox (a runner's unpacked chrome-sandbox is not set-user-id root, and Electron then refuses to start; the check measures the tunnels, not the sandbox); on macOS it is started without arguments; each build then rejects with TunnelCheckFailed for the app's end, code 0
 // Planted fault: starting the Linux app without the argument, as the first real nightly run did (SUID sandbox helper not configured), or passing it on macOS too, fails.
 test("buildPlatform — the tunnel check starts the packaged Linux app without Electron's sandbox, and no other app with an argument", async () => {
   const started = async (platform) => {
-    const run = setting(platform);
-    try { await run.build(); return run.calls().filter((call) => call.tool === "app").map((call) => call.args); } finally { run.settle(); }
+    const run = setting(platform, { app: RECORDING_APP });
+    try {
+      const error = await rejection(run.build());
+      assert.equal(error.name, "TunnelCheckFailed", platform);
+      assert.match(error.reason, /^the packaged app ended with code 0\b/, platform);
+      return run.calls().filter((call) => call.tool === "app").map((call) => call.args);
+    } finally { run.settle(); }
   };
   assert.deepEqual(await started("linux"), [["--no-sandbox"]]);
   assert.deepEqual(await started("macos"), [[]]);

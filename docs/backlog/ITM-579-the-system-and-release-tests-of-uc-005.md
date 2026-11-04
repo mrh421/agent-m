@@ -23,7 +23,7 @@ origin:
 
 ## Outcome
 
-UC-005 has no system test and no release test: `tests/system-uc-005*` and `tests/release-uc-005*` do not exist. UC-006 has them (ITM-371), and so does UC-008 (ITM-372).
+UC-005 has no system test and no release test: `tests/system-uc-005*` and `tests/release-uc-005*` do not exist, while `tests/system-uc-006-approve-spec-change.test.mjs` does.
 
 ## Acceptance
 

@@ -1,9 +1,9 @@
 // A SPEC change entry beside the section it replaces (ITM-339) — MOD-spec-changes, as docs/architecture/MOD-spec-changes.md states
 // it: `queues` derives, besides open, approved and in SPEC, the states `stale` — a record names a proposal or a SPEC section whose
-// blob is no longer current — and `waiting for its anchor` — the anchor is not in the target and an earlier entry of the queue
-// creates it —, and `createdBy`, the number of that entry; and `entryView(queue, entry, snapshot)` gives what the reviewer sees: the
+// blob is no longer current — and `waiting for its anchor` — the anchor is not in the target and an entry of a queue, not in SPEC,
+// creates it —, and `createdBy`, that entry as { queue, entry }; and `entryView(queue, entry, snapshot)` gives what the reviewer sees: the
 // section that holds now beside the proposal, `null` for a new one, with their blobs and their difference, the rationale, the impact
-// list of every name the proposal changes, withdraws or adds with what references it, the state and `createdBy`. openQueueOf,
+// list of every name the proposal changes, withdraws or adds with what references it, the state and `createdBy`.
 // proposeSection, saveEntry, acceptEntries, applyApproved and the rest of the module are not part of ITM-339 and are not tested here.
 // Run: node --test tests/spec-changes-entry-view.test.mjs
 //
@@ -25,8 +25,8 @@
 //     snapshot cannot read gives no evidence, and the entry keeps the state ITM-234 derived (open, or approved by the record's name).
 //   - An entry a decision row names is in SPEC, whatever else the snapshot shows (stale and waiting for its anchor are for entries
 //     not decided yet), and nobody creates its anchor.
-//   - An earlier entry is one above it in the queue's index, and it creates an anchor when its proposal holds that heading as a section
-//     (a heading line outside fenced code, not a mention of it), unless it has the same anchor itself; of several, the first creates it.
+//   - An entry of any queue, not in SPEC, creates an anchor when its proposal holds that heading as a section (a heading line outside fenced
+//     code, not a mention of it), unless it has the same anchor itself; of several, the first in the order of the queues and their indexes creates it.
 //   - The target of an entry is the file its own row names (Datei); the queue's line "Zieldatei aller Einträge" is Queue.target and finds no
 //     section: a queue written in another repository names the file there, products/<name>/SPEC.md, which a product's snapshot lacks.
 //   - An entry with a record is judged by the record, an entry without one by its anchor: a record that names the proposal's current
@@ -246,7 +246,7 @@ test("queues — an entry whose proposal changed after it was approved reads sta
 // guards: A QUEUE IS ACCEPTED IN ITS ORDER; UC-006
 // given: a queue whose entry 01 replaces "## 1. Reading" with section 1 followed by a section "## 1a. Added", and whose entry 02 starts with "## 1a. Added", a heading the SPEC does not hold; and, to show the same call giving open, the SPEC with that section in it
 // input: queues(snapshot) for each
-// expect: with the section in the SPEC both entries open with createdBy null; without it entry 01 open with createdBy null and entry 02 waiting for its anchor with createdBy 1
+// expect: with the section in the SPEC both entries open with createdBy null; without it entry 01 open with createdBy null and entry 02 waiting for its anchor with createdBy { queue, entry 1 }
 test("queues — an entry whose anchor an earlier entry creates reads waiting for its anchor, createdBy naming it", async () => {
   const creator = entry(1, "## 1. Reading", PROPOSAL + ADDED);
   const waiting = entry(2, "## 1a. Added", ADDED_CHANGED);
@@ -254,21 +254,21 @@ test("queues — an entry whose anchor an earlier entry creates reads waiting fo
     .map((e) => [e.number, e.state, e.createdBy]);
   // Known positive: with the heading in the SPEC, the second entry replaces a section that is there.
   assert.deepEqual(await found(SPEC_WITH_ADDED), [[1, "open", null], [2, "open", null]]);
-  assert.deepEqual(await found(SPEC), [[1, "open", null], [2, "waiting for its anchor", 1]]);
+  assert.deepEqual(await found(SPEC), [[1, "open", null], [2, "waiting for its anchor", { queue: QUEUE, entry: 1 }]]);
 });
 
 // TST-472967 · level: unit · module: MOD-spec-changes
 // guards: A QUEUE IS ACCEPTED IN ITS ORDER; UC-006
 // given: the two proposals of the test above, to show the same call finding the entry that waits; then the same two in the other order of the queue's index (the entry that starts with "## 1a. Added" is entry 01, the one that holds the heading is entry 02); and two entries that both start with "## 3. Deleting", which the SPEC does not hold, and whose proposals both hold it
 // input: queues(snapshot) for each
-// expect: in the first, entry 02 waits for entry 01; in the other two no entry waits and none is created by another — a later entry does not create an earlier one's anchor, and an entry with the same anchor creates nothing for it: all four open, createdBy null
-test("queues — only an earlier entry with another anchor creates an anchor", async () => {
+// expect: in the first, entry 02 waits for entry 01; in the second entry 01 waits for entry 02 — any entry not in SPEC with another anchor creates it, in whichever queue, an earlier or a later one —; in the third an entry with the same anchor creates nothing for it: both open, createdBy null
+test("queues — only an entry with another anchor creates an anchor, earlier or later", async () => {
   const states = async (entries) => (await queues(snapshotOf(repositoryFiles({ entries }))))[0].entries.map((e) => [e.number, e.state, e.createdBy]);
   // Known positive: the earlier entry holds the heading, and the later one waits for it.
   assert.deepEqual(await states([entry(1, "## 1. Reading", PROPOSAL + ADDED), entry(2, "## 1a. Added", ADDED_CHANGED)]),
-    [[1, "open", null], [2, "waiting for its anchor", 1]]);
+    [[1, "open", null], [2, "waiting for its anchor", { queue: QUEUE, entry: 1 }]]);
   assert.deepEqual(await states([entry(1, "## 1a. Added", ADDED_CHANGED), entry(2, "## 1. Reading", PROPOSAL + ADDED)]),
-    [[1, "open", null], [2, "open", null]]);
+    [[1, "waiting for its anchor", { queue: QUEUE, entry: 2 }], [2, "open", null]]);
   assert.deepEqual(await states([entry(1, "## 3. Deleting", DELETING), entry(2, "## 3. Deleting", DELETING.replace("whole", "entirely"))]),
     [[1, "open", null], [2, "open", null]]);
 });
@@ -287,13 +287,13 @@ test("queues — what cannot be read gives no evidence, and the entry keeps the 
 
   // Known positive: with the target and the record's text, the same entries read stale, open and waiting for its anchor.
   const read = (await queues(snapshotOf(repositoryFiles({ entries, records: [wouldBeStale] }))))[0].entries;
-  assert.deepEqual(read.map((e) => [e.state, e.createdBy]), [["stale", null], ["open", null], ["waiting for its anchor", 2]]);
+  assert.deepEqual(read.map((e) => [e.state, e.createdBy]), [["stale", null], ["open", null], ["waiting for its anchor", { queue: QUEUE, entry: 2 }]]);
 
   const noTarget = (await queues(snapshotOf(repositoryFiles({ spec: null, entries, records: [wouldBeStale] }))))[0].entries;
   assert.deepEqual(noTarget.map((e) => [e.state, e.createdBy]), [["approved", null], ["open", null], ["open", null]]);
 
   const unreadable = (await queues(snapshotOf(repositoryFiles({ entries }), [wouldBeStale.path])))[0].entries;
-  assert.deepEqual(unreadable.map((e) => [e.state, e.createdBy]), [["approved", null], ["open", null], ["waiting for its anchor", 2]],
+  assert.deepEqual(unreadable.map((e) => [e.state, e.createdBy]), [["approved", null], ["open", null], ["waiting for its anchor", { queue: QUEUE, entry: 2 }]],
     "a record the snapshot cannot read is no evidence against the entry that the record's name approves");
 });
 
@@ -301,7 +301,7 @@ test("queues — what cannot be read gives no evidence, and the entry keeps the 
 // guards: A STALE APPROVAL IS NOT APPLIED; A QUEUE IS ACCEPTED IN ITS ORDER
 // given: four entries, two of them decided, that the records and the SPEC would make stale or waiting if they were not: entry 01 on "## 2. Writing", decided, whose record names a section that is not the one that holds; entry 02 on "## 1. Reading", not decided, whose proposal creates "## 1a. Added" and "## 1b. Also"; entry 03 on "## 1a. Added", decided, whose anchor the SPEC does not hold; entry 04 on "## 1b. Also", not decided, whose anchor the SPEC does not hold either
 // input: queues(snapshot)
-// expect: entries 01 and 03 in SPEC with createdBy null — a decision row decides the state —, entry 02 open with createdBy null, and, to show the same call finding what waits, entry 04 waiting for its anchor with createdBy 2
+// expect: entries 01 and 03 in SPEC with createdBy null — a decision row decides the state —, entry 02 open with createdBy null, and, to show the same call finding what waits, entry 04 waiting for its anchor with createdBy { queue, entry 2 }
 test("queues — an entry a decision row names is in SPEC, whatever else the snapshot shows", async () => {
   const writing = entry(1, "## 2. Writing", WRITING.replace("whole", "entirely"));
   const reading = entry(2, "## 1. Reading", PROPOSAL + ADDED + ALSO);
@@ -313,7 +313,7 @@ test("queues — an entry a decision row names is in SPEC, whatever else the sna
   ];
   const [queue] = await queues(snapshotOf(repositoryFiles({ entries: [writing, reading, added, also], records: decided.map((d) => d.record), decided })));
   assert.deepEqual(queue.entries.map((e) => [e.number, e.state, e.createdBy]),
-    [[1, "in SPEC", null], [2, "open", null], [3, "in SPEC", null], [4, "waiting for its anchor", 2]]);
+    [[1, "in SPEC", null], [2, "open", null], [3, "in SPEC", null], [4, "waiting for its anchor", { queue: QUEUE, entry: 2 }]]);
   assert.equal(queue.entries[0].decision, decided[0].record.path);
 });
 
@@ -326,7 +326,7 @@ test("queues — a mention of a heading is no creation of it", async () => {
   const mention = PROPOSAL + "See ## 1a. Added for more.\n\n```text\n## 1a. Added\n```\n";
   const states = async (creating) => (await queues(snapshotOf(repositoryFiles({ entries: [entry(1, "## 1. Reading", creating), entry(2, "## 1a. Added", ADDED_CHANGED)] }))))[0]
     .entries.map((e) => [e.number, e.state, e.createdBy]);
-  assert.deepEqual(await states(PROPOSAL + ADDED), [[1, "open", null], [2, "waiting for its anchor", 1]], "known positive: the heading is a section");
+  assert.deepEqual(await states(PROPOSAL + ADDED), [[1, "open", null], [2, "waiting for its anchor", { queue: QUEUE, entry: 1 }]], "known positive: the heading is a section");
   assert.deepEqual(await states(mention), [[1, "open", null], [2, "open", null]]);
 });
 
@@ -338,7 +338,7 @@ test("queues — a mention of a heading is no creation of it", async () => {
 test("queues — of several earlier entries that hold a heading, the first creates it", async () => {
   const entries = [entry(1, "## 1. Reading", PROPOSAL + ADDED), entry(2, "## 2. Writing", WRITING + "\n" + ADDED), entry(3, "## 1a. Added", ADDED_CHANGED)];
   const [queue] = await queues(snapshotOf(repositoryFiles({ entries })));
-  assert.deepEqual(queue.entries.map((e) => [e.number, e.state, e.createdBy]), [[1, "open", null], [2, "open", null], [3, "waiting for its anchor", 1]]);
+  assert.deepEqual(queue.entries.map((e) => [e.number, e.state, e.createdBy]), [[1, "open", null], [2, "open", null], [3, "waiting for its anchor", { queue: QUEUE, entry: 1 }]]);
 });
 
 // TST-472972 · level: unit · module: MOD-spec-changes
@@ -361,13 +361,13 @@ test("queues — a record that names no section does not approve the section tha
 // guards: A STALE APPROVAL IS NOT APPLIED; A QUEUE IS ACCEPTED IN ITS ORDER; UC-006
 // given: entry 01 on "## 1. Reading", whose proposal creates "## 1a. Added", and entry 02 on "## 1a. Added", a heading the SPEC does not hold, with a record under its proposal's current blob that names the section as entry 01 will write it
 // input: queues(snapshot)
-// expect: entry 01 open with createdBy null; entry 02 approved, with the record as its record and createdBy 1 — it is approved, no section holds now to compare the record with, and it comes after entry 01
+// expect: entry 01 open with createdBy null; entry 02 approved, with the record as its record and createdBy { queue, entry 1 } — it is approved, no section holds now to compare the record with, and it comes after entry 01
 test("queues — an entry whose record names its current proposal is approved though an earlier entry creates its anchor", async () => {
   const creating = entry(1, "## 1. Reading", PROPOSAL + ADDED);
   const after = entry(2, "## 1a. Added", ADDED_CHANGED);
   const approval = record(after, { section: ADDED });
   const [queue] = await queues(snapshotOf(repositoryFiles({ entries: [creating, after], records: [approval] })));
-  assert.deepEqual(queue.entries.map((e) => [e.number, e.state, e.createdBy]), [[1, "open", null], [2, "approved", 1]]);
+  assert.deepEqual(queue.entries.map((e) => [e.number, e.state, e.createdBy]), [[1, "open", null], [2, "approved", { queue: QUEUE, entry: 1 }]]);
   assert.equal(queue.entries[1].record, approval.path);
 });
 
@@ -375,7 +375,7 @@ test("queues — an entry whose record names its current proposal is approved th
 // guards: A STALE APPROVAL IS NOT APPLIED; A QUEUE IS ACCEPTED IN ITS ORDER; NO PROPOSAL WITHOUT THE CURRENT TEXT BESIDE IT; UC-006
 // given: the entries of the "what cannot be read" test — entry 01 with a record that names an earlier section, entry 02 that creates "## 1a. Added", entry 03 that starts with it —, first in a queue whose line "Zieldatei aller Einträge" names SPEC.md, to show the states and the views they give; then in a queue whose line names products/sample/SPEC.md, the path of the SPEC where the queue was written, which the snapshot does not hold, while its three rows name SPEC.md, which it does
 // input: queues(snapshot), entryView(QUEUE, 1, snapshot) and entryView(QUEUE, 3, snapshot) for each
-// expect: the same in both: stale, open and waiting for its anchor with createdBy 2; the view of entry 01 with the section that holds now and the view of entry 03 with none; and Queue.target as the line gives it, products/sample/SPEC.md in the second
+// expect: the same in both: stale, open and waiting for its anchor with createdBy { queue, entry 2 }; the view of entry 01 with the section that holds now and the view of entry 03 with none; and Queue.target as the line gives it, products/sample/SPEC.md in the second
 test("queues and entryView — the file an entry's own row names is its target, whatever the queue's line names", async () => {
   const stale = entry(1, "## 1. Reading", PROPOSAL);
   const entries = [stale, entry(2, "## 1. Reading", PROPOSAL + ADDED), entry(3, "## 1a. Added", ADDED_CHANGED)];
@@ -384,7 +384,7 @@ test("queues and entryView — the file an entry's own row names is its target, 
     const snapshot = snapshotOf(repositoryFiles({ entries, records, targetLine }));
     const [queue] = await queues(snapshot);
     assert.equal(queue.target, targetLine);
-    assert.deepEqual(queue.entries.map((e) => [e.state, e.createdBy]), [["stale", null], ["open", null], ["waiting for its anchor", 2]], targetLine);
+    assert.deepEqual(queue.entries.map((e) => [e.state, e.createdBy]), [["stale", null], ["open", null], ["waiting for its anchor", { queue: QUEUE, entry: 2 }]], targetLine);
     assert.deepEqual((await entryView(QUEUE, 1, snapshot)).current, { text: READING, blob: gitBlob(READING) }, targetLine);
     assert.equal((await entryView(QUEUE, 3, snapshot)).current, null, targetLine);
   }
@@ -474,13 +474,13 @@ test("entryView — a proposal that touches no requirement has an empty impact l
 // guards: A QUEUE IS ACCEPTED IN ITS ORDER; A STALE APPROVAL IS NOT APPLIED; UC-006
 // given: the queue of the waiting test (entry 01 creates "## 1a. Added", entry 02 starts with it), and the queue of the stale test (entry 01 with a record that names the section as it stood one wording earlier)
 // input: entryView(QUEUE, 2, ...) of the first, entryView(QUEUE, 1, ...) of the second
-// expect: the waiting entry's view — state waiting for its anchor, createdBy 1, no current section (the SPEC does not hold one), the added requirement of its proposal in the impact list; the stale entry's view — state stale, the section that holds now, createdBy null
+// expect: the waiting entry's view — state waiting for its anchor, createdBy { queue, entry 1 }, no current section (the SPEC does not hold one), the added requirement of its proposal in the impact list; the stale entry's view — state stale, the section that holds now, createdBy null
 test("entryView — the state and createdBy of the entry are in the view", async () => {
   const creator = entry(1, "## 1. Reading", PROPOSAL + ADDED);
   const waiting = entry(2, "## 1a. Added", ADDED_CHANGED);
   const waits = await entryView(QUEUE, 2, snapshotOf(repositoryFiles({ entries: [creator, waiting], extra: REFERENCES })));
   assert.equal(waits.state, "waiting for its anchor");
-  assert.equal(waits.createdBy, 1);
+  assert.deepEqual(waits.createdBy, { queue: QUEUE, entry: 1 });
   assert.equal(waits.current, null);
   assert.deepEqual(waits.impact, [{ name: ADDED_RULE, change: "added", referencedBy: [] }]);
 

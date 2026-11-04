@@ -46,7 +46,6 @@ uses:
   - MOD-resource-list.resourceStrategies
   - MOD-work-plans.workStrategies
   - MOD-run-planner.runStrategies
-  - MOD-product-process.processStrategies
   - MOD-test-schedule.scheduleStrategies
   - MOD-result-records.resultStrategies
   - MOD-issue-handling.issueStrategies
@@ -59,10 +58,6 @@ uses:
   - MOD-runtimes.runOnTab
   - MOD-runtimes.routesFor
   - MOD-runtimes.handOverJob
-  - MOD-work-plans.startable
-  - MOD-work-plans.itemStates
-  - MOD-product-process.holdsRole
-  - MOD-progress-measures.productFacts
   - MOD-runtimes.liveState
   - MOD-runtimes.jobLog
   - MOD-runtimes.cancelJob
@@ -82,7 +77,7 @@ provides:
   - currentJob
   - recordingSchema
   - recordingOf
-  - handOverStrategies
+  - loadHandOverStrategies
   - endpointLacks
   - endpointsOffered
   - spawnEndpointJob
@@ -99,7 +94,7 @@ with the place where it processes data (`THE PAGE NAMES WHERE IT SENDS`); it hol
 it sends each message as a job of its one kind, `converse`, on every page, with the page as its context only, run in
 this tab without a job record; it shows the answer, and leads a draft to the review page that shows it; it carries out
 a hand-over the participant proposes without a further click — in this tab where the kind's result waits for the person,
-else queued where Process's start rules let it start — and follows a queued one until it has ended; and, where the instance switches recording on, it appends every message to a conversation
+else queued as a job of the endpoint or CLI session itself — and follows a queued one until it has ended; and, where the instance switches recording on, it appends every message to a conversation
 record (`A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON`, `A RECORDED CONVERSATION IS KEPT WHERE IT
 WAS HELD`).
 
@@ -115,7 +110,7 @@ uses neither the frame nor a view (`MODULES DEPEND ON EACH OTHER WITHOUT A CYCLE
   named with.
 - `send.mjs` — preparing and running a message, or a hand-over of a kind whose result waits for the person, as a job in
   this tab.
-- `hand-over.mjs` — a proposed hand-over assessed against the start rules, and queued.
+- `hand-over.mjs` — a proposed hand-over assessed for its route, and queued.
 - `follow.mjs` — a handed-over job followed by its record and its live state, its log, and *Stop*.
 - `record.mjs` — the conversation record and the recording switch.
 - `conversation.schema.md`, `recording.schema.md` — the schemas of the two files it owns, in the schema language of
@@ -238,26 +233,22 @@ and sends nothing while the job does not
   hand-over the participant proposed (UC-049 4a) is shown with its kind, what it works on and its task, and goes on at
   once: the person's *Send* was the request, and no further click is asked for. Where the kind is not `converse` itself, its
   `review` is `person` and `eligible` finds the participant able to do it, it runs in this tab, attended, as a message runs, prepared with
-  `prepareJob` for that kind: its parameters are the subject's `paramsFor` less `page`, with what MOD-job-runner's
+  `prepareJob` for that kind — for a kind with reviewers, with the participant itself as its one reviewer and `selfReview`
+  set, since the change is described in the prompt bar (`NO REVIEWER IS THE DRAFTER`) —: its parameters are the subject's `paramsFor` less `page`, with what MOD-job-runner's
   `handOverParams` gives for what it works on, its task as `instruction`, the conversation so far, the subject's
   `entry` and `refuses`; nothing is written, and its result is kept as the `ConversationDraft` of that kind, which
   *Review the draft* leads to (UC-049 4a.1); the person saves it there (UC-019 steps 8, 9). A finding that keeps it from
   starting — a change of requirements without the person's own source among them (`THE PERSON WHO PROMPTS IS A
   SOURCE`), or a kind that takes no instruction, which MOD-job-runner's `taskRefusal` refuses since the task would reach
-  no prompt — is named, and nothing runs. Any other hand-over is shown with the participant, its processing place and the
-  route it would take, which `routesFor` gives, and queued at once where nothing keeps it from starting (UC-049 4a.2).
+  no prompt — is named, and nothing runs. Any other hand-over — the conversation itself handed on among them — is shown
+  with the participant, its processing place and the route it would take, which `routesFor` gives, and queued at once as
+  a job of the endpoint or CLI session itself where nothing keeps it from starting (UC-049 4a.2).
   Its job takes, beside what the hand-over works on, only the `source` that the subject's `paramsFor` gives — no other
   parameter, so that no message and no page text enters the job's record (`A CONVERSATION IS WRITTEN TO A REPOSITORY
-  ONLY WHEN RECORDING IS ON`). For a kind of the product's workflow, it is queued only for a participant of
-  the instance's list that the hand-over names, never for the endpoint or CLI session itself, and, for a hand-over that
-  works on an item of the backlog or a step of the plan (`ITM-<n>`), only when
-  MOD-work-plans' `startable`, on the item states `itemStates` derives from the facts MOD-progress-measures'
-  `productFacts` reads, finds no reason — not selected for its team's sprint, a requirement or use case not accepted,
-  the work-in-progress limit, a gate not recorded — and MOD-product-process' `holdsRole` finds that participant in the
-  implementing role of the item's role assignment; otherwise the reasons are shown and nothing is queued (`NOTHING IS
-  IMPLEMENTED BEFORE IT IS ACCEPTED`, `A JOB GOES ONLY TO A HOLDER OF ITS ROLE`). It reads those facts only for such a
-  hand-over; for one that works on no item or step — a job that is an endpoint's own among them —, no start rule applies,
-  its job's own preconditions decide when it is prepared, and of the product it reads only the default branch: its head,
+  ONLY WHEN RECORDING IS ON`). No start rule of the product's process applies to it: its kind's own preconditions
+  decide when it is prepared — for a hand-over that works on an item of the backlog or a step of the plan (`ITM-<n>`),
+  MOD-approvals' `rests-on-accepted` refuses it while a requirement or use case the item names is not accepted (`NOTHING
+  IS IMPLEMENTED BEFORE IT IS ACCEPTED`) —, and of the product it reads only the default branch: its head,
   on which the job's record is committed, its paths — whether it holds the job workflow, and the records under
   `docs/jobs/`, against whose identifiers the job's identifier is new, without reading a record — and its visibility,
   for `routesFor`. It queues and starts the job with
@@ -267,8 +258,8 @@ and sends nothing while the job does not
   `liveState` until it has ended — *waiting for GitHub Actions* with the run's address, or for the Bridge —, and shows
   its log's answer and the commits its end record names; *Stop* then cancels it with `cancelJob`. It says above the
   selector when the conversation is recorded (UC-049 6c). Crosses the network: to the participant through its route, and
-  to the repository servers to read the subject, the participants, the switch and, for a hand-over that works on an
-  item or step, the facts, to append the record, and to queue and start a hand-over. A failure of the participant's route is shown in the conversation by name. A hand-over
+  to the repository servers to read the subject, the participants and the switch, to append the record, and to queue
+  and start a hand-over. A failure of the participant's route is shown in the conversation by name. A hand-over
   the product cannot take yet says what is missing and links where it is set up (UC-049 4c): while the product has no
   job workflow — the CI route unavailable, `routesFor` naming its files — the route `settings` through `go`, whose
   product section installs it; for a run ended `not run` for a missing secret, the server's page of the repository's
@@ -286,8 +277,8 @@ and sends nothing while the job does not
 - `spawnEndpointJob({ kind, task, participant, store, instance, page, ofProduct, conversation, source, instanceSnapshot?
   }) -> Promise<{ id, path, commit, person } | { refused: string, needsWorkflow: boolean }>` — the job that is an
   endpoint's own, on GitHub Actions, on a person's click: assessed and queued as a proposed hand-over is, working on the
-  repository of `page`, with `task` travelling in the workflow's inputs, on the server's own runners. It works on no item
-  or step of the plan, so it reads none of the product's facts: of the product, its default branch — its head, its
+  repository of `page`, with `task` travelling in the workflow's inputs, on the server's own runners. It reads none of
+  the product's facts: of the product, its default branch — its head, its
   paths, its visibility —, and of the instance its participant list and the restricted sources' places, which the job's
   preparation takes; `instanceSnapshot` is the instance's default branch where the bar read it already, for the
   recording switch, so that it is not read again. Where no CI route can be taken — no job workflow, or an endpoint
@@ -308,8 +299,9 @@ and sends nothing while the job does not
   page's form.
 - `recordingOf(instance: Snapshot) -> Promise<boolean>` — whether the instance records conversations; `false` for a missing
   file or key.
-- `handOverStrategies: Strategies[]` — the strategy sets a hand-over of the bar is prepared with in the tab, which it
-  hands to the frame as a view hands the strategies of its kinds. These are the sets the job workflow registers in CI
+- `loadHandOverStrategies() -> Promise<Strategies[]>` — the strategy sets a hand-over of the bar is prepared with in the
+  tab, imported when first asked for, which it hands to the frame as a view hands the strategies of its kinds; a page that
+  draws the bar imports none of their modules, nor those of sending, handing over and following a job before the person acts. These are the sets the job workflow registers in CI
   (MOD-workflow-entries, Uses), since a handed-over job runs on CI or on a Bridge.
 
 `Store` is MOD-browser-store's; `Host` and `Snapshot` are MOD-repository-hosts'; `Schema` is MOD-documents'.
@@ -333,18 +325,18 @@ records under `docs/conversations/`. It keeps the conversation in the tab's valu
 - MOD-documents.loadSchema, MOD-documents.readDocument, MOD-documents.writeDocument, MOD-documents.readRegister — its two
   files and the participant list.
 - MOD-participant-list.Participant — the shape an endpoint or a CLI session is handed to the job runner in;
-  MOD-participant-list.participantSchema, MOD-participant-list.participantsOf — the participants a hand-over of a kind
-  of the product's workflow is checked against; MOD-participant-list.eligible, MOD-job-catalogue.kindOf — which of the
+  MOD-participant-list.participantSchema, MOD-participant-list.participantsOf — the instance's participants, which the
+  offer and `routesFor` read; MOD-participant-list.eligible, MOD-job-catalogue.kindOf — which of the
   offered can do `converse`, and whether the participant can do a handed-over kind in this tab.
 - MOD-job-runner.prepareJob, MOD-job-runner.Prepared, MOD-job-runner.JobResult — a message prepared and checked to fit,
-  and its result; MOD-job-runner.Strategies — the type of `handOverStrategies`; MOD-job-runner.handOverParams — the
+  and its result; MOD-job-runner.Strategies — the type of what `loadHandOverStrategies` gives; MOD-job-runner.handOverParams — the
   parameters a hand-over's job takes for what it works on; MOD-job-runner.taskRefusal — a hand-over run in this tab whose
   kind takes no instruction, refused.
 - MOD-approvals.approvalStrategies, MOD-spec-changes.specStrategies, MOD-artifact-edits.editStrategies,
   MOD-source-register.sourceStrategies, MOD-reuse-facts.reuseStrategies, MOD-resource-list.resourceStrategies,
-  MOD-work-plans.workStrategies, MOD-run-planner.runStrategies, MOD-product-process.processStrategies,
+  MOD-work-plans.workStrategies, MOD-run-planner.runStrategies,
   MOD-test-schedule.scheduleStrategies, MOD-result-records.resultStrategies, MOD-issue-handling.issueStrategies,
-  MOD-runtimes.routeStrategies — the sets of `handOverStrategies`.
+  MOD-runtimes.routeStrategies — the sets `loadHandOverStrategies` gives.
 - MOD-source-register.registerPaths, MOD-source-register.sourceSchemas — the entries of the instance's register, read from
   its snapshot; MOD-source-register.restrictedPlaces — over every one of them, whether or not the product links it, the
   places of the restricted sources that a message's or a hand-over's job is given (MOD-job-runner's `JobContext.places`),
@@ -352,8 +344,6 @@ records under `docs/conversations/`. It keeps the conversation in the tab's valu
   at another place (UC-049 4e). The module keeps no copy of that rule.
 - MOD-runtimes.tabContext, MOD-runtimes.runOnTab — the job's context and its run in this tab without a record;
   MOD-runtimes.routesFor, MOD-runtimes.handOverJob — the route of a hand-over, and its job queued and started;
-  MOD-work-plans.startable, MOD-work-plans.itemStates, MOD-progress-measures.productFacts, MOD-product-process.holdsRole —
-  whether a hand-over of a kind of the product's workflow may start, by the same rules as every implementation job;
   MOD-runtimes.liveState, MOD-runtimes.jobLog, MOD-runtimes.cancelJob, MOD-job-ledger.listJobs,
   MOD-job-ledger.JobRecord — a handed-over job followed, its answer, and *Stop*; MOD-job-ledger.newJobId,
   MOD-job-ledger.JobStart — the identifier and the start of the job a hand-over queues.

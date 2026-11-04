@@ -96,7 +96,7 @@ test("a valid table typed into the editor is saved as typed: the rows are handed
     await typeInto(byTag(made, "textarea")[0], schema.schema === "resources" ? `\n${RHEAD}${row}\n` : `\nThe participants.\n\n${PHEAD}${row}\n`);
     assert.equal(shownIn(made), "", shownIn(made));
     assert.equal(saveOf(made).disabled, false);
-    saveOf(made).dispatchEvent(new Event("click"));
+    saveOf(made).dispatchEvent(Object.defineProperty(new Event("click"), "isTrusted", { value: true }));
     await turn();
     assert.equal(saved.length, 1);
     assert.equal(saved[0].sections[0].rows[0].cells.Name, name, "the section holds the rows as typed");

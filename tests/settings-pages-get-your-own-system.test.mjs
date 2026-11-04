@@ -75,9 +75,7 @@ const links = (main) => byTag(main, "a").map((anchor) => anchor.href).filter((hr
 // guards: UC-014; AN INSTANCE IS A FORK OF AGENT M; THE PAGES ROOT IS THE REPOSITORY ROOT
 // given: the original dashboard akmaier/agent-m, served from https://akmaier.github.io/agent-m/docs/index.html; known positive — the same page started on the address #settings draws the route settings, not the steps
 // input: start the page on #get-your-own; the person types the GitHub name acme; then types a name GitHub does not allow, acme corp/evil, then acme again
-// expect: before a name, the page shows the four steps with Step 1 current and one link, the fork page https://github.com/akmaier/agent-m/fork; after acme the links are, in order, that fork page,
-//   https://github.com/acme/agent-m/settings/pages, https://github.com/acme/agent-m/actions and https://acme.github.io/agent-m/; after the refused name only the fork page is linked and the page says a GitHub name
-//   has letters, digits and single hyphens; after acme again the four links are back; the walk requested nothing beyond the frame's own read of the instance
+// expect: before a name, the page shows the four steps with Step 1 current and one link, the fork page https://github.com/akmaier/agent-m/fork; after acme the links are, in order, that fork page, https://github.com/acme/agent-m/settings/pages, https://github.com/acme/agent-m/actions and https://acme.github.io/agent-m/; after the refused name only the fork page is linked and the page says a GitHub name has letters, digits and single hyphens; after acme again the four links are back; the walk requested nothing beyond the frame's own read of the instance
 test("system — the name entered gives each step its exact GitHub page, and a name GitHub does not allow gives none", async () => {
   const settings = await start("#settings");
   assert.deepEqual(byClass(settings.main(), "step"), [], "known positive: the route settings has no steps");
@@ -101,9 +99,7 @@ test("system — the name entered gives each step its exact GitHub page, and a n
 // guards: UC-014
 // given: the page started on #get-your-own/owner=acme
 // input: read Step 2 and Step 4; read Step 3 and press Later
-// expect: Step 2 names "Deploy from a branch", the branch "main", the folder "/ (root)" and "Save"; Step 4 says GitHub needs about a minute before the address answers; Step 3 says the workflows are needed only for EU
-//   legal texts and for an accepted change of the instance's own SPEC without a token, and offers Later; pressing Later makes Step 4 the one current step, while the links of all four steps remain, nothing was requested and
-//   the address of the page is unchanged
+// expect: Step 2 names "Deploy from a branch", the branch "main", the folder "/ (root)" and "Save"; Step 4 says GitHub needs about a minute before the address answers; Step 3 says the workflows are needed only for EU legal texts and for an accepted change of the instance's own SPEC without a token, and offers Later; pressing Later makes Step 4 the one current step, while the links of all four steps remain, nothing was requested and the address of the page is unchanged
 test("system — the Pages choice is named, Step 3 offers Later, and Later moves on with the other steps unaffected", async () => {
   const page = await start("#get-your-own/owner=acme");
   const pages = stepTitled(page.main(), STEPS[1]).textContent;
@@ -126,8 +122,7 @@ test("system — the Pages choice is named, Step 3 offers Later, and Later moves
 // guards: UC-014; AN INSTANCE IS A FORK OF AGENT M
 // given: the page started on #get-your-own, the person's name acme entered
 // input: the address changes to #get-your-own/step=actions, as the review pages link it, with the owner named: #get-your-own/owner=acme/step=actions
-// expect: the page draws the route again with Step 3 as the one current step and the owner field holding acme; Step 3's link is https://github.com/acme/agent-m/actions; the address changing to #get-your-own/step=pages
-//   makes Step 2 the one current step
+// expect: the page draws the route again with Step 3 as the one current step and the owner field holding acme; Step 3's link is https://github.com/acme/agent-m/actions; the address changing to #get-your-own/step=pages makes Step 2 the one current step
 test("system — the address #get-your-own/step=actions opens the Actions step on a change of the address", async () => {
   const page = await start("#get-your-own");
   type(byClass(page.main(), "owner")[0], "acme");
@@ -143,8 +138,7 @@ test("system — the address #get-your-own/step=actions opens the Actions step o
 // guards: UC-014; EVERY STEP EXPLAINS ITSELF
 // given: the page started on #get-your-own/owner=acme
 // input: read the folded explanations of the four steps
-// expect: each step holds exactly one folded <details class="explain">, which is the frame's explain of its topic: Step 1 get-your-own-fork, Step 2 get-your-own-pages, Step 3 get-your-own-actions, Step 4
-//   get-your-own-open
+// expect: each step holds exactly one folded <details class="explain">, which is the frame's explain of its topic: Step 1 get-your-own-fork, Step 2 get-your-own-pages, Step 3 get-your-own-actions, Step 4 get-your-own-open
 test("system — every step carries the frame's folded explanation of its topic", async () => {
   const page = await start("#get-your-own/owner=acme");
   STEPS.forEach((title, at) => {

@@ -104,15 +104,14 @@ const OWN = 'stages:\n  - build\n\ninclude:\n  - local: ".gitlab/agent-m-tests.y
 const MERGED = 'spec:\n  inputs:\n    job:\n      default: ""\n    task:\n      default: ""\n    endpoint:\n      default: ""\n    secret:\n      default: ""\n---\n'
   + 'stages:\n  - build\n\ninclude:\n  - local: ".gitlab/agent-m-tests.yml"\n'
   + '  - local: ".gitlab/agent-m-jobs.yml"\n    inputs:\n      job: $[[ inputs.job ]]\n      task: $[[ inputs.task ]]\n      endpoint: $[[ inputs.endpoint ]]\n      secret: $[[ inputs.secret ]]\n'
+  + '  - local: ".gitlab/agent-m-main-changed.yml"\n'
   + '\nbuild:\n  stage: build\n  script:\n    - make\n';
 
 // TST-548101 · level: unit · module: MOD-settings-pages
 // guards: UC-010; UC-027; GITLAB PRODUCTS ARE SUPPORTED; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // given: a writable GitLab product whose .gitlab-ci.yml has its own stages, an include list of one entry and a job, and no job workflow
 // input: the person opens Repositories, reads the job workflow line, and clicks Install; then the page is opened on the product as committed
-// expect: the line says not installed and offers Install; Install is one product commit that writes .gitlab/agent-m-jobs.yml and a
-// .gitlab-ci.yml whose text is exactly the product's own text with the header, the entry and its three inputs added and nothing else changed;
-// on the product as committed the line says installed and offers no Install
+// expect: the line says not installed and offers Install; Install is one product commit that writes .gitlab/agent-m-jobs.yml, .gitlab/agent-m-main-changed.yml and a .gitlab-ci.yml whose text is exactly the product's own text with the header, the entry and its three inputs and the entry of .gitlab/agent-m-main-changed.yml added and nothing else changed; on the product as committed the line says installed and offers no Install
 test("TST-548101: Install adds the job workflow to a GitLab product's own .gitlab-ci.yml and keeps its other lines", async () => {
   const writes = [];
   const line = await renderLine(gitlabProduct(writes, { ".gitlab-ci.yml": OWN }));
@@ -121,7 +120,7 @@ test("TST-548101: Install adds the job workflow to a GitLab product's own .gitla
 
   await click(byClass(line, "settings-job-workflow-install")[0], true);
   assert.equal(writes.length, 1, "Install is one product commit");
-  assert.deepEqual(writes[0].files.map((file) => file.path).sort(), [".gitlab-ci.yml", ".gitlab/agent-m-jobs.yml"]);
+  assert.deepEqual(writes[0].files.map((file) => file.path).sort(), [".gitlab-ci.yml", ".gitlab/agent-m-jobs.yml", ".gitlab/agent-m-main-changed.yml"]);
   assert.equal(writes[0].files.find((file) => file.path === ".gitlab-ci.yml").text, MERGED);
 
   const committed = Object.fromEntries(writes[0].files.map((file) => [file.path, file.text]));

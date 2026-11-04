@@ -139,9 +139,7 @@ test("TST-600150 on the default branch the open requirement is the subject, with
 // guards: UC-049; UC-019; THE PERSON WHO PROMPTS IS A SOURCE
 // given: the same specification on main, whose group "1. Lending" holds A LOAN HAS A DUE DATE then A BOOK IS SHELVED and whose group "2. Membership" holds A MEMBER HAS A CARD
 // input: the group "1. Lending" opened through its spec-group-toggle control; then A BOOK IS SHELVED opened inside it; then that requirement closed; then the group closed
-// expect: group open: requirements [LOAN, SHELF] in group order, source "SRC-acme-person", draftRoute "draft";
-//         requirement open inside it: requirements [SHELF] (the narrower subject wins); requirement closed: the group again; group closed: the frame's default, draftRoute null, the page and the person's source;
-//         the group's draftRoute is "draft/subject=" followed by encodeURIComponent of its key (ITM-558)
+// expect: group open: requirements [LOAN, SHELF] in group order, source "SRC-acme-person", draftRoute "draft"; requirement open inside it: requirements [SHELF] (the narrower subject wins); requirement closed: the group again; group closed: the frame's default, draftRoute null, the page and the person's source; the group's draftRoute is "draft/subject=" followed by encodeURIComponent of its key (ITM-558)
 test("TST-600151 an open group gives the names it holds in group order, an open requirement in it narrows the subject, and closing them gives it back", async () => {
   const page = await shown();
   click(toggled(page.target, "1. Lending"));
@@ -189,8 +187,7 @@ test("TST-600152 of several open requirements the one opened last is the subject
 // guards: UC-049; UC-020
 // given: a Host whose SPEC at the tag v1.0 gives A LOAN HAS A DUE DATE the rule "Every loan is returned within fourteen days." and at main "Every loan states the date by which the book is returned."; the default branch main
 // input: the route rendered at v1.0, A LOAN HAS A DUE DATE opened, then route.subject; the same at main as the known positive
-// expect: at v1.0: draftRoute null; paramsFor gives exactly the key "page", whose text holds "v1.0", the name, the rule as it read at the tag and not the rule at main, and the product's address;
-//         at main (known positive): a draft route and the requirement as a parameter
+// expect: at v1.0: draftRoute null; paramsFor gives exactly the key "page", whose text holds "v1.0", the name, the rule as it read at the tag and not the rule at main, and the product's address; at main (known positive): a draft route and the requirement as a parameter
 test("TST-600153 at a released version the requirement as it read there is the subject, as its page alone, with no draft route", async () => {
   const onMain = await shown({ ref: "main" });
   click(named(onMain.target, LOAN));
@@ -213,8 +210,7 @@ test("TST-600153 at a released version the requirement as it read there is the s
 // guards: UC-049; UC-020
 // given: the route rendered with the key "timeline" at v1.0 and at main — a view the specification route does not draw (the key "tests" is drawn since ITM-766) — and the specification view at main with nothing opened
 // input: route.subject for each
-// expect: each is the frame's default: no kind, draftRoute null, withhold null, refuses [], title "Current requirements", paramsFor giving the key "page" whose text holds the title,
-//         the product's address and the version shown — "v1.0", "main" —, and, on the specification at main, the person's source beside it; two different versions are two different keys
+// expect: each is the frame's default: no kind, draftRoute null, withhold null, refuses [], title "Current requirements", paramsFor giving the key "page" whose text holds the title, the product's address and the version shown — "v1.0", "main" —, and, on the specification at main, the person's source beside it; two different versions are two different keys
 test("TST-600154 every other view, and the specification with nothing open, give the frame's default with the version shown", async () => {
   const tests = await shown({ key: "timeline", ref: "v1.0" });
   const audit = await shown({ key: "timeline", ref: "main" });

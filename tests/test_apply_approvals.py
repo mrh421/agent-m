@@ -138,11 +138,15 @@ class ApplyTests(unittest.TestCase):
         rc, report = ap.apply(self.r.root)
         self.assertEqual((rc, report, self.r.spec()), (0, "", SPEC))
 
-    def test_unknown_queue_is_refused_not_crashed(self):
+    # TST-1397001 · level: unit · module: MOD-spec-changes
+    # guards: WITHOUT A TOKEN, THE INSTANCE'S WORKFLOW WRITES THE CHANGE; THE REPLACED TEXT STAYS REACHABLE
+    # given: a record of kind spec naming the queue docs/spec-freigaben/missing, which the repository does not hold, beside the fixture queue
+    # input: the workflow's apply over the repository
+    # expect: the record is left alone, as applyApproved works only on records whose queue the snapshot holds: rc 0, no report, SPEC.md unchanged, no crash
+    def test_unknown_queue_is_left_alone_not_crashed(self):
         self.r.record(queue="docs/spec-freigaben/missing", proposal="docs/spec-freigaben/missing/01-x.md")
         rc, report = ap.apply(self.r.root)
-        self.assertEqual((rc, self.r.spec()), (1, SPEC))
-        self.assertIn("is not in the repository", report)
+        self.assertEqual((rc, report, self.r.spec()), (0, "", SPEC))
 
     def test_use_case_records_are_left_alone(self):
         (self.r.root / "docs/approvals/UC-001-aaaaaaaaaaaa.md").write_text(

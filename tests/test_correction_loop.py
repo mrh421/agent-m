@@ -24,7 +24,7 @@ let find = () => [];
 const standIns = {
   preconditions: { "rests-on-accepted": async () => null, "architecture-ready": async () => null },
   recipes: Object.fromEntries(["chosen-requirements", "use-cases", "chapters-for-requirements", "source-excerpt",
-    "spec-with-queues", "whole-spec", "accepted-use-cases", "chapters-for-architecture"]
+    "spec-with-queues", "whole-spec", "accepted-use-cases", "whole-architecture", "chapters-for-architecture"]
     .map((name) => [name, async () => [{ name, text: `the text of ${name}`, size: 0, sources: [], required: true }]])),
   checks: Object.fromEntries(["document-schema", "graph-checks stand-in", "candidate-classes", "requirement-form"]
     .map((name) => [name, (draft) => (name === "graph-checks stand-in" ? find(draft) : [])])),

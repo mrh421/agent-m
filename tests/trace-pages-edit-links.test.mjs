@@ -76,12 +76,12 @@ const links = (target, className) => find(target, (node) => node.localName === "
 // guards: EDITS ARE PREPARED ON THE DASHBOARD; UC-018
 // given: the specification of a library on the default branch main, with one requirement before every section, two in "## 1. Lending" and one in "## 2. Membership"
 // input: the public trace/specification route rendered at the ref main
-// expect: Edit beside each of the four requirements, in its own row, each an anchor to #requirement/name=<its name, encoded>, in the order of the SPEC
+// expect: Edit beside each of the four requirements, in its own row, each an anchor to #requirement/name=<its name, encoded>/product=<the product's address, encoded>, in the order of the SPEC
 test("TST-360001 Edit stands beside each requirement on the default branch and leads to the requirement's edit route", async () => {
   const target = await render(host(), "main");
   const edits = links(target, "requirement-edit");
   assert.deepEqual(edits.map((node) => node.textContent), ["Edit", "Edit", "Edit", "Edit"]);
-  assert.deepEqual(edits.map((node) => node.getAttribute("href")), [OUTSIDE, LOAN, SHELF, CARD].map((name) => `#requirement/name=${encodeURIComponent(name)}`));
+  assert.deepEqual(edits.map((node) => node.getAttribute("href")), [OUTSIDE, LOAN, SHELF, CARD].map((name) => `#requirement/name=${encodeURIComponent(name)}/product=${encodeURIComponent("https://github.com/acme/library")}`));
   for (const [edit, name] of edits.map((node, at) => [node, [OUTSIDE, LOAN, SHELF, CARD][at]])) {
     const row = edit.parentNode.parentNode;
     assert.equal(row.localName, "tr");
@@ -93,21 +93,20 @@ test("TST-360001 Edit stands beside each requirement on the default branch and l
 // guards: EDITS ARE PREPARED ON THE DASHBOARD; UC-018
 // given: the same specification on the default branch, whose groups are Lending and Membership
 // input: the route rendered at main
-// expect: + Requirement once for each of the two sections of the SPEC, an anchor to #requirements/section=<the section's heading line, encoded> — "## 1. Lending", "## 2. Membership" —, in a list
-//         beside the tree, in no group of it, each in an item that names its section; none for the requirement before the first section
+// expect: + Requirement once for each of the two sections of the SPEC, an anchor to #requirements/section=<the section's heading line, encoded>/product=<the product's address, encoded> — "## 1. Lending", "## 2. Membership" —, in a list beside the tree, in no group of it, each in an item that names its section; none for the requirement before the first section
 test("TST-360002 + Requirement stands once for each SPEC section, beside the tree, and opens requirements/new for that section", async () => {
   const target = await render(host(), "main");
   const groups = find(target, (node) => node.localName === "section" && node.className.includes("spec-group"));
   assert.equal(groups.length, 2, "known positive: the tree holds the two groups of the group file");
   const added = links(target, "requirement-new");
   assert.deepEqual(added.map((node) => node.textContent), ["+ Requirement", "+ Requirement"]);
-  assert.deepEqual(added.map((node) => node.getAttribute("href")), ["## 1. Lending", "## 2. Membership"].map((heading) => `#requirements/section=${encodeURIComponent(heading)}`));
+  assert.deepEqual(added.map((node) => node.getAttribute("href")), ["## 1. Lending", "## 2. Membership"].map((heading) => `#requirements/section=${encodeURIComponent(heading)}/product=${encodeURIComponent("https://github.com/acme/library")}`));
   for (const group of groups) assert.deepEqual(links(group, "requirement-new"), [], "no group holds a + Requirement");
   const list = find(target, (node) => node.localName === "ul" && node.className.includes("spec-add-requirements"));
   assert.equal(list.length, 1, "one list holds them");
   assert.deepEqual(find(list[0], (node) => node.localName === "li").map((item) => item.textContent), ["1. Lending + Requirement", "2. Membership + Requirement"]);
   assert.equal(find(list[0], (node) => node.localName === "a" && node.className.includes("requirement-new")).length, 2);
-  assert.equal(find(target, (node) => node.localName === "a").length, 10, "four Edit, two + Requirement, the Gaps link, the links to all SPEC change entries and to their history and Arrange, nothing else");
+  assert.equal(find(target, (node) => node.localName === "a").length, 9, "four Edit, two + Requirement, the Gaps link, the links to the history of SPEC changes and Arrange, nothing else");
 });
 
 // TST-360003 · level: unit · module: MOD-trace-pages
@@ -145,8 +144,7 @@ test("TST-360004 the default branch is the Host's own, and a Host that cannot na
 // guards: EDITS ARE PREPARED ON THE DASHBOARD; UC-019
 // given: the specification of the library on its default branch, with four requirements
 // input: the route rendered at main, then each requirement opened through its requirement-name control
-// expect: each of the four opened requirements shows its detail (a section.requirement-detail headed by its name) and Edit beside its name as the known positive; no opened requirement offers Change by prompt:
-//         no anchor of the class requirement-prompt, no text "Change by prompt" on the page, no anchor whose address ends with /prompt=1
+// expect: each of the four opened requirements shows its detail (a section.requirement-detail headed by its name) and Edit beside its name as the known positive; no opened requirement offers Change by prompt: no anchor of the class requirement-prompt, no text "Change by prompt" on the page, no anchor whose address ends with /prompt=1
 test("TST-399001 an opened requirement offers no Change by prompt", async () => {
   const target = await render(host(), "main");
   const requirements = find(target, (node) => node.localName === "button" && node.className.includes("requirement-name"));
@@ -164,8 +162,7 @@ test("TST-399001 an opened requirement offers no Change by prompt", async () => 
 // guards: EDITS ARE PREPARED ON THE DASHBOARD; UC-019
 // given: the same specification on the default branch, whose Lending group holds LOAN then SHELF and whose Membership group holds CARD
 // input: the route rendered at main, then each group opened through its spec-group-toggle control
-// expect: both groups are opened (their lists no longer hidden) with + Requirement for each section as the known positive; no group offers Change by prompt: no anchor of the class requirement-group-prompt, no text
-//         "Change by prompt", no anchor whose address starts with #requirements/requirements=
+// expect: both groups are opened (their lists no longer hidden) with + Requirement for each section as the known positive; no group offers Change by prompt: no anchor of the class requirement-group-prompt, no text "Change by prompt", no anchor whose address starts with #requirements/requirements=
 test("TST-399002 an opened requirement group offers no Change by prompt", async () => {
   const target = await render(host(), "main");
   find(target, (node) => node.localName === "button" && node.className.includes("spec-group-toggle")).forEach((button) => button.dispatchEvent(new Event("click")));

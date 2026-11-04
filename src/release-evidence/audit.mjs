@@ -12,6 +12,16 @@
 //   results name the test's file;
 // - a test's counter-proof is the path of its record `docs/tests/counter-proofs/TST-<nnn>.md` in `at` when that records the
 //   test failing, else null; a test's outcome is its rate where the records give one, else its plain outcome;
+// - each test also gives `passed` — its run completed and passed, and its rate is no worse than the last release's — and
+//   `lastRate`, the last release's rate, null where there is none; the module file's interface lists neither, and both
+//   extend it without changing a field it lists (ITM-1430's reading, OPEN FOR EXTENSION, CLOSED FOR CHANGE);
+// - an entry of `gates` may also give `artifacts`, the artifacts its gate asks for, and each row gives `artifacts`, one for each of its
+//   `gates` in their order, "" where the entry gives none; the module file's interface lists neither, and both extend it (ITM-1431's
+//   reading, as ITM-1430's); the document names them under the gate record they stand beside;
+// - `unrecorded`, an added optional input, holds the gates the workflow holds that no record holds, as { requirement, gate }; their
+//   requirement has its row as one whose gate `gates` names does, and each row gives `unrecorded`, the names of its gates no record
+//   holds; the document writes that no record holds each of them. A gate with a record keeps `record: string` (ITM-1433's reading,
+//   OPEN FOR EXTENSION, CLOSED FOR CHANGE);
 // - the report is `docs/tests/releases/<tag>.md` on `head`, the default branch, which holds it and its approval record because
 //   acceptAndRelease commits them after the tagged commit; it is accepted when MOD-approvals' statusOf says so of it in `head`;
 //   the limitations are those of the record `docs/approvals/release-<tag>-<blob12>.md`, read through approvalSchema;
@@ -21,7 +31,7 @@
 //   line each, beginning "missing:" (a release before Agent M's records says "cannot be derived" instead);
 // - a release before Agent M's records — no result record of its commit and no release test report in its tree — has every
 //   outcome "cannot be derived", and summary.limitations names the parts: the interface has no other place for the statement;
-// - passing: a requirement with tests, all passed, none at a worse rate; no test: none at all; not passed: a test failed or not
+// - passing: a requirement with tests, each of them `passed`; no test: none at all; not passed: a test failed or not
 //   run; flaky and worse: any test flaky or at a worse rate. A requirement may be counted in several.
 //
 // resultsAt, flakyTests, rateComparison and listJobs are async, typed without Promise<> by their module files (see report.mjs).
@@ -82,14 +92,15 @@ async function counterProofOf(at, id) {
 /**
  * auditRows(at: Snapshot, results: Snapshot, head: Snapshot, release: { tag: string, commit: string }, gates: Array<{
  * requirement: string, gate: string, record: string }>, instanceSpec: string, register: Document[], accepted: { person: string,
- * date: string } | null) -> Promise<{ summary, rows, evidence }> (MOD-release-evidence, Interfaces): one
- * row per requirement valid at the release — each requirement of the product's SPEC, and each requirement of the instance's SPEC
- * whose gate `gates` holds — with its sources, its tests by level and its gate records, the summary of UC-030 step 3, and the
- * evidence: the report and the approval records that name it, with their blobs, and the acceptance.
+ * date: string } | null, unrecorded: Array<{ requirement: string, gate: string }> = []) -> Promise<{ summary, rows, evidence }>
+ * (MOD-release-evidence, Interfaces): one row per requirement valid at the release — each requirement of the product's SPEC, and
+ * each requirement of the instance's SPEC whose gate `gates` or `unrecorded` holds — with its sources, its tests by level, its gate
+ * records and the gates no record holds, the summary of UC-030 step 3, and the evidence: the report and the approval records that
+ * name it, with their blobs, and the acceptance.
  */
-export async function auditRows(at, results, head, release, gates, instanceSpec, register, accepted = null) {
+export async function auditRows(at, results, head, release, gates, instanceSpec, register, accepted = null, unrecorded = []) {
   const product = [...parseSpec((await at.read("SPEC.md")) ?? "").requirements.values()].map((req) => ({ req, constrains: "product" }));
-  const gated = new Set(gates.map((gate) => gate.requirement));
+  const gated = new Set([...gates, ...unrecorded].map((gate) => gate.requirement));
   const process = [...parseSpec(instanceSpec).requirements.values()].filter((req) => gated.has(req.name))
     .map((req) => ({ req, constrains: "process" }));
   const graph = await storedGraph(at, release.commit);
@@ -108,8 +119,9 @@ export async function auditRows(at, results, head, release, gates, instanceSpec,
   const entries = new Map(levels.flatMap((level) => level.tests.map((one) => [one.id, one])));
   const flaky = new Set((await flakyTests(results, release.commit)).map((row) => row.test));
   const version = release.tag.replace(/^v/, "");
-  const worse = new Set((await rateComparison(results, release.commit, await lastReleaseCommit(at, version)))
-    .filter((row) => row.worse).map((row) => row.test));
+  const compared = await rateComparison(results, release.commit, await lastReleaseCommit(at, version));
+  const worse = new Set(compared.filter((row) => row.worse).map((row) => row.test));
+  const lastRates = new Map(compared.map((row) => [row.test, row.then]));
 
   const reportPath = `docs/tests/releases/${release.tag}.md`;
   const report = await acceptance(head, reportPath, release.tag);
@@ -143,18 +155,20 @@ export async function auditRows(at, results, head, release, gates, instanceSpec,
       const writtenByImplementer = tests.get(id).level === "release" && writers.some((writer) => implementers.has(writer));
       if (writtenByImplementer) byImplementer.add(id);
       rowTests.push({ id, level: tests.get(id).level, outcome: predates ? UNDERIVABLE : (entry.runs ?? entry.outcome),
-        counterProof: await counterProofOf(at, id), worse: worse.has(id), byImplementer: writtenByImplementer });
+        counterProof: await counterProofOf(at, id), worse: worse.has(id), byImplementer: writtenByImplementer,
+        passed: !predates && entry.outcome === "passed" && !worse.has(id), lastRate: lastRates.get(id) ?? null });
     }
     const outcomes = traces.tests.map((id) => entries.get(id).outcome);
-    const isWorse = traces.tests.some((id) => worse.has(id));
     if (!traces.tests.length) summary.noTest += 1;
     if (!predates && outcomes.some((outcome) => outcome === "failed" || outcome === "not run")) summary.notPassed += 1;
     if (!predates && traces.tests.some((id) => flaky.has(id))) summary.flaky += 1;
-    if (!predates && isWorse) summary.worse += 1;
-    if (!predates && outcomes.length && outcomes.every((outcome) => outcome === "passed") && !isWorse) summary.passing += 1;
+    if (!predates && rowTests.some((test) => test.worse)) summary.worse += 1;
+    if (rowTests.length && rowTests.every((test) => test.passed)) summary.passing += 1;
 
+    const own = gates.filter((gate) => gate.requirement === req.name);
     rows.push({ requirement: req.name, constrains, sources: sourcesOf(req, links, register), tests: rowTests,
-      gates: gates.filter((gate) => gate.requirement === req.name).map((gate) => gate.record) });
+      gates: own.map((gate) => gate.record), artifacts: own.map((gate) => gate.artifacts ?? ""),
+      unrecorded: unrecorded.filter((gate) => gate.requirement === req.name).map((gate) => gate.gate) });
   }
   summary.byImplementer = byImplementer.size;
   return { summary, rows, evidence };
@@ -165,7 +179,13 @@ const code = (text) => `\`${text}\``;
 // One source of a row: its identifier, authority and version, then the version's hash and the hash of each of its files.
 const sourceLine = (source) => `- Source ${code(source.id)} (${source.authority}), version ${code(source.version)}, hashes: ${source.hashes.map(code).join(", ")}`;
 
-const testLine = (test) => `- Test ${code(test.id)} (${test.level}): ${test.outcome}; ${test.counterProof ? `counter-proof ${code(test.counterProof)}` : "no counter-proof"}`;
+// A test's outcome; for a model-dependent test, whose outcome is its rate, then the last release's rate and whether it passed.
+const RATE = /^\d+ of \d+$/;
+const outcomeText = (test) => (RATE.test(test.outcome) && typeof test.passed === "boolean"
+  ? `${test.outcome}${test.lastRate ? `, against ${test.lastRate} at the last release` : ""}, ${test.passed ? "passed" : "not passed"}`
+  : test.outcome);
+
+const testLine = (test) => `- Test ${code(test.id)} (${test.level}): ${outcomeText(test)}; ${test.counterProof ? `counter-proof ${code(test.counterProof)}` : "no counter-proof"}`;
 
 function rowSection(row, accepted) {
   return [`### ${row.requirement}`, "",
@@ -173,7 +193,9 @@ function rowSection(row, accepted) {
     ...(accepted ? [] : ["- Evidence not accepted: no approval record names the release test report"]),
     ...(row.sources.length ? row.sources.map(sourceLine) : ["- Sources: none"]),
     ...(row.tests.length ? row.tests.map(testLine) : ["- Tests: no test"]),
-    ...row.gates.map((record) => `- Gate record: ${code(record)}`), ""];
+    ...row.gates.flatMap((record, index) => [`- Gate record: ${code(record)}`,
+      ...(row.artifacts?.[index] ? [`- Artifacts the gate asked for: ${code(row.artifacts[index])}`] : [])]),
+    ...(row.unrecorded ?? []).map((gate) => `- Gate ${code(gate)}: no record holds it`), ""];
 }
 
 function evidenceLines({ report, records, acceptance }) {
@@ -190,7 +212,8 @@ function evidenceLines({ report, records, acceptance }) {
  * auditDocument(audit: { summary, rows, evidence }, release: { tag: string, commit: string }) -> string (MOD-release-evidence,
  * Interfaces and Data, "The audit document"): the self-contained Markdown document of the audit — the tag and its commit SHA,
  * the summary, the evidence (the report, the approval records and the acceptance, with their blob SHAs), and one section per
- * row with its sources, their versions and hashes, its tests with outcome and counter-proof, and its gate records. Every
+ * row with its sources, their versions and hashes, its tests with outcome and counter-proof, and its gate records with the
+ * artifacts each gate asked for, and each gate no record holds. Every
  * statement names a path, an identifier or a hash of the repository, so that it is checked there, without Agent M.
  */
 export function auditDocument(audit, release) {

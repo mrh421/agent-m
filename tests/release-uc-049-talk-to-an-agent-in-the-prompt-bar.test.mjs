@@ -11,16 +11,17 @@
 // Level: release
 //
 // Input: docs/use-cases/UC-049-talk-to-an-agent-in-the-prompt-bar.md, SPEC.md, the system tests of UC-049, the files that already check the requirements, and the fixtures named above. Written for ITM-513 by a participant who built none of
-// UC-049's behaviour (RELEASE TESTS ARE NOT WRITTEN BY THE IMPLEMENTER). Where the page and UC-049 disagree the test follows UC-049; the findings are marked `todo` in the system tests (UC049-3, UC049-3c, UC049-1a, UC049-4e), and TST-513202 names
-// the checks that the SPEC names and that do not exist yet. The counter-proofs are recorded in the pull request.
+// UC-049's behaviour (RELEASE TESTS ARE NOT WRITTEN BY THE IMPLEMENTER). Where the page and UC-049 disagree the test follows UC-049; the findings are marked `todo` in the system tests (UC049-3, UC049-3c, UC049-1a, UC049-4e), and TST-513202 asks
+// that the files the SPEC names as checks exist. The counter-proofs are recorded in the pull request.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { testDeclarations } from "../src/test-document/index.mjs";
 import { INSTRUCTION, LOAN, all, assertProposal, barOf, draft, namedButton, one, press, proposalWrites, recordTexts, rest, review, run, save, scenario, send, statusOf } from "./uc-019-prompt-bar-harness.mjs";
-import { AGENT, DRAFTER, HANDY, RUN_URL, TOOLER, answer, barText, calls, conversationOf, followClock, free, registerOf, sendNow, textOfSent, watch, withWorkflow } from "./uc-049-world.mjs";
+import { AGENT, DRAFTER, HANDY, RUN_URL, TOOLER, answer, barText, calls, conversationOf, followClock, declared, endpointOf, free, sendNow, textOfSent, watch, withWorkflow } from "./uc-049-world.mjs";
 import { until } from "./review-pages-draft-world.mjs";
+import { readSetting } from "../src/browser-store/index.mjs";
 
 globalThis.reviewPagesScriptedWithin = [];
 const ROOT = new URL("../", import.meta.url);
@@ -28,7 +29,8 @@ const read = (path) => readFileSync(new URL(path, ROOT), "utf8");
 const GRAPH = "tests/system-uc-049-talk-to-an-agent-in-the-prompt-bar.test.mjs";
 const PAGES = "tests/system-uc-049-pages-of-mail-and-settings.test.mjs";
 const RELEASE = "tests/release-uc-049-talk-to-an-agent-in-the-prompt-bar.test.mjs";
-const register = (...rows) => ({ "docs/participants.md": registerOf(...rows) });
+// What this browser declares for the bar to offer (UC-049 1); the bar reads no participant list.
+const register = (...declarations) => declared(...declarations);
 const scripted = (node) => node.dispatchEvent(Object.assign(new Event("click"), { scripted: true }));
 
 function ucRealises() {
@@ -51,8 +53,7 @@ function specChecks() {
   return checks;
 }
 
-// Each requirement with an automatic check: the files that check it (a system test of UC-049 among them) and, in each, a mention of the requirement or the file the SPEC names. A file the SPEC names that is not there yet is not listed here
-// but in MISSING_CHECKS, so that the day it is written this test asks for it to be listed.
+// Each requirement with an automatic check: the files that check it (a system test of UC-049 among them) and, in each, a mention of the requirement or the file the SPEC names.
 const COVERED_BY_RELEASE = {
   "THE PAGE NAMES WHERE IT SENDS": [GRAPH, "tests/prompt-bar.test.mjs", "tests/site-frame-run-panel.test.mjs"],
   "A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON": [GRAPH, "tests/prompt-bar-record.test.mjs", "tests/prompt-bar.test.mjs", "tests/test_conversation_not_recorded.py"],
@@ -83,10 +84,9 @@ const COVERED_BY_RELEASE = {
   "NO COST IS GUESSED": [GRAPH, RELEASE, "tests/test_job_cost.py"],
   "AN UNSUPPORTED ENDPOINT SAYS SO": [GRAPH, "tests/test_endpoint_diagnosis.py"],
   "EVERY STEP EXPLAINS ITSELF": [GRAPH, "tests/site-frame.test.mjs", "tests/settings-pages-add-product.test.mjs", "tests/settings-pages-setup.test.mjs"],
+  "THE PROMPT BAR'S ENDPOINTS AND CLI SESSIONS ARE BOUND AS PARTICIPANTS ARE": [GRAPH, PAGES, "tests/prompt-bar-endpoints.test.mjs"],
 };
 const REVIEW_ONLY = ["CODE ENTERS THE DEFAULT BRANCH THROUGH A PULL REQUEST WITH GREEN CI", "ONE CLICK PER DECISION"];
-// The files the SPEC names as the check of a requirement of UC-049 and that this repository does not hold (the pull request names the items that build them).
-const MISSING_CHECKS = { "tests/prompt-bar-endpoints.test.mjs": ["THE PROMPT BAR'S ENDPOINTS AND CLI SESSIONS ARE BOUND AS PARTICIPANTS ARE"] };
 
 // TST-513201 · level: release · module: MOD-prompt-bar · MOD-site-frame
 // guards: UC-049; RELEASE TESTS ARE NOT WRITTEN BY THE IMPLEMENTER
@@ -99,8 +99,7 @@ test("TST-513201: UC-049 release coverage names every automatic requirement, and
   assert.equal(realised.length, 32, "known positive: the use case realises thirty-two requirements");
   assert.deepEqual([...new Set(realised)].sort(), realised.toSorted(), "the use case realises each requirement once");
   const reviewOnly = realised.filter((name) => /^no automatic check; at review/.test(checks.get(name) ?? ""));
-  const unbuilt = Object.values(MISSING_CHECKS).flat(); // a requirement whose check is not written yet has no evidence to cover it; TST-513202 is red for it
-  const automatic = realised.filter((name) => !reviewOnly.includes(name) && !unbuilt.includes(name));
+  const automatic = realised.filter((name) => !reviewOnly.includes(name));
   assert.deepEqual(Object.keys(COVERED_BY_RELEASE).sort(), automatic.toSorted());
   assert.deepEqual(REVIEW_ONLY.toSorted(), reviewOnly.toSorted());
 
@@ -109,17 +108,9 @@ test("TST-513201: UC-049 release coverage names every automatic requirement, and
       `${requirement}: a system test of UC-049 is among the evidence (the implementation row has the page of the implementation pages, which no harness of the prompt bar opens, so its evidence is the Python check)`);
     for (const file of files) assert.ok(existsSync(new URL(file, ROOT)), `${requirement}: ${file} exists`);
     const named = (checks.get(requirement) ?? "").match(/tests\/[A-Za-z0-9_.-]+/g) ?? [];
-    for (const file of named) {
-      if (Object.hasOwn(MISSING_CHECKS, file)) {
-        assert.ok(!existsSync(new URL(file, ROOT)), `${file} is listed as missing, but exists: list it as evidence of ${requirement}`);
-        assert.ok(MISSING_CHECKS[file].includes(requirement), `${file} is listed as missing for ${requirement}`);
-      } else assert.ok(files.includes(file), `${requirement}: the SPEC's check ${file} is among the evidence`);
-    }
+    for (const file of named) assert.ok(files.includes(file), `${requirement}: the SPEC's check ${file} is among the evidence`);
     for (const file of files.filter((each) => /\.(mjs|py)$/.test(each))) assert.match(read(file), /Level: (unit|component|system|release)/i, `${file} declares its level`);
     assert.ok(files.some((file) => read(file).includes(requirement) || named.includes(file)), `${requirement} is named by an evidence file or checked by the file the SPEC names`);
-  }
-  for (const [file, requirements] of Object.entries(MISSING_CHECKS)) for (const requirement of requirements) {
-    assert.ok((specChecks().get(requirement) ?? "").includes(file), `the SPEC names ${file} for ${requirement}`);
   }
 
   const declarations = [GRAPH, PAGES].flatMap((file) => testDeclarations(file, read(file)));
@@ -133,12 +124,16 @@ test("TST-513201: UC-049 release coverage names every automatic requirement, and
 
 // TST-513202 · level: release · module: MOD-prompt-bar
 // guards: UC-049
-// given: the files the SPEC names as the checks of the requirements UC-049 realises
-// input: ask whether each exists
-// expect: every file the SPEC names exists. FINDING: one of them does not (MISSING_CHECKS: tests/prompt-bar-endpoints.test.mjs, the check of THE PROMPT BAR'S ENDPOINTS AND CLI SESSIONS ARE BOUND AS PARTICIPANTS ARE), so this case is red until it is written
-test("TST-513202: the checks the SPEC names for the requirements of UC-049 exist", { todo: "FINDING UC049-checks — one file the SPEC names as the check of a requirement UC-049 realises is not in the repository (MISSING_CHECKS: tests/prompt-bar-endpoints.test.mjs, the endpoints and CLI sessions bound as participants)" }, () => {
-  const absent = Object.keys(MISSING_CHECKS).filter((file) => !existsSync(new URL(file, ROOT)));
+// given: the files the SPEC names as the checks of the requirements UC-049 realises, among them tests/prompt-bar-endpoints.test.mjs, the check of THE PROMPT BAR'S ENDPOINTS AND CLI SESSIONS ARE BOUND AS PARTICIPANTS ARE
+// input: ask whether each exists; and, as a counter-proof, whether a file name the SPEC does not hold is found among them
+// expect: known positive — the files the SPEC names for the realised requirements include tests/prompt-bar-endpoints.test.mjs; every file the SPEC names exists; counter-proof: a name that is no check of the SPEC is not among them and does not exist
+test("TST-513202: the checks the SPEC names for the requirements of UC-049 exist", () => {
+  const checks = specChecks();
+  const named = [...new Set(ucRealises().flatMap((name) => (checks.get(name) ?? "").match(/tests\/[A-Za-z0-9_.-]+/g) ?? []))];
+  assert.ok(named.includes("tests/prompt-bar-endpoints.test.mjs"), "known positive: the SPEC names the check of the endpoints and CLI sessions");
+  const absent = named.filter((file) => !existsSync(new URL(file, ROOT)));
   assert.deepEqual(absent, [], `the SPEC names these files and they do not exist`);
+  assert.ok(!named.includes("tests/prompt-bar-nowhere.test.mjs") && !existsSync(new URL("tests/prompt-bar-nowhere.test.mjs", ROOT)), "counter-proof: a file the SPEC does not name is not found");
 });
 
 // A message of the person that no other text of the session holds, and the places a session writes: every commit's message and files of both repositories, the job records, and the workflow's inputs.
@@ -152,7 +147,7 @@ const leaks = (s, needle) => writtenTexts(s).filter((text) => String(text).inclu
 // input: the messages of the conversation, each with words that appear nowhere else (PLANTED-MESSAGE-4B1F …); the save; the hand-over
 // expect: no message's text is in any commit, commit message or job record of either repository; the job record of the hand-over is in the product's repository; as a counter-proof the same scan finds a message planted in the job record
 test("TST-513203: with recording off a conversation that reads, saves and hands over leaves no message in any commit or record", async () => {
-  const s = await scenario({ instanceFiles: register(TOOLER, HANDY, DRAFTER), answers: [draft()] });
+  const s = await scenario({ ...register(TOOLER, HANDY, DRAFTER), answers: [draft()] });
   const w = watch(s, { script: [calls({ id: "c1", name: "read-file", args: { path: "SPEC.md" } }), answer("I read the SPEC and found two rules."),
     answer("Here is a draft.", { handOver: { kind: "converse", works_on: [LOAN], task: "Run the tests of the loan page" } })] });
   const clock = followClock();
@@ -182,7 +177,7 @@ test("TST-513203: with recording off a conversation that reads, saves and hands 
 // input: the messages sent
 // expect: every message of the conversation on the product's page is found in a conversation record of the product — the person's and the participant's —, every one of the page of the instance in the instance's, and none in the other; the conversation record lies under docs/conversations/ and is no proposal: no queue entry and no approval is written for it; a message missing from the record is not found (counter-proof)
 test("TST-513204: with recording on each message is found in the record of the repository of its page, and the record is no proposal", async () => {
-  const product = await scenario({ recording: true, instanceFiles: register(DRAFTER), answers: [{ answer: "First answer." }, { answer: "Second answer." }] });
+  const product = await scenario({ recording: true, ...register(DRAFTER), answers: [{ answer: "First answer." }, { answer: "Second answer." }] });
   await send(product, "First message of the person.");
   await send(product, "Second message of the person.");
   const [[path, record]] = Object.entries(product.product.files).filter(([each]) => each.startsWith("docs/conversations/"));
@@ -192,7 +187,7 @@ test("TST-513204: with recording on each message is found in the record of the r
   assert.equal(proposalWrites(product).length, 0, "no queue entry");
   assert.ok(!Object.keys(product.product.files).some((each) => each.startsWith("docs/approvals/") || each.startsWith("docs/spec-freigaben/")), "no approval and no queue entry is written for the record");
   assert.match(path, /^docs\/conversations\//);
-  const instance = await scenario({ recording: true, instanceFiles: register(DRAFTER), answers: [{ answer: "On the instance." }], hash: "#trace/key=specification/ref=main" });
+  const instance = await scenario({ recording: true, ...register(DRAFTER), answers: [{ answer: "On the instance." }], hash: "#trace/key=specification/ref=main" });
   await send(instance, "A message on a page of the instance.");
   const held = Object.entries(instance.instance.files).filter(([each]) => each.startsWith("docs/conversations/"));
   assert.equal(held.length, 1);
@@ -202,16 +197,18 @@ test("TST-513204: with recording on each message is found in the record of the r
 
 // TST-513205 · level: release · module: MOD-prompt-bar · MOD-site-frame
 // guards: UC-049; THE PAGE NAMES WHERE IT SENDS; A PARTICIPANT DECLARES WHERE IT PROCESSES DATA
-// given: the register offers drafter ("this machine"), tooler ("Anthropic, USA") and nothing-declared, a model endpoint that declares no processing place
+// given: this browser declares the endpoints drafter ("this machine") and tooler ("Anthropic, USA"), and nothing-declared, an endpoint that declares no processing place
 // input: the bar read before any message; tooler chosen and a message sent, with the endpoint holding its answer back
-// expect: the selector names every participant with its place, nothing-declared as having none ("no processing place declared"); while the request is on its way the bar already names the destination — "Sent to: tooler — Anthropic, USA" — and the request is made to nobody else
+// expect: the selector names every endpoint it offers with its place, and does not offer nothing-declared, which lacks a place (UC-049 1b); while the request is on its way the bar already names the destination — "Sent to: tooler — Anthropic, USA" — and the request is made to nobody else
 test("TST-513205: the bar names every participant with its place and the destination before the request is answered", async () => {
-  const none = "| nothing-declared | model endpoint | m | 200000 | - | draft text | — | endpoint fixture |";
-  const s = await scenario({ instanceFiles: register(DRAFTER, TOOLER, none), answers: [{ answer: "x" }] });
+  const none = { settings: { "endpoint:nothing-declared": endpointOf("nothing-declared", "") } };
+  const s = await scenario({ ...register(DRAFTER, TOOLER, none), answers: [{ answer: "x" }] });
   let release;
   const w = watch(s, { script: [answer("Done.")], hold: new Promise((resolve) => { release = resolve; }) });
   const text = barText(s);
-  for (const named of ["drafter — this machine", "tooler — Anthropic, USA", "nothing-declared — no processing place declared"]) assert.ok(text.includes(named), `${named} in ${text}`);
+  for (const named of ["drafter — this machine", "tooler — Anthropic, USA"]) assert.ok(text.includes(named), `${named} in ${text}`);
+  assert.ok(!text.includes("nothing-declared"), "an endpoint without a place is not offered");
+  assert.equal(readSetting(s.store, "endpoint:nothing-declared").place, "", "known positive: it is configured in this browser, and lacks its place");
   await sendNow(s, "Where does this go?", { participant: "tooler" });
   await until(() => w.held.length === 1, "the request is made");
   assert.match(statusOf(s).textContent, /Sent to:tooler — Anthropic, USA/, "the destination is named while the request is on its way");
@@ -223,15 +220,15 @@ test("TST-513205: the bar names every participant with its place and the destina
 
 // TST-513206 · level: release · module: MOD-prompt-bar · MOD-repository-hosts · MOD-runtimes · MOD-bridge-client
 // guards: UC-049; A TOKEN GOES ONLY TO THE SERVER THAT ISSUED IT; NO SERVER
-// given: a session in which a model endpoint that uses tools reads the product and a CLI agent on the Bridge answers; tokens of the instance and of the product are stored in the browser
+// given: a session in which a model endpoint that uses tools reads the product and a CLI session of the Bridge answers; tokens of the instance and of the product are stored in the browser
 // input: the requests the session makes, each with its address and headers
-// expect: every request goes to the repository server (api.github.com, raw.githubusercontent.com), to the model endpoint, or to the Bridge — no other origin, no server of Agent M's own —; a GitHub token is carried only by requests to the repository server, the instance's token only to the instance's repository and the product's only to the product's; no request to the endpoint or to the Bridge carries a GitHub token
+// expect: every request goes to the repository server (api.github.com, raw.githubusercontent.com), to the model endpoint, or to the Bridge — no other origin, no server of Agent M's own —; a GitHub token is carried only by requests to the repository server, the instance's token only to the instance's repository and the product's only to the product's — the read-only POST /graphql for greenToMerge (ITM-1170) included, which names its repository in its variables; no request to the endpoint or to the Bridge carries a GitHub token
 test("TST-513206: a token goes only to the server that issued it, and only the repository server, the endpoint and the Bridge are asked", async () => {
-  const s = await scenario({ bridge: true, instanceFiles: register(TOOLER, AGENT), answers: [{ answer: "x" }] });
+  const s = await scenario({ ...register(TOOLER, AGENT), answers: [{ answer: "x" }] });
   const w = watch(s, { script: [answer("Read it."), answer("The Bridge's agent.")] });
   await sendNow(s, "Read the SPEC.", { participant: "tooler" });
   await free(s);
-  await sendNow(s, "Ask the agent.", { participant: "agent-cli" });
+  await sendNow(s, "Ask the agent.", { participant: "release-bridge:claude" });
   await free(s);
   const allowed = ["http://127.0.0.1:9418", "https://api.github.com", "https://fixture-endpoint.example.test", "https://raw.githubusercontent.com"];
   const origins = new Set(w.requests.map((request) => request.origin));
@@ -241,7 +238,9 @@ test("TST-513206: a token goes only to the server that issued it, and only the r
     const carried = JSON.stringify(request.headers) + String(request.body ?? "");
     if (request.origin === "https://api.github.com") {
       const token = /github_pat_[A-Za-z0-9_]+/.exec(JSON.stringify(request.headers))?.[0];
-      if (token) assert.equal(token.startsWith("github_pat_FIXTURE_INSTANCE") ? request.path.startsWith("/repos/akmaier/agent-m") : request.path.startsWith("/repos/akmaier/lending-tool"), true, `${request.path} carries ${token}`);
+      // The read-only POST /graphql for greenToMerge (ITM-1170) names its repository in its variables.
+      const named = request.path === "/graphql" ? (({ owner, name }) => `/repos/${owner}/${name}`)(JSON.parse(String(request.body)).variables) : request.path;
+      if (token) assert.equal(token.startsWith("github_pat_FIXTURE_INSTANCE") ? named.startsWith("/repos/akmaier/agent-m") : named.startsWith("/repos/akmaier/lending-tool"), true, `${request.path} for ${named} carries ${token}`);
     } else if (request.origin !== "https://raw.githubusercontent.com") assert.ok(!/github_pat_/.test(carried), `${request.origin}${request.path} carries no GitHub token`);
   }
   assert.ok(w.requests.some((request) => request.origin === "https://api.github.com" && /github_pat_/.test(JSON.stringify(request.headers))), "known positive: the repository server was asked with a token");
@@ -272,17 +271,17 @@ test("TST-513207: nothing is written on a script's click, and what is saved is a
 
 // TST-513208 · level: release · module: MOD-prompt-bar · MOD-runtimes · MOD-job-runner
 // guards: UC-049; ONE DEFINITION, THREE DRIVERS
-// given: one page and one message, in two pages of the same product: one whose participant is a model endpoint reached directly (the tab's driver), one whose participant is a CLI agent on the Bridge
+// given: one page and one message, in two pages of the same product: one whose participant is a model endpoint reached directly (the tab's driver), one whose participant is a CLI session of the Bridge
 // input: the same words sent once in each
 // expect: the model endpoint's request and the Bridge's ask hold the same message — the same instruction, the same page, the same conversation and the same chapters; the hand-over's workflow is started with the job of that kind (the run is tested in TST-513209)
 test("TST-513208: the tab and the Bridge are driven by one definition of the kind", async () => {
-  const direct = await scenario({ instanceFiles: register(DRAFTER), answers: [{ answer: "x" }] });
+  const direct = await scenario({ ...register(DRAFTER), answers: [{ answer: "x" }] });
   const v = watch(direct, { script: [answer("One.")] });
   await sendNow(direct, "What do I see on this page?");
   await free(direct);
   const tab = textOfSent(v.endpoint()[0]);
   v.stop();
-  const bridged = await scenario({ bridge: true, instanceFiles: register(AGENT), answers: [{ answer: "x" }] });
+  const bridged = await scenario({ ...register(AGENT), answers: [{ answer: "x" }] });
   const w = watch(bridged, { script: [answer("Two.")] });
   await sendNow(bridged, "What do I see on this page?");
   await free(bridged);
@@ -299,7 +298,7 @@ test("TST-513208: the tab and the Bridge are driven by one definition of the kin
 // input: Send; the run
 // expect: the record is in the product's repository; neither the record, nor a commit, nor the workflow's inputs hold the key's value or the token's value; the agent of the run was given the key by the name of the secret (the run's environment), not by its value in an argument; the run's end names the cost as unknown — no number — because handy declares no price
 test("TST-513209: a hand-over is recorded in the product, the run authenticates with CI secrets, and no cost is guessed", async () => {
-  const s = await scenario({ instanceFiles: register(DRAFTER, HANDY), answers: [{ answer: "x" }] });
+  const s = await scenario({ ...register(DRAFTER, HANDY), answers: [{ answer: "x" }] });
   const w = watch(s, { script: [answer("Handing on.", { handOver: { kind: "converse", works_on: [LOAN], task: "Run the tests of the loan page" } })] });
   const clock = followClock();
   await sendNow(s, "Please run the tests.", { participant: "handy" });
@@ -331,7 +330,7 @@ test("TST-513210: the message carries the chapters of the book for the kind of w
     ["module", ["09_system-modeling.md", "10_architectural-design.md", "11_agentic-design-and-control-patterns.md", "12_implementation-and-version-control.md"]]];
   const { goTo } = await import("./uc-019-prompt-bar-harness.mjs");
   for (const [route, chapters] of rows) {
-    const s = await scenario({ instanceFiles: register(DRAFTER), answers: [{ answer: "x" }] });
+    const s = await scenario({ ...register(DRAFTER), answers: [{ answer: "x" }] });
     const w = watch(s, { script: [answer("ok")] });
     await goTo(s, `#${route}/product=${encodeURIComponent(s.address)}`);
     await sendNow(s, "hello");
@@ -346,12 +345,12 @@ test("TST-513210: the message carries the chapters of the book for the kind of w
 
 // TST-513211 · level: release · module: MOD-prompt-bar · MOD-participant-list
 // guards: UC-049; A PARTICIPANT DECLARES ITS CAPABILITIES; A PARTICIPANT DECLARES WHERE IT PROCESSES DATA; EVERY STEP EXPLAINS ITSELF
-// given: the register lists drafter (draft text), observer (read the repository only) and a CI agent
+// given: this browser declares the endpoint drafter (draft text), the endpoint handy that names a CI secret, and the CLI session release-bridge:observer (read the repository only), which the Bridge lists ready
 // input: the page opened and a hand-over proposed
 // expect: only the participant that declares the capability the kind needs is chosen among — observer, which cannot draft text, is not offered —; each is named with the place it declares; the bar carries a folded explanation, and the hand-over, once proposed, carries one beside its decision
 test("TST-513211: participants are offered by their declared capabilities and places, and each step explains itself", async () => {
-  const observer = "| observer | model endpoint | observer-model | 200000 | - | read the repository | Anthropic, USA | endpoint fixture |";
-  const s = await scenario({ instanceFiles: register(DRAFTER, observer, HANDY), answers: [{ answer: "x" }] });
+  const s = await scenario({ ...register(DRAFTER, HANDY), answers: [{ answer: "x" }] });
+  assert.deepEqual(readSetting(s.store, "session:release-bridge:observer").capabilities, ["read the repository"], "known positive: the observer session is declared, and reads the repository only");
   const w = watch(s, { script: [answer("Handing on.", { handOver: { kind: "converse", works_on: [LOAN], task: "Run the tests" } })] });
   const text = barText(s);
   assert.ok(text.includes("drafter — this machine") && text.includes("handy — GitHub Actions in the USA"));

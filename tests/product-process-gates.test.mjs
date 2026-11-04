@@ -189,9 +189,7 @@ const of = (list, gate) => list.find((state) => state.gate === gate);
 // guards: THE GATE IS RECORDED; UC-002
 // given: the repository's own gate records docs/gates, at least 347 of them with a front matter, read as they stand
 // input: gateSchema read over each, and documentFindings
-// expect: three records of the latest sprint read with no finding and give their fields — gate, job (empty), decider, role, decision, on as a list, date — and their `## Reason`; the records
-//         that depart from the accepted form give exactly the findings that name how: 7 a key `model`, 9 a key `pull_request` or `pr`, 15 an `on` that is one commit and no list, 1 the decision
-//         `refused`; no other record has a finding
+// expect: three records of the latest sprint read with no finding and give their fields — gate, job (empty), decider, role, decision, on as a list, date — and their `## Reason`; the records that depart from the accepted form give exactly the findings that name how: 7 a key `model`, 9 a key `pull_request` or `pr`, 15 an `on` that is one commit and no list, 1 the decision `refused`; no other record has a finding
 test("TST-292101: gateSchema reads the repository's own gate records, and finds how some depart from the form", () => {
   assert.ok(gateSchema, "gateSchema is offered");
   const files = readdirSync(GATES).filter((name) => readFileSync(new URL(name, GATES), "utf8").startsWith("---"));
@@ -219,8 +217,7 @@ test("TST-292101: gateSchema reads the repository's own gate records, and finds 
 // guards: THE GATE IS RECORDED; A RECORD IS EVIDENCE, NOT A PROPOSAL
 // given: a record with every field of the accepted form, a rejection with its reason
 // input: the record written with writeDocument and gateSchema, and read back
-// expect: the text starts with the front matter in the order gate, job, decider, role, decision, on, date; reading it gives the same fields; no finding; a record without a reason is read too
-//         (a rejection's reason is recordGateDecision's to require, not the schema's)
+// expect: the text starts with the front matter in the order gate, job, decider, role, decision, on, date; reading it gives the same fields; no finding; a record without a reason is read too (a rejection's reason is recordGateDecision's to require, not the schema's)
 test("TST-292102: gateSchema writes and reads a gate record with every accepted field", () => {
   const read = record({ decision: "rejected", on: [`${INCREMENT}@${BLOB_A}`, "1808081ac9fdb8ac21f094417c0c79b5f9d188f7"], reason: "The increment lacks its tests." });
   assert.deepEqual(documentFindings(gateSchema, read), []);
@@ -251,8 +248,7 @@ test("TST-292103: gateSchema names what breaks the form of a record", () => {
 // guards: STATUS IS DERIVED FROM THE RECORDS
 // given: the workflow of the fixture product (two gates), and no record
 // input: gateStates(workflow, [], texts)
-// expect: one entry for each gate of the workflow, in its order — Development → Sprint Review `pending`, the gate Sprint Retrospective → Sprint Planning `not reached` since Sprint Review is not
-//         entered — with no record and no difference, and `needs` naming the decision by Product Owner and the phase to be entered; nothing is written and the inputs are unchanged
+// expect: one entry for each gate of the workflow, in its order — Development → Sprint Review `pending`, the gate Sprint Retrospective → Sprint Planning `not reached` since Sprint Review is not entered — with no record and no difference, and `needs` naming the decision by Product Owner and the phase to be entered; nothing is written and the inputs are unchanged
 test("TST-292104: gateStates gives each gate pending or not reached without a record", async () => {
   assert.ok(gateStates, "gateStates is offered");
   const workflow = await workflowWith("yes");
@@ -269,8 +265,7 @@ test("TST-292104: gateStates gives each gate pending or not reached without a re
 // guards: STATUS IS DERIVED FROM THE RECORDS; A GATE NAMES WHO DECIDES IT
 // given: alice, the Product Owner, who may decide the gate; her record that passed Development → Sprint Review on the increment at BLOB_A, and the increment still at BLOB_A
 // input: gateStates; then the same with the check's record that passed Sprint Retrospective → Sprint Planning
-// expect: mayDecide admits alice (the known positive); the gate is `passed` with her record's path, no needs, no difference; Sprint Retrospective → Sprint Planning is now reached, `pending`, needing the
-//         result of the check retro-recorded; with the check's record `passed` too, whose decider is `check: retro-recorded`
+// expect: mayDecide admits alice (the known positive); the gate is `passed` with her record's path, no needs, no difference; Sprint Retrospective → Sprint Planning is now reached, `pending`, needing the result of the check retro-recorded; with the check's record `passed` too, whose decider is `check: retro-recorded`
 test("TST-292105: gateStates derives passed from a record of the decider on the current text", async () => {
   const workflow = await workflowWith("yes");
   const assignment = readDocument(roleAssignmentSchema, "docs/role-assignments/team1.md", ["# Team 1", "", "## Roles", "", "| Role | Participants |", "|---|---|", "| Product Owner | alice |", "| Scrum Master | dev-b |", "| Developers | dev-a |", ""].join("\n"));
@@ -288,8 +283,7 @@ test("TST-292105: gateStates derives passed from a record of the decider on the 
 // guards: STATUS IS DERIVED FROM THE RECORDS
 // given: the passed record of TST-292105, now checked at BLOB_A, and a current increment at BLOB_B; and one whose texts hold no blob for the path
 // input: gateStates
-// expect: the gate is `passed on an earlier text`, with the record, `needs` a decision on the current text, and a difference naming the path with the twelve digits of the blob it was checked at and of the one now;
-//         for a path with no current text the difference says none is held; Sprint Retrospective → Sprint Planning stays `not reached`: a gate passed on an earlier text opens nothing
+// expect: the gate is `passed on an earlier text`, with the record, `needs` a decision on the current text, and a difference naming the path with the twelve digits of the blob it was checked at and of the one now; for a path with no current text the difference says none is held; Sprint Retrospective → Sprint Planning stays `not reached`: a gate passed on an earlier text opens nothing
 test("TST-292106: gateStates derives passed on an earlier text, with its difference", async () => {
   const passed = record();
   assert.equal(of(await states([passed]), DEV).state, "passed", "known positive: the text is the one checked");
@@ -318,8 +312,7 @@ test("TST-292107: gateStates lets the newest record of the decider decide", asyn
 // guards: A GATE NAMES WHO DECIDES IT; A GATE IS NOT DECIDED BY THE PARTICIPANT WHOSE WORK IT CHECKS
 // given: the known pass of the Product Owner; then a record of the same gate by another role (Scrum Master), a record of the check gate by another check, a record of a gate the workflow does not have
 // input: gateStates over each alone
-// expect: the pass is `passed`; the record by the Scrum Master leaves Development → Sprint Review `pending`; the record of another check leaves the check gate `pending`; a record of an unknown gate
-//         changes no state; none of them establishes a pass
+// expect: the pass is `passed`; the record by the Scrum Master leaves Development → Sprint Review `pending`; the record of another check leaves the check gate `pending`; a record of an unknown gate changes no state; none of them establishes a pass
 test("TST-292108: gateStates does not take a pass from a record of the wrong decider", async () => {
   assert.equal(of(await states([record()]), DEV).state, "passed", "known positive");
   const wrongRole = record({ decider: "dev-b", role: "Scrum Master" });
@@ -335,8 +328,7 @@ test("TST-292108: gateStates does not take a pass from a record of the wrong dec
 // guards: STATUS IS DERIVED FROM THE RECORDS
 // given: the workflow and a pass of Development → Sprint Review
 // input: gateStates with the record, and without it
-// expect: with the pass the later gate is reached (`pending`), without it `not reached`; a rejection does not open it; the state is a function of the records and the texts alone: the same inputs
-//         give the same answer, and nothing is kept between calls
+// expect: with the pass the later gate is reached (`pending`), without it `not reached`; a rejection does not open it; the state is a function of the records and the texts alone: the same inputs give the same answer, and nothing is kept between calls
 test("TST-292109: gateStates reaches a gate only through the gates before it, and keeps nothing", async () => {
   const pass = record();
   assert.equal(of(await states([pass]), RETRO).state, "pending");

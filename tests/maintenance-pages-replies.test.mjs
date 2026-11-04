@@ -12,7 +12,7 @@
 // show-draft, store-draft, update-draft), keeping the drafts it is given; GitHub's REST API answers alice/product's issues; the model endpoint ep1 (the "fake runner") answers a chat completion with the texts given. Nothing leaves the process.
 // Readings the texts leave open, which the tests state (the pull request names them):
 //   - Reading changes nothing without a click: the page draws <button class="read-replies"> "Read replies"; the person's click calls repliesDue (which may note a reply found in Sent) and draws <section class="replies-group" data-group="to-answer"|
-//     "answer-received"|"open"> with <li class="reply-issue" data-issue="<n>"> per issue (its number, product and a link <a class="issue-link"> to the route replies/<n>); the route with the parameters { issue, product } draws that issue
+//     "answer-received"|"open"> with <li class="reply-issue" data-issue="<n>"> per issue (its number, product and a button <button type="button" class="issue-link btn small"> "Open", which calls the ViewContext's go("replies", { issue, product }); the page writes no address); the route with the parameters { issue, product } draws that issue
 //     from the last reading (kept in memory only) or says to read first.
 //   - The issue: <p class="reply-solved"> "Solved by: <closedBy|not known> · Release: <release|not known>"; per listed mail <li class="reply-mail" data-mail="<MAIL-id>"> with .reply-reporter, .reply-date, .reply-subject; a mail found with a draft shows
 //     <div class="reply-draft"> (the draft as showDraft gives it: .draft-to, .draft-subject, <textarea class="draft-body"> editable, <ul class="draft-attachments"> with name and size) and <button class="save-draft"> "Save draft";
@@ -27,7 +27,7 @@
 import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mailStrategies } from "../src/mail-handling/index.mjs";
-import { fragmentOf, routeOf } from "../src/site-frame/routing.mjs";
+import { readFileSync } from "node:fs";
 import { BRIDGE, ERIKA, SECRET, PRODUCT_URL, buttonsOf, byClass, flush, itemOf, one, opened, pages, read, restoreNet, restoreWorld, route, standard, start, textOf, trusted, waitFor, walk, issuesIn, world } from "./maintenance-pages-world.mjs";
 
 afterEach(restoreWorld);
@@ -36,13 +36,14 @@ afterEach(restoreWorld);
 // guards: CLOSING AN ISSUE PREPARES ITS REPLIES; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; UC-039
 // given: a closed issue listing four mails none of which has a note, an issue labelled waiting-for-reporter with a newer mail, an open issue, and a closed issue whose one mail has a reply note
 // input: the route replies drawn; the person's click on Read replies
-// expect: drawing reads and writes nothing; the groups are drawn: to answer holds issue 4 alone (the answered issue 7 is in none), answer received holds 5, open holds 6; each issue links to its route; GitHub received no write
+// expect: drawing reads and writes nothing; the groups are drawn: to answer holds issue 4 alone (the answered issue 7 is in none), answer received holds 5, open holds 6; each issue has its Open, a <button type="button"> of the class issue-link and no link; GitHub received no write
 test("the three groups are drawn, and a closed issue with an unnoted mail is under to answer", async () => {
   const { w, target } = await start();
   assert.deepEqual([w.kept.bridge, w.kept.github], [[], []], "drawing reads nothing");
   await read(target);
   assert.deepEqual([issuesIn(target, "to-answer"), issuesIn(target, "answer-received"), issuesIn(target, "open")], [[4], [5], [6]]);
-  assert.deepEqual(walk(target, (node) => node.localName === "a" && (node.className ?? "").includes("issue-link")).slice(0, 1).map((link) => link.getAttribute("href")).map((href) => href.startsWith("#replies")), [true]);
+  const opens = walk(target, (node) => (node.className ?? "").split(" ").includes("issue-link"));
+  assert.deepEqual(opens.map((node) => [node.localName, node.getAttribute("type")]), [["button", "button"], ["button", "button"], ["button", "button"]]);
   assert.deepEqual(w.kept.github.filter((request) => request.method !== "GET"), []);
 });
 
@@ -50,8 +51,7 @@ test("the three groups are drawn, and a closed issue with an unnoted mail is und
 // guards: CLOSING AN ISSUE PREPARES ITS REPLIES; THE SEND DASHBOARD LISTS THE DRAFTS OF LISTED MAILS; A REPLY DRAFT IS KEPT IN THE MAILBOX'S DRAFTS FOLDER; UC-039
 // given: the closed issue 4 and its four mails: found without a draft, found with a draft, not in the mailbox, found with a sender that is no address
 // input: the route replies/<4> drawn after the reading
-// expect: the page shows what solved the issue (the pull request) and that the release is not known; each found mail with reporter, date and subject; the drafted mail shows its draft complete (recipient, subject, body in an editable field, the attachment
-//         with its name and size); the mail not in the mailbox says "not found in the mailbox"; the mail without an address says "not sendable"; no button Send anywhere
+// expect: the page shows what solved the issue (the pull request) and that the release is not known; each found mail with reporter, date and subject; the drafted mail shows its draft complete (recipient, subject, body in an editable field, the attachment with its name and size); the mail not in the mailbox says "not found in the mailbox"; the mail without an address says "not sendable"; no button Send anywhere
 test("the issue shows what solved it and each mail with its draft, a missing mail and a mail that cannot be sent", async () => {
   const { mails, w, target } = await start();
   await read(target);
@@ -173,8 +173,7 @@ test("the run panel names the participant, its place and what it receives", asyn
 // guards: A REPLY DRAFT IS KEPT IN THE MAILBOX'S DRAFTS FOLDER; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; MAIL STAYS IN THE MAILBOX; UC-039
 // given: the run panel of TST-966006 and a model endpoint (the fake runner) that returns one text for the mail without a draft
 // input: the person's click on Run
-// expect: the endpoint is asked once, at ep1; the text is stored as a draft through the mailbox, to that reporter alone, subject Re: its subject, the text above the original quoted; the page then shows that draft; the job's start record names the issue and no mail text or address;
-//         nothing is sent to any other mail
+// expect: the endpoint is asked once, at ep1; the text is stored as a draft through the mailbox, to that reporter alone, subject Re: its subject, the text above the original quoted; the page then shows that draft; the job's start record names the issue and no mail text or address; nothing is sent to any other mail
 test("Run drafts a reply with the participant and stores it as a draft, which the page then shows", async () => {
   const texts = [];
   const { mails, w, target } = await start({ texts });
@@ -262,18 +261,49 @@ test("the view holds the route replies and hands the frame mailStrategies", () =
 // TST-1108001 · level: unit · module: MOD-maintenance-pages
 // guards: UC-039
 // given: the replies read: the issues 4, 5 and 6 of alice/product listed in their groups
-// input: the link of each issue read; the link of issue 5 followed as the frame reads an address (routeOf) and the route drawn with what it gives
-// expect: each link is the address the frame writes for that route and those parameters (fragmentOf: `#replies/issue=<n>/product=<address>`, every part percent-encoded); followed, it gives the route replies with the parameters issue "5" and product alice/product, and the page shows issue #5 of that product
-test("the link to an issue is the address the frame writes, and following it shows that issue of that product", async () => {
+// input: the Open of each issue clicked; the route replies drawn with the parameters the click gave to go for issue 5
+// expect: each Open is a button with a text as its accessible name and calls go once with the route "replies" and the parameters issue (the number as a string) and product alice/product, in the order clicked; drawn with the parameters of issue 5, the page shows issue #5 of that product
+test("the Open of an issue goes to the route replies through go, and that route shows that issue of that product", async () => {
   const { w, target } = await start();
   await read(target);
-  const links = new Map(walk(target, (node) => node.getAttribute?.("data-issue") !== null && node.getAttribute?.("data-issue") !== undefined && (node.className ?? "").includes("reply-issue"))
-    .map((item) => [Number(item.getAttribute("data-issue")), walk(item, (node) => node.localName === "a")[0]?.getAttribute("href")]));
-  assert.deepEqual([...links.keys()].sort(), [4, 5, 6]);
-  for (const [number, href] of links) assert.equal(href, fragmentOf("replies", { issue: String(number), product: PRODUCT_URL }), `issue ${number}`);
-  const { name, params } = routeOf(links.get(5));
-  assert.deepEqual([name, params], ["replies", { issue: "5", product: PRODUCT_URL }]);
-  const detail = await opened(w, params);
+  const opens = new Map(walk(target, (node) => (node.getAttribute?.("data-issue") ?? null) !== null && (node.className ?? "").includes("reply-issue"))
+    .map((item) => [Number(item.getAttribute("data-issue")), walk(item, (node) => node.localName === "button" && (node.className ?? "").split(" ").includes("issue-link"))[0]]));
+  assert.deepEqual([...opens.keys()].sort(), [4, 5, 6]);
+  for (const [number, open] of [...opens].sort((a, b) => a[0] - b[0])) {
+    assert.ok(open, `issue ${number} has an Open button`);
+    assert.match(String(open.getAttribute("aria-label") ?? open.textContent).trim(), /\S/, `issue ${number}: the control has an accessible name`);
+    open.dispatchEvent(new Event("click"));
+  }
+  assert.deepEqual(w.context.went, [4, 5, 6].map((number) => ["replies", { issue: String(number), product: PRODUCT_URL }]));
+  const detail = await opened(w, w.context.went[1][1]);
   await waitFor(() => /Issue #\d/.test(textOf(detail)) || byClass(detail, "reply-problem").length > 0);
   assert.match(textOf(detail), /Issue #5 of alice\/product/);
 });
+
+// An address of the route replies written by hand: an href with `#replies/`.
+const HAND_WRITTEN = /#replies\//;
+const addressesIn = (root) => walk(root, (node) => HAND_WRITTEN.test(String(node.getAttribute?.("href") ?? "")));
+
+// TST-1111001 · level: unit · module: MOD-maintenance-pages
+// guards: UC-039; THE SITE SERVES A SCREEN READER
+// given: the replies read and the route of issue 4 drawn; the source text of the page; a planted hand-written address in an element and in a source line
+// input: every element of both pages and the page's source text searched for an address #replies/…
+// expect: no element of the groups or of the issue carries such an href and the page's source text writes none; the same search finds the planted <a href="#replies/issue=9"> and the planted source line (counter-proof); each Open has a text as its name
+test("the replies page writes no address #replies/…: the frame writes it from go", async () => {
+  const { w, target } = await start();
+  await read(target);
+  const detail = await opened(w, { issue: "4", product: PRODUCT_URL });
+  await waitFor(() => /Issue #\d/.test(textOf(detail)) || byClass(detail, "reply-problem").length > 0);
+  assert.equal(addressesIn(target).length, 0, "the groups hold no address");
+  assert.equal(addressesIn(detail).length, 0, "the issue holds no address");
+  assert.ok(walk(target, (node) => (node.className ?? "").split(" ").includes("issue-link")).every((node) => textOf(node).trim().length > 0), "each Open has its name");
+  const source = readFileSync(new URL("../src/maintenance-pages/replies.mjs", import.meta.url), "utf8");
+  assert.equal(HAND_WRITTEN.test(source), false, "the page's source writes no address");
+  const planted = document.createElement("div");
+  const anchor = document.createElement("a");
+  anchor.setAttribute("href", "#replies/issue=9");
+  planted.append(anchor);
+  assert.equal(addressesIn(planted).length, 1, "counter-proof: a hand-written address is found");
+  assert.equal(HAND_WRITTEN.test("link(`#replies/issue=${each.issue}`, \"issue-link\", \"Open\")"), true, "counter-proof: a source line that writes one is found");
+});
+

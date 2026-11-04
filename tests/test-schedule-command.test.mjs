@@ -195,7 +195,7 @@ test("command — a file it is given that lies below a folder of tests/ is no fi
 
 // TST-1217006 · level: unit · module: MOD-test-schedule
 // guards: THE TEST SCHEDULE IS DECLARED PER PRODUCT; UC-027
-// given: a folder whose PATH starts with fake programs sudo (runs its arguments), apt-get, npm and openbox, each of which writes its name and arguments to a log and ends with 0; HOME the folder itself; GITHUB_ACTIONS not set
+// given: a folder whose PATH starts with fake programs sudo (runs its arguments), apt-get, npm and openbox, each of which writes its name and arguments to a log and ends with 0, npm leaving for an install of electron@44.5.1 the package's install.js, which does nothing; HOME the folder itself; GITHUB_ACTIONS not set
 // input: sh tests/test-schedule-setup.sh, run in that folder
 // expect: it ends with 0; the log holds an apt-get install of xvfb and openbox, and the npm install of the Bridge app's packages `install --prefix src/bridge-build --omit=dev --ignore-scripts`
 test("setup — installs xvfb and openbox and the Bridge app's packages", async () => {
@@ -207,6 +207,9 @@ test("setup — installs xvfb and openbox and the Bridge app's packages", async 
       writeFileSync(join(bin, program), `#!/bin/sh\necho "${program} $*" >> "${log}"\nexit 0\n`);
       chmodSync(join(bin, program), 0o755);
     }
+    // npm installs Electron's package without its executable, and the setup then runs the package's install.js: the fake npm
+    // leaves, for that call, an install.js under the setup's folder that does nothing.
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> "${log}"\ncase " $* " in *" electron@44.5.1 "*) mkdir -p "$HOME/agent-m-electron-44/node_modules/electron" && : > "$HOME/agent-m-electron-44/node_modules/electron/install.js";; esac\nexit 0\n`);
     writeFileSync(join(bin, "sudo"), '#!/bin/sh\nexec "$@"\n');
     chmodSync(join(bin, "sudo"), 0o755);
     const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: root };

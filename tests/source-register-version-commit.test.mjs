@@ -42,9 +42,7 @@ const later = (version, commit) => ({ version, date: version, repository: INSTAN
 // guards: UC-016; A LIVING SOURCE IS PINNED; A SOURCE VERSION IS NEVER OVERWRITTEN
 // given: the entry SRC-guide of a repository source, identifier https://github.com/erin/guide, registered with its first version 2026-10-01 read at the commit 96210fa4… and no file
 // input: versionCommits(entry, [], { version: "2026-11-01", date: "2026-11-01", repository: "akmaier/agent-m", commit: "240ddc98…" }), and the register entry of the plan read back
-// expect: the call resolves — the first version's file set is as empty as the new one's, and that is no reason to refuse it; the plan has one commit, to akmaier/agent-m, holding exactly
-// docs/sources/SRC-guide.md; the entry keeps the row of 2026-10-01 line for line and has the row of 2026-11-01 after it, its date 2026-11-01 and its Read from `https://github.com/erin/guide commit
-// 240ddc98fbd96ee987230e72d664cfd892e6574e`; its Files cell is the first version's, since both have no file (a further version goes the way the first one went)
+// expect: the call resolves — the first version's file set is as empty as the new one's, and that is no reason to refuse it; the plan has one commit, to akmaier/agent-m, holding exactly docs/sources/SRC-guide.md; the entry keeps the row of 2026-10-01 line for line and has the row of 2026-11-01 after it, its date 2026-11-01 and its Read from `https://github.com/erin/guide commit 240ddc98fbd96ee987230e72d664cfd892e6574e`; its Files cell is the first version's, since both have no file (a further version goes the way the first one went)
 test("versionCommits — a repository's new version with a commit and no file records the commit in its row, and earlier rows stay as they were", async () => {
   assert.equal(typeof versionCommits, "function", "the module provides versionCommits");
   const first = await registered();
@@ -65,8 +63,7 @@ test("versionCommits — a repository's new version with a commit and no file re
 // guards: UC-016; A SOURCE VERSION IS NEVER OVERWRITTEN; A LIVING SOURCE IS PINNED
 // given: the same entry with the versions 2026-10-01 (commit 96210fa4…) and 2026-11-01 (commit 240ddc98…)
 // input: versionCommits(entry, [], …) with the commit 96210fa4…, then with 240ddc98…, then with fc67b7a0…
-// expect: the first rejects with the failure named SameBytes whose field version is "2026-10-01" and whose message is "SRC-guide already records the same bytes as 2026-10-01"; the second the same
-// naming "2026-11-01"; the third resolves with a plan (a commit no version records is a new version)
+// expect: the first rejects with the failure named SameBytes whose field version is "2026-10-01" and whose message is "SRC-guide already records the same bytes as 2026-10-01"; the second the same naming "2026-11-01"; the third resolves with a plan (a commit no version records is a new version)
 test("versionCommits — the commit of an existing version is refused as SameBytes, naming that version; another commit is recorded", async () => {
   const first = await registered();
   const both = writtenEntry(await versionCommits(first.entry, [], later("2026-11-01", C2))).entry;

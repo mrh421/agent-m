@@ -133,7 +133,7 @@ const GATES = [{ requirement: PROCESS, gate: "Release testing", record: "docs/ga
 // Who accepted the report and when: the author and date of the commit that added the record, which the caller reads through
 // MOD-repository-hosts' readHistory of the record's path.
 const ACCEPTED = { person: "akmaier", date: "2026-10-12 08:30 UTC" };
-function audit({ product = {}, head = {}, results = resultFiles(), gates = GATES, instanceSpec = INSTANCE_SPEC, register = registerOf(), accepted = ACCEPTED } = {}) {
+function audit({ product = {}, head = {}, results = resultFiles(), gates = GATES, instanceSpec = INSTANCE_SPEC, register = registerOf(), accepted = ACCEPTED, unrecorded } = {}) {
   const files = { ...productFiles(), ...product };
   for (const [path, text] of Object.entries(files)) if (text === null) delete files[path];
   const headSide = { ...headFiles(), ...head };
@@ -146,7 +146,7 @@ function audit({ product = {}, head = {}, results = resultFiles(), gates = GATES
   const [atFiles, resultSide, headOwn] = [own(files), own(results), own(headSide)];
   const at = { ...snapshotOf(atFiles, commit), readOn: storedGraphReadOn({ paths: Object.keys(atFiles), read: async (path) => atFiles[path] ?? null, commit }) };
   return auditRows(at, snapshotOf(resultSide, "test-results"), snapshotOf(headOwn, HEAD), { tag: TAG, commit },
-    gates, instanceSpec, register, accepted);
+    gates, instanceSpec, register, accepted, unrecorded);
 }
 let audits = 0;
 const rowOf = (result, requirement) => result.rows.find((row) => row.requirement === requirement);
@@ -180,13 +180,13 @@ test("auditRows — a row's sources with authority, version and hashes", async (
 // guards: THE AUDIT VIEW LISTS EVERY REQUIREMENT OF THE RELEASE; A NEW TEST IS SHOWN TO FAIL ON A PLANTED FAULT
 // given: the fixture; the first requirement is guarded by one unit test and two release tests; the fifth by a model-dependent test run 6 of 10; the second by a failing test; the counter-proof record exists for TST-756101 only
 // input: auditRows(...); the tests of those rows
-// expect: the first row lists TST-756101 (unit, passed, counter-proof docs/tests/counter-proofs/TST-756101.md, worse false, byImplementer false), TST-756102 (release, passed, none, worse false, byImplementer true) and TST-756103 (release, passed, none, worse false, byImplementer false); the fifth row's test has the outcome "6 of 10"; the second's is "failed"
+// expect: the first row lists TST-756101 (unit, passed, counter-proof docs/tests/counter-proofs/TST-756101.md, worse false, byImplementer false, passed true, no last rate), TST-756102 (release, passed, none, worse false, byImplementer true, passed true, no last rate) and TST-756103 (release, passed, none, worse false, byImplementer false, passed true, no last rate); the fifth row's test has the outcome "6 of 10"; the second's is "failed"
 test("auditRows — a row's tests by level with outcome or rate and counter-proof", async () => {
   const result = await audit();
   assert.deepEqual(rowOf(result, R1).tests, [
-    { id: "TST-756101", level: "unit", outcome: "passed", counterProof: "docs/tests/counter-proofs/TST-756101.md", worse: false, byImplementer: false },
-    { id: "TST-756102", level: "release", outcome: "passed", counterProof: null, worse: false, byImplementer: true },
-    { id: "TST-756103", level: "release", outcome: "passed", counterProof: null, worse: false, byImplementer: false },
+    { id: "TST-756101", level: "unit", outcome: "passed", counterProof: "docs/tests/counter-proofs/TST-756101.md", worse: false, byImplementer: false, passed: true, lastRate: null },
+    { id: "TST-756102", level: "release", outcome: "passed", counterProof: null, worse: false, byImplementer: true, passed: true, lastRate: null },
+    { id: "TST-756103", level: "release", outcome: "passed", counterProof: null, worse: false, byImplementer: false, passed: true, lastRate: null },
   ]);
   assert.deepEqual(rowOf(result, R5).tests.map((t) => [t.id, t.outcome]), [["TST-756105", "6 of 10"]]);
   assert.deepEqual(rowOf(result, R2).tests.map((t) => [t.id, t.outcome]), [["TST-756106", "failed"]]);
@@ -219,6 +219,39 @@ test("TST-1163003 auditRows keeps shared release-test implementer provenance on 
   assert.equal(result.summary.byImplementer, 1);
 });
 
+// TST-1430001 · level: unit · module: MOD-release-evidence
+// guards: A MODEL-DEPENDENT TEST IS MEASURED AS A RATE; UC-030
+// given: the fixture, where the model-dependent TST-756105 passed 6 of 10 on the release commit against 8 of 10 at the last release; then the same with the last release's record at 5 of 10; the deterministic TST-756101 passed, TST-756106 failed and TST-756104 is flaky
+// input: auditRows(...); the tests of the fifth, first, second and fourth rows
+// expect: known positive — TST-756105's outcome stays its rate, "6 of 10", in both; first its last rate "8 of 10", worse true and passed false; then its last rate "5 of 10", worse false and passed true; TST-756101, 756102 and 756103 passed true with no last rate; TST-756106 and TST-756104 passed false with no last rate
+// counter-proof: a passed taken from the outcome alone makes the worse TST-756105 pass and fails the first deepEqual; a lastRate taken from the release commit's rate gives "6 of 10" and fails it too
+test("TST-1430001 auditRows — a model-dependent test names its rate, the last release's rate and whether it passed", async () => {
+  const pick = (test) => [test.id, test.outcome, test.lastRate, test.worse, test.passed];
+  assert.deepEqual(rowOf(await audit(), R5).tests.map(pick), [["TST-756105", "6 of 10", "8 of 10", true, false]]);
+  const better = await audit({ results: { ...resultFiles(), [`runs/${OLD}/old.md`]: run(OLD, [["TST-756105", "unit", "passed", "5 of 10"]]) } });
+  assert.deepEqual(rowOf(better, R5).tests.map(pick), [["TST-756105", "6 of 10", "5 of 10", false, true]]);
+  assert.deepEqual([R1, R2, R4].map((name) => rowOf(better, name).tests.map((test) => [test.id, test.lastRate, test.passed])),
+    [[["TST-756101", null, true], ["TST-756102", null, true], ["TST-756103", null, true]], [["TST-756106", null, false]], [["TST-756104", null, false]]]);
+});
+
+// TST-1430002 · level: unit · module: MOD-release-evidence
+// guards: A MODEL-DEPENDENT TEST IS MEASURED AS A RATE; THE AUDIT VIEW LISTS EVERY REQUIREMENT OF THE RELEASE
+// given: the fixture where TST-756105 passed 6 of 10 against 5 of 10 at the last release; and the fixture where it did not complete its runs on the release commit — its record "not run", 3 of 10 — against 2 of 10 at the last release
+// input: auditRows(...); summary.passing and summary.notPassed beside the rows whose tests all have passed true
+// expect: known positive — the first counts passing 2, A FIRST RULE and A FIFTH RULE, exactly the rows whose tests all passed; the not-run fixture gives TST-756105 the outcome "3 of 10", passed false and worse false, and counts passing 1 (A FIRST RULE, the one row whose tests all passed) and notPassed 2
+// counter-proof: a passed true for a model-dependent test whose run did not complete counts A FIFTH RULE among the rows whose tests all passed and fails the last deepEqual
+test("TST-1430002 auditRows — the rows the passing count counts are told from their tests' passed, and a model-dependent test that did not run has not passed", async () => {
+  const passedRows = (result) => result.rows.filter((row) => row.tests.length && row.tests.every((test) => test.passed)).map((row) => row.requirement);
+  const better = await audit({ results: { ...resultFiles(), [`runs/${OLD}/old.md`]: run(OLD, [["TST-756105", "unit", "passed", "5 of 10"]]) } });
+  assert.deepEqual([better.summary.passing, passedRows(better)], [2, [R1, R5]], "known positive");
+  const results = { ...resultFiles(), [`runs/${OLD}/old.md`]: run(OLD, [["TST-756105", "unit", "passed", "2 of 10"]]) };
+  results[`runs/${COMMIT}/a.md`] = run(COMMIT, [["TST-756101", "unit", "passed", ""], ["TST-756102", "release", "passed", ""], ["TST-756103", "release", "passed", ""],
+    ["TST-756104", "unit", "passed", ""], ["TST-756105", "unit", "not run", "3 of 10"]]);
+  const notRun = await audit({ results });
+  assert.deepEqual(rowOf(notRun, R5).tests.map((test) => [test.outcome, test.passed, test.worse]), [["3 of 10", false, false]]);
+  assert.deepEqual([notRun.summary.passing, passedRows(notRun), notRun.summary.notPassed], [1, [R1], 2]);
+});
+
 // TST-756004 · level: unit · module: MOD-release-evidence
 // guards: THE AUDIT VIEW LISTS EVERY REQUIREMENT OF THE RELEASE
 // given: the fixture; the process requirement's gate record is docs/gates/20261010-release-testing.md; a product requirement has none
@@ -229,6 +262,36 @@ test("auditRows — a process requirement's row holds the gate records it is giv
   assert.deepEqual(rowOf(result, PROCESS).gates, ["docs/gates/20261010-release-testing.md"]);
   assert.deepEqual(rowOf(result, R1).gates, []);
   assert.deepEqual(rowOf(result, PROCESS).sources.map((source) => source.id), ["SRC-vibe-coding"]);
+});
+
+// TST-1431001 · level: unit · module: MOD-release-evidence
+// guards: A PROCESS REQUIREMENT ADDS TO THE MODEL; UC-030
+// given: the fixture, whose caller gives the gate of the process requirement with its record docs/gates/20261010-release-testing.md and the artifacts its gate asks for, "SPEC.md"
+// input: auditRows(...), the rows of the process requirement and of the first requirement
+// expect: known positive — the process row's gates stay the record, ["docs/gates/20261010-release-testing.md"]; its artifacts are ["SPEC.md"], one for each record in the order of the records; the first row's artifacts are empty
+// counter-proof: an auditRows that keeps the record only and drops the gate's artifacts gives the process row no artifacts and fails the second deepEqual
+test("TST-1431001 auditRows — a process requirement's row names the artifacts its gate asked for beside the gate record", async () => {
+  const result = await audit({ gates: GATES.map((gate) => ({ ...gate, artifacts: "SPEC.md" })) });
+  assert.deepEqual(rowOf(result, PROCESS).gates, ["docs/gates/20261010-release-testing.md"], "known positive: the record");
+  assert.deepEqual(rowOf(result, PROCESS).artifacts, ["SPEC.md"]);
+  assert.deepEqual(rowOf(result, R1).artifacts, []);
+});
+
+// TST-1433001 · level: unit · module: MOD-release-evidence
+// guards: THE AUDIT VIEW LISTS EVERY REQUIREMENT OF THE RELEASE; UC-030
+// given: the fixture, whose instance's SPEC holds the process requirement A PROCESS RULE; the caller gives no gate record for it, and gives its gate "Release testing" among the gates the workflow holds without a record
+// input: auditRows(..., gates [], ..., accepted, unrecorded [{ requirement: A PROCESS RULE, gate: "Release testing" }]); then, as known positive, auditRows with the fixture's gate record and no unrecorded gate
+// expect: known positive — with the record, the process row's gates are [docs/gates/20261010-release-testing.md] and its unrecorded gates []; without it, the process row still stands, constrains "process", has gates [], unrecorded ["Release testing"] and no test, and is counted among the requirements without a test (noTest 2); a product row's unrecorded gates are []
+// counter-proof: an auditRows that takes the process rows from `gates` alone gives no process row without the record and fails the second assertion
+test("TST-1433001 auditRows — a process requirement whose gate no record holds still has its row, which names that gate as one no record holds", async () => {
+  const recorded = await audit();
+  assert.deepEqual(rowOf(recorded, PROCESS).gates, ["docs/gates/20261010-release-testing.md"], "known positive: the recorded gate");
+  const result = await audit({ gates: [], unrecorded: [{ requirement: PROCESS, gate: "Release testing" }] });
+  const process = rowOf(result, PROCESS);
+  assert.ok(process, "the process requirement has its row");
+  assert.deepEqual([process.constrains, process.gates, process.unrecorded, process.tests], ["process", [], ["Release testing"], []]);
+  assert.equal(result.summary.noTest, 2);
+  assert.deepEqual([rowOf(recorded, PROCESS).unrecorded, rowOf(result, R1).unrecorded], [[], []]);
 });
 
 // TST-756005 · level: unit · module: MOD-release-evidence
@@ -444,6 +507,21 @@ test("auditRows — a source is resolved against the register it is given", asyn
   assert.deepEqual(rowOf(result, R1).sources.map((source) => source.id), ["SRC-vibe-coding"]);
 });
 
+// TST-1430003 · level: unit · module: MOD-release-evidence
+// guards: A MODEL-DEPENDENT TEST IS MEASURED AS A RATE; UC-030
+// given: the audit of the fixture, where TST-756105 passed 6 of 10 against 8 of 10 at the last release (worse); and the same with the last release at 5 of 10
+// input: auditDocument(auditRows(...), { tag, commit }); the lines of TST-756105 and of TST-756101
+// expect: known positive — TST-756101's line still reads "(unit): passed; counter-proof"; TST-756105's line ends "(unit): 6 of 10, against 8 of 10 at the last release, not passed; no counter-proof", and with the last release at 5 of 10 "(unit): 6 of 10, against 5 of 10 at the last release, passed; no counter-proof"
+// counter-proof: a document that writes the outcome alone loses "against 8 of 10" and fails the second assertion
+test("TST-1430003 auditDocument — a model-dependent test's line names its rate, the last release's rate and whether it passed", async () => {
+  const lineOf = (text, id) => text.split("\n").find((line) => line.includes(`\`${id}\``));
+  const worse = auditDocument(await audit(), { tag: TAG, commit: COMMIT });
+  assert.ok(lineOf(worse, "TST-756101").includes("(unit): passed; counter-proof"), lineOf(worse, "TST-756101"));
+  assert.ok(lineOf(worse, "TST-756105").endsWith("(unit): 6 of 10, against 8 of 10 at the last release, not passed; no counter-proof"), lineOf(worse, "TST-756105"));
+  const better = auditDocument(await audit({ results: { ...resultFiles(), [`runs/${OLD}/old.md`]: run(OLD, [["TST-756105", "unit", "passed", "5 of 10"]]) } }), { tag: TAG, commit: COMMIT });
+  assert.ok(lineOf(better, "TST-756105").endsWith("(unit): 6 of 10, against 5 of 10 at the last release, passed; no counter-proof"), lineOf(better, "TST-756105"));
+});
+
 // ================================================================== auditDocument (ITM-757)
 // The audit below is a fixture written out in this section, in the shape auditRows gives; its names stand in a block of their own.
 {
@@ -527,6 +605,38 @@ test("TST-757103 auditDocument — every row with its sources, tests and gate re
   assert.match(failed, /TST-756106[^\n]*unit[^\n]*failed/);
   assert.match(process, /constrains[^\n]*process/i);
   assert.ok(process.includes("docs/gates/20261010-release-testing.md"));
+});
+
+// TST-1431002 · level: unit · module: MOD-release-evidence
+// guards: A PROCESS REQUIREMENT ADDS TO THE MODEL; THE AUDIT VIEW LISTS EVERY REQUIREMENT OF THE RELEASE
+// given: the fixture audit whose process row holds the gate record docs/gates/20261010-release-testing.md and the artifacts its gate asked for, "SPEC.md"; the other rows hold none
+// input: auditDocument(audit, release)
+// expect: known positive — the process requirement's section keeps its gate record line; it holds a line naming the gate's artifacts SPEC.md; no other section names artifacts
+// counter-proof: a document that writes the gate records alone leaves SPEC.md out of the process section and fails the match
+test("TST-1431002 auditDocument — a process requirement's section names the artifacts its gate asked for", () => {
+  const text = document({ ...AUDIT, rows: AUDIT.rows.map((row) => (row.requirement === PROCESS ? { ...row, artifacts: ["SPEC.md"] } : row)) });
+  const rows = text.slice(text.indexOf("## Requirements")).split(/^### /m).slice(1);
+  const process = rows.find((row) => row.startsWith(PROCESS));
+  assert.ok(process.includes("docs/gates/20261010-release-testing.md"), "known positive: the gate record");
+  assert.match(process, /^- [^\n]*artifacts[^\n]*SPEC\.md/im);
+  assert.deepEqual(rows.filter((row) => !row.startsWith(PROCESS) && /artifacts/i.test(row)), []);
+});
+
+// TST-1433002 · level: unit · module: MOD-release-evidence
+// guards: THE AUDIT VIEW LISTS EVERY REQUIREMENT OF THE RELEASE; THE PRODUCT REPOSITORY IS SELF-SUFFICIENT
+// given: the fixture audit, and the same audit whose process row holds no gate record and names the gate "Release testing" as one no record holds (gates [], unrecorded ["Release testing"]); the other rows name no such gate
+// input: auditDocument(audit, release) of each
+// expect: known positive — with the fixture's gate record the process section holds its "Gate record" line and no line saying no record holds a gate; without it the process section holds a line naming the gate Release testing and that no record holds it, and no "Gate record" line; no other section says no record holds a gate
+// counter-proof: a document that writes the gate records alone leaves the process section without the line and fails the match
+test("TST-1433002 auditDocument — a process requirement's section says that no record holds its gate", () => {
+  const sections = (text) => text.slice(text.indexOf("## Requirements")).split(/^### /m).slice(1);
+  const recorded = sections(document()).find((row) => row.startsWith(PROCESS));
+  assert.ok(recorded.includes("Gate record") && !/no record holds/i.test(recorded), "known positive: the recorded gate");
+  const rows = sections(document({ ...AUDIT, rows: AUDIT.rows.map((row) => (row.requirement === PROCESS ? { ...row, gates: [], unrecorded: ["Release testing"] } : row)) }));
+  const process = rows.find((row) => row.startsWith(PROCESS));
+  assert.match(process, /^- [^\n]*Release testing[^\n]*no record holds/im);
+  assert.ok(!process.includes("Gate record"), "no gate record is named");
+  assert.deepEqual(rows.filter((row) => !row.startsWith(PROCESS) && /no record holds/i.test(row)), []);
 });
 
 // TST-757104 · level: unit · module: MOD-release-evidence

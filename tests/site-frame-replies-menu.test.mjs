@@ -71,7 +71,8 @@ test("TST-1103002 counter-proof: without the table's entry replies is not built,
 test("TST-1103003 the live app opens #replies on MOD-maintenance-pages' route", async () => {
   const FIX = fileURLToPath(new URL("./fixtures/architecture/", import.meta.url));
   const files = {};
-  (function walk(dir) { for (const name of readdirSync(dir)) { const path = join(dir, name); if (statSync(path).isDirectory()) walk(path); else files[relative(FIX, path).split("\\").join("/")] = readFileSync(path, "utf8"); } })(FIX);
+  // The fixture keeps its test file as tests/reader.test.js.fixture, so that node --test tests/ does not run it; the walk builds it back under its name.
+  (function walk(dir) { for (const name of readdirSync(dir)) { const path = join(dir, name); if (statSync(path).isDirectory()) walk(path); else files[relative(FIX, path).split("\\").join("/").replace(/\.fixture$/, "")] = readFileSync(path, "utf8"); } })(FIX);
   const srv = await repoServer({ files, history: [], handlers: [] });
   const page = await openDashboard({ server: srv, hash: "#replies" });
   assert.match(page.main(), /Read replies/);
@@ -98,7 +99,8 @@ test("TST-1105001 the live app hands the issue of #replies/issue=<n> to the rout
   try {
     const FIX = fileURLToPath(new URL("./fixtures/architecture/", import.meta.url));
     const files = {};
-    (function walk(dir) { for (const name of readdirSync(dir)) { const path = join(dir, name); if (statSync(path).isDirectory()) walk(path); else files[relative(FIX, path).split("\\").join("/")] = readFileSync(path, "utf8"); } })(FIX);
+    // The fixture keeps its test file as tests/reader.test.js.fixture, so that node --test tests/ does not run it; the walk builds it back under its name.
+    (function walk(dir) { for (const name of readdirSync(dir)) { const path = join(dir, name); if (statSync(path).isDirectory()) walk(path); else files[relative(FIX, path).split("\\").join("/").replace(/\.fixture$/, "")] = readFileSync(path, "utf8"); } })(FIX);
     const product = await repoServer({ repo: "acme/product-alpha", files, history: [], handlers: [] });
     const srv = await repoServer({ files, history: [], handlers: [(url, init) =>
       url.origin === "https://api.github.com" && url.pathname.startsWith("/repos/acme/product-alpha/") ? product.fetch(url.href, init) : undefined] });

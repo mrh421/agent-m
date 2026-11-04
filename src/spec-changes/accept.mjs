@@ -19,7 +19,7 @@
 //     comes with the identifier of every artifact that names it, once, in the order MOD-trace-graph's requirementImpact lists them.
 //   - A rationale the queue does not hold is the empty text.
 //
-// The planner works queue by queue, oldest folder first, each in the order of its index, on the target as the entries before it have
+// The planner works queue by queue, in the order of the folders' names, each in the order of its index, an entry after the entry of any queue that creates its anchor, on the target as the entries before it have
 // left it:
 //   - `sectionBlob` of a shown entry is the blob of the section shown beside the proposal (entryView's current.blob), checked against
 //     the section as it stands when the entry is applied: of two entries that replace one section, the second is stale. For an entry
@@ -40,11 +40,11 @@
 
 import { parseSpec, renamedRequirements, sectionText } from "../spec-document/index.mjs";
 import { blobSha, lineDiff } from "../text-tools/index.mjs";
-import { requirementImpact, storedGraph, traceGraph } from "../trace-graph/index.mjs";
+import { requirementImpact, storedGraph, storedReferences, traceGraph } from "../trace-graph/index.mjs";
 import { readDocument, writeDocument } from "../documents/index.mjs";
 import { approvalSchema } from "../approvals/index.mjs";
 import { sourceFindings, sourceSchemas } from "../source-register/index.mjs";
-import { queueAt, queuesAt, queues, replaceSpan, spanText } from "./queues.mjs";
+import { queuesAt, queues, replaceSpan, spanText } from "./queues.mjs";
 
 // Whether a requirement stated by the proposal is another than the one the section holds under its name: its source, rule or check.
 const differs = (was, is) => was.source !== is.source || was.rule !== is.rule || was.check !== is.check;
@@ -66,7 +66,8 @@ export function graphOf(snapshot) {
 // touched; a page never builds it.
 // `elsewhere` (the requirements the whole target holds, by name) is given where the section that holds now is none — the entry's anchor is not in the target: a name the target already holds is then no addition,
 // it is changed when its source, rule or check differs from the target's, and not named otherwise.
-export async function impactOf(snapshot, before, after, elsewhere = null) {
+// `build` is proposeSection's alone: where no graph is stored for the snapshot's commit — the head a job has just committed on —, the graph is built from the snapshot (graphOf).
+export async function impactOf(snapshot, before, after, elsewhere = null, build = false) {
   const was = parseSpec(before).requirements, is = parseSpec(after).requirements;
   const { withdrawn, added } = renamedRequirements(before, after);
   const named = [
@@ -78,35 +79,65 @@ export async function impactOf(snapshot, before, after, elsewhere = null) {
     }),
   ];
   if (named.length === 0) return [];
-  const graph = await storedGraph(snapshot, snapshot.commit);
+  // What names each requirement, as stored beside the commit's graph (MOD-trace-graph's storedReferences: a name it holds no entry for is named by nothing); the
+  // graph itself only where those are not stored.
+  const stored = await storedReferences(snapshot, snapshot.commit);
+  const graph = stored ? null : await storedGraph(snapshot, snapshot.commit).catch((failure) => {
+    if (build && failure?.name === "GraphNotStored") return graphOf(snapshot);
+    throw failure;
+  });
   return named.map(({ name, change }) => ({
-    name, change, referencedBy: [...new Set(requirementImpact(graph, name).map((place) => place.id))],
+    name, change, referencedBy: stored ? [...(stored.get(name) ?? [])] : [...new Set(requirementImpact(graph, name).map((place) => place.id))],
   }));
 }
+
+// The entry `entry` of the queue `queue` that the snapshot holds, with the target's text, the section or span of the target that holds now (null where the target lacks the anchor or cannot be read) and the
+// proposal's text. `fnName` names the caller in the RangeError for a queue or an entry the snapshot does not hold. It reads no rationale, and with `issues` false the queue's
+// entries give no issue, so that none is read for it either.
+async function entryTexts(fnName, queue, entry, snapshot, issues = true) {
+  const [found] = await queuesAt(snapshot, [queue], { issues });
+  const item = found?.entries.find((candidate) => candidate.number === entry);
+  if (!item) throw new RangeError(`${fnName}: the snapshot holds no entry ${entry} of the queue ${queue}`);
+  const targetText = await snapshot.read(item.file);
+  const heldNow = typeof targetText === "string" ? spanText(targetText, item.anchor, item.until) : null;
+  const proposalText = item.proposal.path ? (await snapshot.read(item.proposal.path)) ?? "" : "";
+  return { item, targetText, heldNow, proposalText };
+}
+
+/**
+ * entryImpact(queue: string, entry: number, snapshot: Snapshot) -> Promise<Array<{ name: string, change: "changed" | "withdrawn" | "added",
+ *   referencedBy: string[] }>> — what one entry changes, withdraws or adds, each requirement with what names it, from the entry's queue, its target
+ * and its proposal (MOD-spec-changes, Interfaces); it reads no rationale. Crosses the network and fails as queues does; a queue or an entry the
+ * snapshot does not hold is a RangeError.
+ */
+export async function entryImpact(queue, entry, snapshot) {
+  return impactOfTexts(snapshot, await entryTexts("entryImpact", queue, entry, snapshot, false));
+}
+
+// The one definition of an entry's impact list, from the texts entryTexts read: entryImpact gives it, and entryView gives it from the texts it has read already, so that no file is read twice.
+const impactOfTexts = (snapshot, { targetText, heldNow, proposalText }) =>
+  impactOf(snapshot, heldNow ?? "", proposalText, heldNow === null && typeof targetText === "string" ? parseSpec(targetText).requirements : null);
 
 /**
  * entryView(queue: string, entry: number, snapshot: Snapshot) -> Promise<{ current: { text: string, blob: string } | null,
  *   proposal: { text: string, blob: string }, difference: DiffLine[], rationale: string, impact: Array<{ name: string,
- *   change: "changed" | "withdrawn" | "added", referencedBy: string[] }>, state: string, createdBy: number | null }> — what the
+ *   change: "changed" | "withdrawn" | "added", referencedBy: string[] }>, state: string, createdBy: { queue: string, entry: number } | null, issue: { number: number, product: string } | null }> — what the
  * reviewer sees (MOD-spec-changes, Interfaces): the section that holds now beside the proposal, their difference, the rationale
- * and the impact list (NO PROPOSAL WITHOUT THE CURRENT TEXT BESIDE IT, A REQUIREMENT IS NOT CHANGED WITHOUT AN IMPACT LIST).
+ * and the impact list as entryImpact gives it (NO PROPOSAL WITHOUT THE CURRENT TEXT BESIDE IT, A REQUIREMENT IS NOT CHANGED WITHOUT AN IMPACT LIST).
  */
 export async function entryView(queue, entry, snapshot) {
-  const found = await queueAt(snapshot, queue);
-  const item = found?.entries.find((candidate) => candidate.number === entry);
-  if (!item) throw new RangeError(`entryView: the snapshot holds no entry ${entry} of the queue ${queue}`);
-  const targetText = await snapshot.read(item.file);
-  const heldNow = typeof targetText === "string" ? spanText(targetText, item.anchor, item.until) : null;
-  const proposalText = item.proposal.path ? (await snapshot.read(item.proposal.path)) ?? "" : "";
+  const texts = await entryTexts("entryView", queue, entry, snapshot);
+  const { item, heldNow, proposalText } = texts;
   const rationale = item.rationale ? (await snapshot.read(item.rationale)) ?? "" : "";
   return {
     current: heldNow === null ? null : { text: heldNow, blob: await blobSha(heldNow) },
     proposal: { text: proposalText, blob: item.proposal.blob },
     difference: lineDiff(heldNow ?? "", proposalText),
     rationale,
-    impact: await impactOf(snapshot, heldNow ?? "", proposalText, heldNow === null && typeof targetText === "string" ? parseSpec(targetText).requirements : null),
+    impact: await impactOfTexts(snapshot, texts),
     state: item.state,
     createdBy: item.createdBy,
+    issue: item.issue,
   };
 }
 
@@ -139,62 +170,75 @@ async function plan(snapshot, loaded, items, { sources, now, verb, records }) {
   const put = (path, text) => { texts.set(path, text); changed.add(path); };
   const refuse = (item, reason) => refused.push({ item, reason });
 
-  for (const folder of [...new Set(items.map((item) => item.queue))].sort()) {
+  // The items queue by queue, in the order of their folders and each in the order of its index; an item whose anchor another item's entry creates
+  // goes after that item, wherever its queue stands.
+  const position = (item) => loaded.get(item.queue)?.entries.findIndex((each) => each.number === item.entry) ?? -1;
+  const sorted = [...items].sort((a, b) => (a.queue === b.queue ? position(a) - position(b) : a.queue < b.queue ? -1 : 1));
+  const creatorIn = (item) => {
+    const by = loaded.get(item.queue)?.entries.find((each) => each.number === item.entry)?.createdBy ?? null;
+    return by && sorted.find((other) => other.queue === by.queue && other.entry === by.entry);
+  };
+  const ordered = [];
+  const place = (item, seen = new Set()) => {
+    if (ordered.includes(item) || seen.has(item)) return;
+    seen.add(item);
+    const creator = creatorIn(item);
+    if (creator) place(creator, seen);
+    ordered.push(item);
+  };
+  for (const item of sorted) place(item);
+
+  const rows = new Map();
+  for (const item of ordered) {
+    const folder = item.queue;
     const queue = loaded.get(folder) ?? null;
-    const ofQueue = items.filter((item) => item.queue === folder);
-    if (queue === null) {
-      for (const item of ofQueue) refuse(item, `the queue ${folder} is not in the repository`);
+    if (queue === null) { refuse(item, `the queue ${folder} is not in the repository`); continue; }
+    const entry = queue.entries.find((each) => each.number === item.entry);
+    if (!entry) { refuse(item, "the entry is no longer in the queue's index"); continue; }
+    if (entry.decision !== null) { refuse(item, "already written into the SPEC"); continue; }
+    const claims = item.claims;
+    if (claims && claims.anchor !== entry.anchor) { refuse(item, `the record's anchor “${claims.anchor}” is not the queue's anchor “${entry.anchor}” for entry ${pad2(entry.number)}`); continue; }
+    if (claims && claims.target !== entry.file) { refuse(item, `the record names the target ${claims.target}, not the entry's ${entry.file}`); continue; }
+    if (claims && claims.proposal !== entry.proposal.path) { refuse(item, `the record names the proposal ${claims.proposal}, not the entry's ${entry.proposal.path}`); continue; }
+    const proposal = entry.proposal.path ? await get(entry.proposal.path) : null;
+    if (typeof proposal !== "string") { refuse(item, "the proposal no longer exists"); continue; }
+    if (entry.proposal.blob !== item.proposalBlob) { refuse(item, `the proposal changed after it was ${verb} — open it again`); continue; }
+    const unsourced = sourceFindings([...parseSpec(proposal).requirements.values()], sources.links, sources.register);
+    if (unsourced.length) {
+      refuse(item, `a requirement of its proposal names no source the product links: ${unsourced.map((each) => `${each.artifact} (${each.what})`).join("; ")}`);
       continue;
     }
-    const position = (item) => queue.entries.findIndex((each) => each.number === item.entry);
-    const rows = [];
-    for (const item of [...ofQueue].sort((a, b) => position(a) - position(b))) {
-      const entry = queue.entries.find((each) => each.number === item.entry);
-      if (!entry) { refuse(item, "the entry is no longer in the queue's index"); continue; }
-      if (entry.decision !== null) { refuse(item, "already written into the SPEC"); continue; }
-      const claims = item.claims;
-      if (claims && claims.anchor !== entry.anchor) { refuse(item, `the record's anchor “${claims.anchor}” is not the queue's anchor “${entry.anchor}” for entry ${pad2(entry.number)}`); continue; }
-      if (claims && claims.target !== entry.file) { refuse(item, `the record names the target ${claims.target}, not the entry's ${entry.file}`); continue; }
-      if (claims && claims.proposal !== entry.proposal.path) { refuse(item, `the record names the proposal ${claims.proposal}, not the entry's ${entry.proposal.path}`); continue; }
-      const proposal = entry.proposal.path ? await get(entry.proposal.path) : null;
-      if (typeof proposal !== "string") { refuse(item, "the proposal no longer exists"); continue; }
-      if (entry.proposal.blob !== item.proposalBlob) { refuse(item, `the proposal changed after it was ${verb} — open it again`); continue; }
-      const unsourced = sourceFindings([...parseSpec(proposal).requirements.values()], sources.links, sources.register);
-      if (unsourced.length) {
-        refuse(item, `a requirement of its proposal names no source the product links: ${unsourced.map((each) => `${each.artifact} (${each.what})`).join("; ")}`);
-        continue;
-      }
-      const spec = await get(entry.file);
-      if (typeof spec !== "string") { refuse(item, `the target ${entry.file} does not exist`); continue; }
-      const before = spanText(spec, entry.anchor, entry.until);
-      if (before === null) {
-        const by = entry.createdBy;
-        refuse(item, by === null ? `its heading “${entry.anchor}” is not in ${entry.file}, and no entry of the queue creates it`
-          : `its heading “${entry.anchor}” is created by entry ${pad2(by)} of the queue — it goes only with or after entry ${pad2(by)}`);
-        continue;
-      }
-      if (item.sectionBlob === "") {
-        if (sectionText(initial.get(entry.file), entry.anchor) !== null) {
-          refuse(item, `the SPEC holds the section “${entry.anchor}”, which was not shown beside it — the section changed after it was ${verb} — open it again`);
-          continue;
-        }
-      } else if (await blobSha(before) !== item.sectionBlob) {
-        refuse(item, `the SPEC section changed after it was ${verb} — open it again`);
-        continue;
-      }
-      put(entry.file, replaceSpan(spec, entry.anchor, entry.until, proposal));
-      const recordFile = item.record.slice(APPROVALS.length);
-      if (records) {
-        files.set(item.record, writeDocument(approvalSchema, { fields: { kind: "spec", queue: queue.folder, entry: pad2(entry.number),
-          proposal: entry.proposal.path, blob: item.proposalBlob, target: entry.file, anchor: entry.anchor, section: await blobSha(before) } }));
-      }
-      rows.push(decisionRow(entry.number, recordFile, now));
-      applied.push({ item, id: `spec-${folder.split("/").pop()}-${pad2(entry.number)}` });
+    const spec = await get(entry.file);
+    if (typeof spec !== "string") { refuse(item, `the target ${entry.file} does not exist`); continue; }
+    const before = spanText(spec, entry.anchor, entry.until);
+    if (before === null) {
+      const by = entry.createdBy;
+      const named = by === null ? null : `entry ${pad2(by.entry)}${by.queue === folder ? "" : ` of the queue ${by.queue.split("/").pop()}`}`;
+      refuse(item, by === null ? `its heading “${entry.anchor}” is not in ${entry.file}, and no entry of the queue creates it`
+        : `its heading “${entry.anchor}” is created by ${by.queue === folder ? `${named} of the queue` : named} — it goes only with or after ${named}`);
+      continue;
     }
-    if (rows.length) {
-      const decisions = (await get(`${folder}/entscheidungen.md`)) ?? "";
-      put(`${folder}/entscheidungen.md`, (decisions && !decisions.endsWith("\n") ? `${decisions}\n` : decisions) + rows.join(""));
+    if (item.sectionBlob === "") {
+      if (sectionText(initial.get(entry.file), entry.anchor) !== null) {
+        refuse(item, `the SPEC holds the section “${entry.anchor}”, which was not shown beside it — the section changed after it was ${verb} — open it again`);
+        continue;
+      }
+    } else if (await blobSha(before) !== item.sectionBlob) {
+      refuse(item, `the SPEC section changed after it was ${verb} — open it again`);
+      continue;
     }
+    put(entry.file, replaceSpan(spec, entry.anchor, entry.until, proposal));
+    const recordFile = item.record.slice(APPROVALS.length);
+    if (records) {
+      files.set(item.record, writeDocument(approvalSchema, { fields: { kind: "spec", queue: queue.folder, entry: pad2(entry.number),
+        proposal: entry.proposal.path, blob: item.proposalBlob, target: entry.file, anchor: entry.anchor, section: await blobSha(before) } }));
+    }
+    rows.set(folder, [...(rows.get(folder) ?? []), decisionRow(entry.number, recordFile, now)]);
+    applied.push({ item, id: `spec-${folder.split("/").pop()}-${pad2(entry.number)}` });
+  }
+  for (const [folder, added] of [...rows].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const decisions = (await get(`${folder}/entscheidungen.md`)) ?? "";
+    put(`${folder}/entscheidungen.md`, (decisions && !decisions.endsWith("\n") ? `${decisions}\n` : decisions) + added.join(""));
   }
   for (const path of changed) files.set(path, texts.get(path));
   return { files, applied, refused };
@@ -241,7 +285,7 @@ async function sourcesOf(snapshot) {
 /**
  * applyApproved(snapshot: Snapshot, now: Date) -> Promise<{ files: Record<string, string>, applied: string[], refused: Array<{
  *   record: string, reason: string }> }> — for every record of kind spec under docs/approvals/ that no decision row names, and whose
- * entry no decision row names, queues oldest first and each in the order of its index: the same checks as acceptEntries makes —
+ * entry no decision row names, and whose queue the snapshot holds, queues in the order of their folders' names and each in the order of its index: the same checks as acceptEntries makes —
  * the proposal and the section still have the blobs the record names, the record's anchor, target and proposal are its entry's,
  * every requirement of the proposal names a source the repository links — and the same bytes: the target with the section replaced
  * and the queue's decisions with the row appended. `applied` names the records applied, `refused` the others with the reason; a
@@ -265,7 +309,8 @@ export async function applyApproved(snapshot, now) {
     const number = /^\d+$/.test(fields.entry) ? Number(fields.entry) : null;
     if (number === null) { refused.push({ record: path, reason: `the record's entry “${fields.entry}” is not a number` }); continue; }
     const queue = fields.queue.replace(/\/+$/, "");
-    if (loaded.get(queue)?.entries.find((each) => each.number === number)?.decision) continue;
+    // A record whose queue the snapshot does not hold is not applied: its queue's decisions are in the history (THE REPLACED TEXT STAYS REACHABLE).
+    if (!loaded.has(queue) || loaded.get(queue).entries.find((each) => each.number === number)?.decision) continue;
     items.push({ queue, entry: number, proposalBlob: fields.blob, sectionBlob: fields.section, record: path,
       claims: { anchor: fields.anchor, target: fields.target, proposal: fields.proposal } });
   }

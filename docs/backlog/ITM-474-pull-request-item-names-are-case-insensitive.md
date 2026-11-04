@@ -8,7 +8,6 @@ realises:
   - A SPRINT HOLDS ITS ITEMS UNTIL THEY REACH THE DEFAULT BRANCH
 modules:
   - MOD-work-plans
-  - MOD-work-items
 builds_on:
   - ITM-295
   - ITM-469

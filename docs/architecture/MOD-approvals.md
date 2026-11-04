@@ -76,7 +76,7 @@ It keeps nothing. It owns one format, the approval record; every record is evide
 | `kind` | one of `use-case`, `architecture-decision`, `module`, `spec`, `release-report`; required |
 | `file` | the path of the accepted file; required for every kind except `spec` |
 | `blob` | the 40-hex git blob SHA of the text shown; for `spec`, of the proposal; for a removed decision or module file, the blob of the empty text (`e69de29bb2d1d6434b8b29ae775ad8c2e48c5391`), which is what the default branch holds of it; required |
-| `queue`, `entry`, `proposal`, `target`, `anchor`, `section` | required for `spec`: the queue's folder, the entry's two-digit number, the proposal's path, the file it changes, the heading its section starts with, the blob SHA of the section shown beside the proposal |
+| `queue`, `entry`, `proposal`, `target`, `anchor`, `section` | required for `spec`: the queue's folder, the entry's number, the proposal's path, the file it changes, the heading its section starts with, the blob SHA of the section shown beside the proposal |
 | `limitation` | for `release-report`: one line per failing test or worse rate, `<TST-<nnn> or rate> — <reason>`; zero or more |
 
 Examples:
@@ -89,9 +89,9 @@ blob: 2699e35d0c413d3a814286dec77c49ad7598b4b1
 
 ```text
 kind: spec
-queue: docs/spec-freigaben/2026-09-23d_instanz-und-token
+queue: docs/spec-freigaben/configuration-and-secrets
 entry: 01
-proposal: docs/spec-freigaben/2026-09-23d_instanz-und-token/01-konfiguration-token.md
+proposal: docs/spec-freigaben/configuration-and-secrets/01-configuration-and-secrets.md
 blob: 47a9e8a383b0f1db6e98760b9a1f1325d8303844
 target: SPEC.md
 anchor: ## 7. Configuration and secrets
@@ -112,10 +112,10 @@ never written. A decision or module file that a record names and the snapshot no
   the file's folder is not counted. Errors: `NotReviewed` for a path that is no reviewed file.
 - `statuses(snapshot: Snapshot) -> Map<string, { id: string, kind: string, status: "open" | "accepted" | "changed" }>` —
   the status of every reviewed file of a snapshot, keyed by path; computed in one pass over `docs/approvals/`.
-- `removedFiles(snapshot: Snapshot) -> Array<{ id: string, kind: "architecture-decision" | "module", path: string, lastBlob: string }>` — every
-  decision or module file that a record names and of whose identifier the snapshot holds no file, and whose removal no record accepts (no record of
-  that identifier names the empty text's blob): `path` and `lastBlob` are those of the most recent record of the identifier. It is computed in the
-  same pass over `docs/approvals/` as `statuses`, in the order of the identifiers.
+- `removedFiles(snapshot: Snapshot) -> Array<{ id: string, kind: "architecture-decision" | "module" }>` — every decision or module file that a
+  record names and of whose identifier the snapshot holds no file, and whose removal no record accepts (no record of that identifier names the empty
+  text's blob); its path and last accepted text are those `lastAcceptedText` gives for the identifier. It is computed in the same pass over
+  `docs/approvals/` as `statuses`, in the order of the identifiers.
 - `lastAcceptedText(id: string, host: Host) -> Promise<{ text: string, blob: string, path: string } | null>` — the text
   named by the most recent approval record of an identifier, also when the file has been renamed since; `null` when no
   record names it. A record whose content names another blob than its name, or a file of another identifier, counts as
@@ -175,8 +175,10 @@ never written. A decision or module file that a record names and the snapshot no
     file as an artifact keyed by the key of its format;
   - precondition `rests-on-accepted` — an error finding naming every requirement or use case the job's selection names
     that is not accepted, and, when the parameter `architecture` is true, every architecture decision and module file
-    that is not accepted; the requirements and use cases are those of the parameters `requirements` and `useCases`
-    (`NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED`, `ARCHITECTURE IS DESIGNED ONLY AGAINST ACCEPTED USE CASES`);
+    that is not accepted; the requirements and use cases are those of the parameters `requirements` and `useCases`, and
+    those each step of the plan or item of the backlog of the parameters `steps` and `items` names under `realises`, read
+    with MOD-documents' item schema (`NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED`, `ARCHITECTURE IS DESIGNED ONLY
+    AGAINST ACCEPTED USE CASES`);
   - precondition `architecture-ready` — an error finding when a use case is open or changed (naming each) or when the
     product already has an architecture (pointing to UC-023); a warning finding naming every open SPEC change — an
     entry that neither an approval record nor a decision row naming the commit that wrote it into the SPEC decides

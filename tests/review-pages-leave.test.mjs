@@ -49,8 +49,7 @@ for (const { site, route: name, params } of SITES) {
   // guards: UC-018; EDITS ARE PREPARED ON THE DASHBOARD
   // given: the edit page of <site>, its editor's text changed to "changed text", and a confirmation that first declines, then accepts the discard
   // input: route.leave() twice
-  // expect: leave is a function; the first call returns false, asks "Discard unsaved changes?" once, and the editor is still drawn with "changed text" in it; the second returns true,
-  //   asks the same question a second time, and the editor is removed
+  // expect: leave is a function; the first call returns false, asks "Discard unsaved changes?" once, and the editor is still drawn with "changed text" in it; the second returns true, asks the same question a second time, and the editor is removed
   test(`TST-603020 ${site}: leave asks through the editor's close, keeps the editor when the discard is declined and closes it when it is accepted`, async () => {
     await withConfirm([false, true], async (asked) => {
       const { route, target } = await draw(fakeProduct(), name, params);

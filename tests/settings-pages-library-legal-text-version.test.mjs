@@ -56,8 +56,7 @@ const one = (root, name) => { const found = byClass(root, name); assert.equal(fo
 // guards: UC-016; AN EU LEGAL TEXT IS FETCHED FROM THE OFFICIAL REPOSITORY; ONE CLICK PER DECISION; A SOURCE VERSION IS NEVER OVERWRITTEN
 // given: the entry SRC-ai-act of an EU legal text with an EUR-Lex address as its identifier and one version, and the entry SRC-ai-bare with the bare CELEX number 32024R1689 and one version (each in its own instance)
 // input: render library/<entry>; press + New version
-// expect: for each, no field for files is offered; the instance's workflow fetch-sources.yml is started once, on the branch main, with exactly the input source = the entry's identifier (SRC-ai-act, SRC-ai-bare); the result
-// reads "✓ The fetch workflow was started for <entry>: a newer text is recorded as a further version, the same text is not recorded again."; the page writes nothing to any repository
+// expect: for each, no field for files is offered; the instance's workflow fetch-sources.yml is started once, on the branch main, with exactly the input source = the entry's identifier (SRC-ai-act, SRC-ai-bare); the result reads "✓ The fetch workflow was started for <entry>: a newer text is recorded as a further version, the same text is not recorded again."; the page writes nothing to any repository
 test("new version — of a fetched EU legal text it starts the fetch run for that entry and offers no file", async (t) => {
   for (const [id, identifier] of [["SRC-ai-act", ADDRESS], ["SRC-ai-bare", "32024R1689"]]) {
     const page = await open(t, id, identifier);

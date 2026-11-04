@@ -9,7 +9,7 @@
 // Run: node --test tests/review-pages-draft-use-cases.test.mjs
 //
 // Module: MOD-review-pages
-// Guards: UC-007; ONE CLICK PER DECISION; THE PAGE NAMES WHERE IT SENDS; A GENERATED ARTIFACT IS A PROPOSAL; A REVIEWED ARTIFACT ENTERS THE DEFAULT BRANCH AS OPEN; THE ROUNDS ARE COUNTED AND SHOWN; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; A JOB IS RECORDED IN ITS PRODUCT REPOSITORY
+// Guards: UC-007; UC-010; ONE CLICK PER DECISION; THE PAGE NAMES WHERE IT SENDS; A GENERATED ARTIFACT IS A PROPOSAL; A REVIEWED ARTIFACT ENTERS THE DEFAULT BRANCH AS OPEN; THE ROUNDS ARE COUNTED AND SHOWN; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; A JOB IS RECORDED IN ITS PRODUCT REPOSITORY
 // Level: unit
 //
 // This imports the browser harness of tests/review-pages-harness.mjs unchanged. The product is a fixture behind a Host of the tests' own that keeps to
@@ -146,9 +146,10 @@ function endpointAnswers(...drafts) {
   };
 }
 test.afterEach(() => { globalThis.fetch = realFetch; });
-// A drafted new use case in the five parts a use case holds.
+// A drafted new use case in the five parts a use case holds, with the Mermaid diagram its schema requires.
 const body = (realises) => useCase("UC-900", "Shelve a book", "The member shelves a book.", realises) + text("", "## Actors", "", "- **Member**", "", "## Precondition", "",
-  "- The book is in the library.", "", "## Main flow", "", "1. The member puts the book on its shelf.", "", "## Alternative flows", "", "- **1a. The shelf is full.** The member asks for another shelf.",
+  "- The book is in the library.", "", "## Main flow", "", "1. The member puts the book on its shelf.", "", "```mermaid", "flowchart LR", "    Member --> Shelf", "```", "",
+  "## Alternative flows", "", "- **1a. The shelf is full.** The member asks for another shelf.",
   "", "## Postcondition", "", "- The book stands on a shelf.");
 const drafted = (realises, path = UC_PATH("UC-900", "shelve-a-book")) => ({ files: [{ path, class: "new", text: body(realises) }] });
 
@@ -216,11 +217,11 @@ test("view — hands the frame the strategies the kind derive-use-cases uses in 
 // guards: EVERY STEP EXPLAINS ITSELF; UC-007
 // given: the list of use cases of a product with a token
 // input: the route use-case with no id
-// expect: a link "Draft use cases" to #use-case/id=draft
+// expect: a link "Draft use cases" to #use-case/id=draft/product=<the product's address, percent-encoded>
 test("use-case — the list's Draft use cases leads to the drafting page", async () => {
   const fake = fakeProduct();
   const target = await show(fake, {});
-  const links = find(target, (node) => node.localName === "a" && node.getAttribute("href") === "#use-case/id=draft");
+  const links = find(target, (node) => node.localName === "a" && node.getAttribute("href") === `#use-case/id=draft/product=${encodeURIComponent(ON_GITHUB.web)}`);
   assert.equal(links.length, 1);
   assert.match(links[0].textContent, /Draft use cases/);
 });
@@ -397,6 +398,64 @@ test("use-case/draft — what the loop left is shown beside the rounds", async (
   assert.match(byClass(target, "p", "rounds")[0].textContent, /^Correction rounds: [2-9]/);
 });
 
+// ITM-1386 (UC007-F3): THE ROUNDS ARE COUNTED AND SHOWN asks "the findings of each round … shown with the draft". The reading taken: after Run, the drafting page of the use
+// cases shows the rounds as the architecture's are shown, by MOD-review-pages' one section of rounds (sections.mjs roundsSection) — <section class="rounds">, a
+// <section class="round" data-number="n"> for each round headed "Round n — …", its findings each in a <li class="finding">, the last round's findings marked left unless
+// the loop passed, and <p class="left-count">.
+const roundBlocks = (target) => byClass(byClass(target, "section", "rounds")[0] ?? target, "section", "round");
+
+// TST-1386001 · level: unit · module: MOD-review-pages
+// guards: THE ROUNDS ARE COUNTED AND SHOWN; UC-007
+// given: an endpoint whose first answer is a use case without its section Postcondition and whose second is the use case corrected, so that round 1 finds the missing section and round 2 finds nothing
+// input: Run on the panel
+// expect: known positive — "Correction rounds: 2" and the use case written; the page holds one section of rounds with two rounds: round 1 headed "Round 1 — …" with a finding naming ## Postcondition, not marked left; round 2 headed "Round 2 — no finding"; "Left: none"
+test("use-case/draft — after Run, each round is shown with its findings, round 1's although the loop passed", async () => {
+  const flawed = drafted([OTHER]);
+  flawed.files[0].text = flawed.files[0].text.replace(/\n## Postcondition[^]*$/, "");
+  endpointAnswers(flawed, drafted([OTHER]));
+  const fake = fakeProduct();
+  const target = await show(fake);
+  await panelFor(target, "drafter-a");
+  click(runButtons(target)[0]);
+  await until(() => byClass(target, "ul", "written").length === 1, "the result");
+  assert.equal(byClass(target, "p", "rounds")[0].textContent, "Correction rounds: 2", "known positive: the rounds are counted");
+  assert.match(byClass(target, "ul", "written")[0].textContent, /UC-003/, "known positive: the use case is written");
+  assert.equal(byClass(target, "section", "rounds").length, 1, "one section of rounds");
+  const rounds = roundBlocks(target);
+  assert.deepEqual(rounds.map((block) => block.getAttribute("data-number")), ["1", "2"]);
+  assert.match(find(rounds[0], (node) => node.localName === "h4")[0].textContent, /^Round 1 — /);
+  const first = byClass(rounds[0], "li", "finding");
+  assert.ok(first.some((item) => /## Postcondition/.test(item.textContent)), `round 1's finding names the section: ${first.map((item) => item.textContent).join(" | ")}`);
+  assert.equal(byClass(rounds[0], "li", "left").length, 0, "round 1's findings are not left");
+  assert.equal(find(rounds[1], (node) => node.localName === "h4")[0].textContent, "Round 2 — no finding");
+  assert.equal(byClass(target, "p", "left-count")[0].textContent, "Left: none");
+});
+
+// TST-1386002 · level: unit · module: MOD-review-pages
+// guards: THE ROUNDS ARE COUNTED AND SHOWN; UC-007
+// given: an endpoint that always answers a use case without its section Postcondition, so that the loop stops with the finding left
+// input: Run on the panel
+// expect: the section of rounds holds as many rounds as "Correction rounds: n" counts; the last round's finding naming ## Postcondition is marked left, no earlier round's is; the count of left findings is the number of items of ul.left; counter-proof of TST-1386001's "Left: none"
+test("use-case/draft — after Run, the last round's findings are marked left when the loop stops with them", async () => {
+  const flawed = drafted([OTHER]);
+  flawed.files[0].text = flawed.files[0].text.replace(/\n## Postcondition[^]*$/, "");
+  endpointAnswers(flawed);
+  const fake = fakeProduct();
+  const target = await show(fake);
+  await panelFor(target, "drafter-a");
+  click(runButtons(target)[0]);
+  await until(() => byClass(target, "ul", "written").length === 1, "the result");
+  const counted = Number(/^Correction rounds: (\d+)$/.exec(byClass(target, "p", "rounds")[0].textContent)?.[1]);
+  const rounds = roundBlocks(target);
+  assert.ok(counted >= 2, "known positive: the loop ran more than one round");
+  assert.equal(rounds.length, counted, "each round counted is shown");
+  const last = rounds[rounds.length - 1];
+  assert.ok(byClass(last, "li", "left").some((item) => /## Postcondition/.test(item.textContent)), "the last round's finding is marked left");
+  for (const block of rounds.slice(0, -1)) assert.equal(byClass(block, "li", "left").length, 0, `round ${block.getAttribute("data-number")} has nothing left`);
+  const leftItems = find(byClass(target, "ul", "left")[0], (node) => node.localName === "li").length;
+  assert.equal(byClass(target, "p", "left-count")[0].textContent, leftItems === 1 ? "Left: 1 finding" : `Left: ${leftItems} findings`);
+});
+
 // TST-472621 · level: unit · module: MOD-review-pages
 // guards: UC-007
 // given: an endpoint that always answers a use case that realises no requirement
@@ -496,4 +555,45 @@ test("use-case/draft — the selection the person made is what the panel shows a
   await until(() => byClass(target, "ul", "written").length === 1, "the result");
   const record = fake.writes().find((change) => change.files.some((file) => file.path.startsWith("docs/jobs/"))).files[0].text;
   assert.match(record, new RegExp(`^works_on:\\n  - ${RULE}\\n`, "m"));
+});
+
+// ---------------------------------------------------------------- what the panel names besides: the route (ITM-1379)
+
+// UC-010 (Precondition): on the server's runners "the calls are billed per use by the agent's provider — the run panel says so"; MOD-site-frame's runPanel: "What the panel of a
+// use case names besides — the route, the gates the jobs will meet — the view shows beside it." Reading taken: the view appends that line to the panel's element, as the drafting
+// of requirements appends its count of existing requirements; it reads <p class="route-billing">.
+const billing = (target) => byClass(byClass(target, "section", "run-panel")[0], "p", "route-billing");
+
+// TST-1379001 · level: unit · module: MOD-review-pages
+// guards: UC-010; EVERY STEP EXPLAINS ITSELF
+// given: a product that holds the job workflow, the CI agent ci-agent among the participants (route ci hosted), the requirement A BOOK IS SHELVED checked
+// input: choosing ci-agent and pressing Show the run panel
+// expect: the run panel holds one p.route-billing that names the route ci hosted and says the calls are billed per use by the agent's provider; nothing written, nothing sent
+test("use-case/draft — on the server's runners, the run panel says the calls are billed per use by the agent's provider", async () => {
+  endpointAnswers(drafted([OTHER]));
+  const fake = fakeProduct({ ...FILES, [WORKFLOW]: "name: Agent M jobs\n" });
+  const target = await show(fake);
+  await panelFor(target, "ci-agent");
+  const lines = billing(target);
+  assert.equal(lines.length, 1, "one line beside the panel of ci-agent");
+  assert.match(lines[0].textContent, /ci hosted/);
+  assert.match(lines[0].textContent, /billed per use by the agent's provider/);
+  assert.equal(fake.writes().length, 0, "nothing written");
+  assert.equal(requests.length, 0, "nothing sent");
+});
+
+// TST-1379002 · level: unit · module: MOD-review-pages
+// guards: UC-010
+// given: the same product and page, the model endpoint drafter-a among the participants (route the tab)
+// input: choosing drafter-a and pressing Show the run panel
+// expect: known positive — the run panel is the one of drafter-a; counter-proof: it holds no p.route-billing and says nothing of calls billed per use, the job not being on the server's runners
+test("use-case/draft — a job in this tab is not said to be billed per use on the server's runners", async () => {
+  endpointAnswers(drafted([OTHER]));
+  const fake = fakeProduct({ ...FILES, [WORKFLOW]: "name: Agent M jobs\n" });
+  const target = await show(fake);
+  await panelFor(target, "drafter-a");
+  const panel = byClass(target, "section", "run-panel")[0];
+  assert.match(panel.textContent, /drafter-a/, "known positive: the panel of drafter-a");
+  assert.equal(billing(target).length, 0);
+  assert.doesNotMatch(panel.textContent, /billed per use/);
 });

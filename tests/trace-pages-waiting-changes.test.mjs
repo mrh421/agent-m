@@ -1,5 +1,5 @@
 // The Spec page (MOD-trace-pages' view `specification`) shows first the SPEC change entries that wait for acceptance, each linked, and none of
-// that where none waits; below them the SPEC; and it leads to the list of all SPEC change entries and to their history, which open on request (ITM-878).
+// that where none waits; below them the SPEC; and it leads to the history of the SPEC change entries, which opens on request.
 // Accepted texts: MOD-trace-pages.md, the view `specification`: "first, only while an entry of a change queue waits for acceptance, those entries, each with
 // its status and a link to it (MOD-review-pages' `spec-entry/<id>`), and nothing where none waits; then the tree of `docs/groups/requirements.md` …" and
 // "*History of SPEC changes*, which opens MOD-review-pages' `spec-entry/history`"; MOD-site-frame.md: "the list of SPEC change entries and their history are opened
@@ -11,7 +11,7 @@
 //
 // Readings, each adding no word to the quoted sentences: an entry "waits for acceptance" when MOD-spec-changes' state for it is open, stale or waiting for its
 // anchor (the entries a person may tick on the review pages); the section is drawn on the default branch only, as the view's links to the review pages are, so a
-// released version shows none and reads no queue; the link to the list of all entries is `#spec-entry` and the link to the history `#spec-entry/id=history`
+// released version shows none and reads no queue; the link to the history is `#spec-entry/id=history`, and no link leads to the list of all entries
 // (the address form the frame reads). The calls are the public route's, with the Host of tests/trace-pages-harness.mjs. Expected results are stated in each case.
 
 import test from "node:test";
@@ -53,8 +53,7 @@ const text = (node) => node.textContent.replace(/\s+/g, " ");
 // guards: OPEN PROPOSALS ARE SHOWN IN THE BROWSER; UC-006
 // given: the default branch, whose queues hold an open entry (2026-10-09_open, entry 01) and a decided one (2026-10-08_done, entry 01)
 // input: the specification view drawn at main
-// expect: a section "SPEC changes waiting for acceptance" is the first child of the page, before the version choice and the section "Current requirements"; it links #spec-entry/id=spec-2026-10-09_open-01 and
-//         names its status open; the decided entry is not in it (the counter-proof: no link to spec-2026-10-08_done-01 anywhere on the page)
+// expect: a section "SPEC changes waiting for acceptance" is the first child of the page, before the version choice and the section "Current requirements"; it links #spec-entry/id=spec-2026-10-09_open-01 and names its status open; the decided entry is not in it (the counter-proof: no link to spec-2026-10-08_done-01 anywhere on the page)
 test("TST-878001 the open entry is linked first, above the SPEC, and the decided entry is not listed", async () => {
   const { target } = await render(withOpen);
   const waiting = waitingSection(target);
@@ -86,13 +85,15 @@ test("TST-878002 where no entry waits there is no such section", async () => {
 // guards: UC-006; UC-018
 // given: the default branch with an open entry
 // input: the specification view drawn at main, and at the tag v2026.1.0 (a released version)
-// expect: at main the page links "All SPEC change entries" to #spec-entry and "History of SPEC changes" to #spec-entry/id=history; at the tag it has neither link
-//         and no waiting section
-test("TST-878003 the list of all entries and the history are links on the default branch's page only", async () => {
+// expect: at main the page links "History of SPEC changes" to #spec-entry/id=history and "Arrange" to #arrange/kind=requirements, and has no link "All SPEC change entries" and no anchor to #spec-entry (the waiting entry's own link goes to #spec-entry/id=…); at the tag it has none of the links and no waiting section
+test("TST-878003 the history is a link on the default branch's page only, and no link leads to the list of all entries", async () => {
   const { target } = await render(withOpen);
   const link = (label) => anchors(target).find((node) => node.textContent === label);
-  assert.equal(link("All SPEC change entries")?.getAttribute("href"), "#spec-entry");
-  assert.equal(link("History of SPEC changes")?.getAttribute("href"), "#spec-entry/id=history");
+  assert.equal(link("History of SPEC changes")?.getAttribute("href"), "#spec-entry/id=history", "known positive: the history link is drawn");
+  assert.equal(link("Arrange")?.getAttribute("href"), "#arrange/kind=requirements", "known positive: the Arrange link is drawn");
+  assert.equal(link("All SPEC change entries") === undefined, true, "no link All SPEC change entries");
+  assert.equal(hrefs(target).includes("#spec-entry"), false);
+  assert.deepEqual(hrefs(target).filter((href) => href.startsWith("#spec-entry")), [`#spec-entry/id=spec-${OPEN}-01`, "#spec-entry/id=history"], "counter-proof: the waiting entry stays linked");
   const released = (await render(withOpen, "v2026.1.0", ["v2026.1.0"])).target;
   assert.equal(anchors(released).some((node) => node.textContent === "All SPEC change entries" || node.textContent === "History of SPEC changes"), false);
   assert.equal(waitingSection(released), undefined);

@@ -143,37 +143,37 @@ function orderingSnapshot() {
 
 // TST-473008 · level: unit · module: MOD-spec-changes
 // guards: UC-047
-// given: two queues of different dates, each with one open entry
+// given: two queues, each with one open entry, whose folders are named 2026-01-01_first and 2026-01-02_second
 // input: queues(orderingSnapshot())
-// expect: the newer queue's folder (2026-01-02) first, the older (2026-01-01) second
-test("queues — more than one queue, newest first", async () => {
+// expect: in the order of their folders' names: 2026-01-01_first first, 2026-01-02_second second
+test("queues — more than one queue, in the order of their folders' names", async () => {
   const result = await queues(orderingSnapshot());
   assert.deepEqual(result.map((q) => q.folder), [
-    "docs/spec-freigaben/2026-01-02_second",
     "docs/spec-freigaben/2026-01-01_first",
+    "docs/spec-freigaben/2026-01-02_second",
   ]);
 });
 
-// The sample queue's index with the line of an issue it was drafted from, between its impact table and the target's line (MOD-spec-changes, Data).
+// The sample queue with a rationale for its entry 01 that holds the line of an issue it was drafted from (MOD-spec-changes, Data), and none for the others.
 function issueQueueSnapshot() {
   const snapshot = sampleQueueSnapshot();
-  const path = "docs/spec-freigaben/2026-02-01_sample/index.md";
+  const base = "docs/spec-freigaben/2026-02-01_sample";
+  const proposal = snapshot.paths.find((path) => path.startsWith(`${base}/01-`) && !path.endsWith(".begruendung.md"));
+  const path = proposal.replace(/\.md$/, ".begruendung.md");
   const read = snapshot.read;
-  return { ...snapshot, read: async (asked) => {
-    const body = await read(asked);
-    return asked === path ? body.replace("**Zieldatei aller Einträge:**", "**Issue:** #7 of https://github.com/alice/product\n\n**Zieldatei aller Einträge:**") : body;
-  } };
+  return { ...snapshot, paths: [...snapshot.paths.filter((each) => each !== path), path], read: async (asked) => (asked === path
+    ? "# Reading: a change\n\n**Origin.** Source SRC-x; issue #7 of https://github.com/alice/product.\n\n**Issue:** #7 of https://github.com/alice/product\n" : read(asked)) };
 }
 
 // TST-1247104 · level: unit · module: MOD-spec-changes
 // guards: EVERY ARTIFACT NAMES ITS ORIGIN; UC-012
-// given: the sample queue, whose index holds no line Issue; and the same queue whose index holds "**Issue:** #7 of https://github.com/alice/product" past its impact table, above the target's line
+// given: the sample queue, whose entries' rationales hold no line Issue; and the same queue whose entry 01's rationale holds "**Issue:** #7 of https://github.com/alice/product"
 // input: queues over each snapshot
-// expect: without the line, issue null; with it, issue { number: 7, product: "https://github.com/alice/product" }, and the title, the target and the three entries' states as without it
-test("queues — the issue a queue's index names, null without the line", async () => {
+// expect: without the line, every entry's issue null; with it, entry 01's issue { number: 7, product: "https://github.com/alice/product" } and the others' null, and the title, the target and the three entries' states as without it
+test("queues — the issue an entry's rationale names, null without the line", async () => {
   const [plain] = await queues(sampleQueueSnapshot());
-  assert.equal(plain.issue, null);
+  assert.deepEqual(plain.entries.map((entry) => entry.issue), [null, null, null]);
   const [named] = await queues(issueQueueSnapshot());
-  assert.deepEqual(named.issue, { number: 7, product: "https://github.com/alice/product" });
+  assert.deepEqual(named.entries.map((entry) => entry.issue), [{ number: 7, product: "https://github.com/alice/product" }, null, null]);
   assert.deepEqual([named.title, named.target, named.entries.map((entry) => entry.state)], ["sample queue", "SPEC.md", ["open", "approved", "in SPEC"]]);
 });

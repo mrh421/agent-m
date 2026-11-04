@@ -95,7 +95,7 @@ test("an endpoint ask is running, then done with the endpoint's text and usage",
     assert.deepEqual(await read(handlers, posted.ask), done);
     assert.equal(model.seen.length, 1);
     assert.equal(model.seen[0].url, "/v1/chat/completions");
-    assert.deepEqual(model.seen[0].body, { model: "small", messages: [{ role: "user", content: "Draft the thing." }] });
+    assert.deepEqual(model.seen[0].body, { model: "small", messages: [{ role: "user", content: "Draft the thing." }], stream: false });
   } finally { await model.close(); }
 });
 

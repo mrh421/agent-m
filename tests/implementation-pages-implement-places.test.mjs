@@ -102,6 +102,8 @@ function hostOf(files) {
   const tree = new Map(Object.entries(files));
   return {
     async repositoryInfo() { return { defaultBranch: "main", visibility: "public", canWrite: true, archived: false, description: "" }; },
+    // The file at each commit, as the one tree holds it (MOD-repository-hosts' readFileAt), for the declared model and practices the route reads (ITM-1264).
+    async readFileAt(path, commits) { return new Map(commits.map((commit) => [commit, tree.has(path) ? tree.get(path) : null])); },
     async readSnapshot() { return { repository: { server: "github", path: "acme/product", web: ADDRESS }, ref: "main", commit: "c".repeat(40), paths: [...tree.keys()], blob: (path) => (tree.has(path) ? blobOf(tree.get(path)) : null),
       read: async (path) => (tree.has(path) ? tree.get(path) : null) }; },
     async listPullRequests() { return []; },

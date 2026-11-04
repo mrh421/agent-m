@@ -177,8 +177,7 @@ test("the instance's four and the product's six repository settings are one line
 // guards: UC-042; EVERY SETTING IS REACHED FROM ONE PAGE
 // given: the page of TST-104201
 // input: the person presses Edit on each of the ten lines
-// expect: the page is asked to open, in order, participants, library, models, resources with the product "" for the instance; process for the product's process model, roles, process for the
-//   Definition of Done, schedule, sources, resources for the product's lines
+// expect: the page is asked to open, in order, participants, library, models, resources with the product "" for the instance; process for the product's process model, roles, process for the Definition of Done, schedule, sources, resources for the product's lines
 test("Edit opens the route of its setting: the product's process on process, its schedule on schedule", async () => {
   const page = await open();
   const lines = [...linesOf(page.instance), ...linesOf(page.product)];

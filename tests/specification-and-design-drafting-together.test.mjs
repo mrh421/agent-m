@@ -12,7 +12,7 @@
 //
 // Written from UC-007, UC-019, ARC-041 and the three module files, not from the code, and with the use cases' own example data: the requirement EXPORT IS A PDF, the unknown name
 // EXPORT AS PDF of UC-007 step 5 and UC-019 step 7, the instruction "add error handling to UC-007", the changed identifier UC-043, and the restated requirement classed new.
-// The product is the small repository this file holds, behind a fake host that keeps to MOD-repository-hosts' interface (repositoryInfo, readSnapshot, readHistory, commitFiles
+// The product is the small repository this file holds, behind a fake host that keeps to MOD-repository-hosts' interface (repositoryInfo, readSnapshot, readFileAt, readHistory, commitFiles
 // only on the head that was read, else `Moved`); every commit is recorded. The instance is a read-only snapshot whose register entry of the book and its chapter 8 are read from
 // this repository's disk, and whose register also holds the author's own source. The participant is a fixture driver that answers from a list and keeps every input it was sent.
 // Nothing reaches the network. Readings the texts leave open, taken here and named in the pull request:
@@ -104,6 +104,12 @@ function product(files, { history = [] } = {}) {
         const tree = commits.get(sha);
         return { repository: ON_GITHUB, ref, commit: sha, paths: [...tree.keys()].sort(), read: async (path) => (tree.has(path) ? tree.get(path) : null),
           blob: (path) => (tree.has(path) ? gitBlob(tree.get(path)) : null) };
+      },
+      async readFileAt(path, shas) {
+        return new Map(shas.map((sha) => {
+          if (!commits.has(sha)) throw failure("NotFound", { what: sha });
+          return [sha, commits.get(sha).get(path) ?? null];
+        }));
       },
       async readHistory(path, { ref = "trunk", limit } = {}) {
         const upTo = log.findIndex((entry) => entry.commit === (ref === "trunk" ? head : ref));
@@ -398,7 +404,7 @@ test("change-requirements — a restated requirement classed new is sent back, t
 
   assert.equal(fake.writes.length, 1, "one commit");
   const files = Object.fromEntries(fake.writes[0].files.map((file) => [file.path, file.text]));
-  assert.ok(Object.keys(files).every((path) => path.startsWith("docs/spec-freigaben/2026-10-12")), Object.keys(files).join(", "));
+  assert.ok(Object.keys(files).every((path) => path.startsWith("docs/spec-freigaben/export/")), Object.keys(files).join(", "));
   assert.ok(Object.keys(files).some((path) => path.endsWith("/index.md")) && Object.keys(files).some((path) => path.endsWith("/entscheidungen.md")));
   assert.equal(fake.files()["SPEC.md"], SPEC, "SPEC.md is byte-identical");
   const proposal = Object.entries(files).find(([path]) => /\/01-[^/]*\.md$/.test(path) && !path.endsWith(".begruendung.md"))[1];

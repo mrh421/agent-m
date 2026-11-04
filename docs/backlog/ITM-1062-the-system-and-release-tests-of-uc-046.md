@@ -24,10 +24,10 @@ origin:
 ## Outcome
 
 No item realises the system and release tests of UC-046, and `tests/` holds no system test of it: every test that names
-UC-046 is a unit test. UC-046.md:51-66 is the main flow, ":83-91" the alternative flows; MOD-main-page.md:80-91 the route
-`home` that serves them ("one card per product this browser keeps, each with its name, its process model, its bar of six
-stages each filled by its share, the stage it is in marked, a click on a stage leading to that stage's page under `docs/`
-for the product, and its build").
+UC-046 is a unit test. UC-046.md:49-81 is the main flow, :82-96 the alternative flows; MOD-main-page.md:99-123 the route
+`home` that serves them (one card per product, "each with its name, its process model, its bar of six stages each filled
+by its share, the stage it is in marked", each stage a link to "the address `menuOf` gives, called with the card's product
+address, for the entry of the same place in the process").
 
 The system test walks the main flow and every alternative flow UC-046 names on the live main page, as `index.html` serves
 it after ITM-684, each test stating its expected result. Since `dcf0badd` and `fb1b7c69` a card is drawn from the overview

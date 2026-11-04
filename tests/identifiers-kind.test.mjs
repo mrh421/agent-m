@@ -62,7 +62,7 @@ test("kindOfIdentifier — null for a string that is none of the scheme's kinds"
   assert.equal(kindOfIdentifier("ARC-1234"), null, "ARC takes exactly three digits, unlike UC");
 });
 
-// TST-472244 · level: unit · module: MOD-identifiers
+// TST-1302004 · level: unit · module: MOD-identifiers
 // guards: EVERY ARTIFACT HAS AN IDENTIFIER
 // given: the SPEC's form of a requirement, a name in capitals; a name with a dot, EVERY MODEL READS AGENT M'S AGENTS.MD FIRST; counter-proofs: the same name with the lowercase md of the file name, a group title "14. Issues, mail and personal data", a number with no capital, "13.", and the use case UC-022
 // input: kindOfIdentifier(each)

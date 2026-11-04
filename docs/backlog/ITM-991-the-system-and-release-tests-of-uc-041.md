@@ -5,11 +5,8 @@ level: system
 realises:
   - UC-041
 modules:
-  - MOD-implementation-pages
   - MOD-work-plans
 builds_on:
-  - ITM-989
-  - ITM-990
   - ITM-620
 tests:
   - system

@@ -170,7 +170,7 @@ def repository_findings(paths: list[str]) -> list[dict]:
 
 
 class TestNoHistory(unittest.TestCase):
-    # TST-412100 - level: release - module: system
+    # TST-412100 · level: release · module: system
     # guards: A DOCUMENT HOLDS NO HISTORY
     # given: the tracked use cases, architecture decisions, module files, backlog items and settings files
     # input: each included file read through its product document interface and checked for marks from MOD-text-tools
@@ -181,7 +181,7 @@ class TestNoHistory(unittest.TestCase):
         self.assertTrue(any(path.startswith("docs/use-cases/") for path in paths))
         self.assertEqual(repository_findings(paths), repository_case()["expected"])
 
-    # TST-412101 - level: release - module: system
+    # TST-412101 · level: release · module: system
     # guards: A DOCUMENT HOLDS NO HISTORY
     # given: fixture copies of a use case and the SPEC with planted marks of history
     # input: the fixtures checked through MOD-documents or MOD-spec-document and MOD-text-tools
@@ -198,7 +198,7 @@ class TestNoHistory(unittest.TestCase):
         self.assertEqual({finding["what"].split("(")[1].split(")")[0] for finding in all_findings},
                          {"edit-stamp", "withdrawal", "dated-change"})
 
-    # TST-412102 - level: release - module: system
+    # TST-412102 · level: release · module: system
     # guards: A DOCUMENT HOLDS NO HISTORY
     # given: record and dated measurement fixture files that carry date and change words
     # input: the release scan's path selection over those fixture paths

@@ -46,8 +46,7 @@ test.afterEach(() => { assert.deepEqual([outside.reached, outside.seen], [[], []
 // guards: A PRODUCT IS NAMED BY ITS ADDRESS; A TOKEN GOES ONLY TO THE SERVER THAT ISSUED IT; UC-008
 // given: a browser that keeps the GitHub product https://github.com/acme/widget and, once, the token github-token:acme/widget; and, for the counter-proof, the same browser without that token
 // input: chosenProduct({ store, fragment: "#alpha/product=<the widget>" })
-// expect: the result has exactly the fields address, host, kind and tokenStored; address is the widget's address, kind is "github", host has a repositoryInfo function, and tokenStored is the boolean true;
-// counter-proof: without the token the same four fields are given and tokenStored is the boolean false
+// expect: the result has exactly the fields address, host, kind and tokenStored; address is the widget's address, kind is "github", host has a repositoryInfo function, and tokenStored is the boolean true; counter-proof: without the token the same four fields are given and tokenStored is the boolean false
 test("TST-856001 the chosen GitHub product says its own token is stored, and says it is not where none is", async () => {
   const withToken = await chosenProduct({ store: browserKeeping([WIDGET], ["github-token:acme/widget"]), fragment: fragmentOf(WIDGET) });
   assert.deepEqual(Object.keys(withToken).sort(), ["address", "host", "kind", "tokenStored"]);

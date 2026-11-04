@@ -84,12 +84,12 @@ for (const [name, route, drawn] of [
   ["the derivation of requirements", "spec-entry", (target) => byClass(target, "section", "source-selection").length],
   ["the derivation of the architecture", "decision", (target) => byClass(target, "section", "covers").length],
 ]) {
+  // TST-1429035 · level: unit · module: MOD-review-pages
+  // guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
   // given: a product with a linked source whose version can be read, accepted use cases, and no token stored for it; the page of the token's step is the add-product page
   // input: the page `route`/id=draft, drawn
-  // expect: the render finishes without a throw; the page is drawn (the known positive: its selection section is there); a paragraph reads exactly "A job is recorded and its result
-  //   written with your token. Store the token"; one link of class token-step with the address #add/<the product's address, encoded> and the text "Store the token"; no button that
-  //   shows the run panel, no run panel; nothing written; nothing fetched
-  test(`${route}/draft — without a token the page of ${name} gives the step to store one, and offers no run panel`, async () => {
+  // expect: the render finishes without a throw; the page is drawn (the known positive: its selection section is there); a paragraph reads exactly "A job is recorded and its result written with your token. Store the token"; one link of class token-step with the address #add/<the product's address, encoded> and the text "Store the token"; no button that shows the run panel, no run panel; nothing written; nothing fetched
+  test(`TST-1429035: ${route}/draft — without a token the page of ${name} gives the step to store one, and offers no run panel`, async () => {
     const { target, fake } = await drawDraft(route, { token: false });
     assert.equal(drawn(target), 1, "known positive: the page is drawn");
     const steps = stepOf(target);
@@ -104,20 +104,24 @@ for (const [name, route, drawn] of [
     assert.deepEqual(fetched, []);
   });
 
+  // TST-1429036 · level: unit · module: MOD-review-pages
+  // guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
   // given: the same product with the product's token stored
   // input: the page `route`/id=draft, drawn
   // expect: the page is drawn; no token step; the button that shows the run panel is there — the fixture reaches the stage the token's step stands in place of
-  test(`${route}/draft — with a token the page of ${name} offers the run panel and no token step`, async () => {
+  test(`TST-1429036: ${route}/draft — with a token the page of ${name} offers the run panel and no token step`, async () => {
     const { target } = await drawDraft(route, { token: true });
     assert.equal(drawn(target), 1, "known positive: the page is drawn");
     assert.equal(stepOf(target).length, 0);
     assert.equal(byClass(target, "button", "prepare").length, 1);
   });
 
+  // TST-1429037 · level: unit · module: MOD-review-pages
+  // guards: WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
   // given: the page of the token's step, drawn without a token
   // input: a click on the link "Store the token"
   // expect: the frame is asked to go to "add-product" with the product's address, once, and the click's default (the address change) is prevented
-  test(`${route}/draft — following the token's step of ${name} goes to the add-product page of the product`, async () => {
+  test(`TST-1429037: ${route}/draft — following the token's step of ${name} goes to the add-product page of the product`, async () => {
     const { target, went } = await drawDraft(route, { token: false });
     const [step] = stepOf(target);
     assert.ok(step, "known positive: the step is drawn");

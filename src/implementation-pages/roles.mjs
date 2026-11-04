@@ -26,6 +26,7 @@ import { declarationSchema, roleAssignmentFindings, roleAssignmentSchema, workfl
 import { heldItems, planSchemas } from "../work-plans/index.mjs";
 import { saveFile } from "../artifact-edits/index.mjs";
 import { explain } from "../site-frame/index.mjs";
+import { heads } from "./routes.mjs";
 
 const DECLARATION = "docs/process.md";
 const PARTICIPANTS = "docs/participants.md";
@@ -67,12 +68,12 @@ function assignmentText(name, holders) {
 }
 
 export const route = {
-  name: "roles",
-  entry: "implementation",
-  title: "Roles",
+  ...heads.roles,
 
   async render(target, context) {
-    const { instance, product } = context;
+    // The empty product is the instance itself (MOD-site-frame's ViewContext).
+    const { instance } = context;
+    const product = context.product ?? instance;
     const [productInfo, instanceInfo] = await Promise.all([product.host.repositoryInfo(), instance.host.repositoryInfo()]);
     const [productSnapshot, instanceSnapshot] = await Promise.all([
       product.host.readSnapshot(productInfo.defaultBranch), instance.host.readSnapshot(instanceInfo.defaultBranch)]);

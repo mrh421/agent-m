@@ -8,7 +8,7 @@
 
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, rmdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -110,6 +110,9 @@ if (!NO_VIRTUAL_SCREEN) {
 async function runtime() {
   const bundled = "/private/tmp/agent-m-electron-44/node_modules/electron";
   const executableOf = (installed) => process.platform === "darwin" ? join(installed, "dist/Electron.app/Contents/MacOS/Electron") : join(installed, "dist/electron");
+  // Where Agent M's schedule `setup` (tests/test-schedule-setup.sh) installs Electron, a path the schedule's `cache` names: first.
+  const setUp = join(homedir(), "agent-m-electron-44/node_modules/electron");
+  if (existsSync(executableOf(setUp))) return executableOf(setUp);
   if (existsSync(executableOf(bundled))) return executableOf(bundled);
   if (runtimeFailure) throw runtimeFailure;
   const installed = join(electronCache, "node_modules/electron");

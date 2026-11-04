@@ -57,8 +57,7 @@ test("TST-1002001: an installed agent whose login check fails is returned with l
 // guards: A LOCAL AGENT USES THE PERSON'S OWN LOGIN; UC-044
 // given: executables of the three agents, none logged in, each logging its arguments and its standard input.
 // input: installedAgents().
-// expect: only the version and login-check commands are started; no login step is started; nothing is written to any agent's
-// standard input; no argument names a password, a key or a token; the returned records mention no password.
+// expect: only the version and login-check commands are started; no login step is started; nothing is written to any agent's standard input; no argument names a password, a key or a token; the returned records mention no password.
 test("TST-1002002: nothing asks for a password and no login step is started", async () => {
   const folder = fixture();
   try {
@@ -79,8 +78,7 @@ test("TST-1002002: nothing asks for a password and no login step is started", as
 // guards: THE BRIDGE FINDS THE INSTALLED AGENTS; A LOCAL AGENT USES THE PERSON'S OWN LOGIN; UC-044
 // given: Claude installed and logged in, Codex installed and not logged in, OpenCode absent.
 // input: installedAgents().
-// expect: every Agent record carries `login`, a string, the agent's own login step from the register: the logged-in one, the
-// not-logged-in one and the missing one alike; loggedIn stays true, false and null.
+// expect: every Agent record carries `login`, a string, the agent's own login step from the register: the logged-in one, the not-logged-in one and the missing one alike; loggedIn stays true, false and null.
 test("TST-1002003: every Agent carries its own login step, whether logged in, not logged in or missing", async () => {
   const folder = fixture();
   try {

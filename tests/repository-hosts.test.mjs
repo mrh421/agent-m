@@ -841,22 +841,23 @@ test("UC-001 5 — on a GitLab server, a first commit is refused with the advice
 // guards: UC-001; A GITLAB PRODUCT USES A PROJECT ACCESS TOKEN
 // given: fake GitHub and GitLab servers: a private and a public repository, GitLab projects with a token of role Maintainer and of role Developer, an internal project, a project read without a token
 // input: repositoryInfo of each
-// expect: in one request each: the default branch, the visibility the server reports, whether the stored token may write, whether it is archived and the description (empty where none); a token reaching a private GitHub repository may write, a public one read without a token may not; Maintainer may write, Developer may not, without a token may not; an internal project is reported as internal
+// expect: in one request each — on GitHub with a token two, the record's and beside it the GraphQL request of greenToMerge (ITM-1170), which these fakes do not answer, so greenToMerge is null throughout —: the default branch, the visibility the server reports, whether the stored token may write, whether it is archived and the description (empty where none); a token reaching a private GitHub repository may write, a public one read without a token may not; Maintainer may write, Developer may not, without a token may not; an internal project is reported as internal
 test("UC-001 4 — repositoryInfo: default branch, visibility, whether the token may write, in one request", async () => {
-  const info = async (fake, credentials, address) => {
+  // ITM-1170: on GitHub with a token, the GraphQL request of greenToMerge goes out beside the record's — two requests there; the fakes answer no GraphQL field, so greenToMerge is null.
+  const info = async (fake, credentials, address, requests = 1) => {
     const v = await using(fake.fetch, () => connect(address, credentials).repositoryInfo());
-    assert.equal(fake.requests.length, 1, "one request");
+    assert.equal(fake.requests.length, requests, `${requests} request(s)`);
     return v;
   };
-  assert.deepEqual(await info(fakeGitHub(), { token: GH_TOKEN }, GITHUB),
-    { defaultBranch: "main", visibility: "private", canWrite: true, archived: false, description: "A tool for theses" });
+  assert.deepEqual(await info(fakeGitHub(), { token: GH_TOKEN }, GITHUB, 2),
+    { defaultBranch: "main", visibility: "private", canWrite: true, archived: false, description: "A tool for theses", greenToMerge: null });
   assert.deepEqual(await info(fakeGitHub({ visibility: "public" }), {}, GITHUB),
-    { defaultBranch: "main", visibility: "public", canWrite: false, archived: false, description: "A tool for theses" });
+    { defaultBranch: "main", visibility: "public", canWrite: false, archived: false, description: "A tool for theses", greenToMerge: null });
   assert.deepEqual(await info(fakeGitLab(), { token: GL_TOKEN }, GITLAB),
-    { defaultBranch: "main", visibility: "private", canWrite: true, archived: false, description: "A tool for theses" });
+    { defaultBranch: "main", visibility: "private", canWrite: true, archived: false, description: "A tool for theses", greenToMerge: null });
   assert.equal((await info(fakeGitLab({ level: 30 }), { token: GL_TOKEN }, GITLAB)).canWrite, false, "role Developer");
   assert.deepEqual(await info(fakeGitLab({ visibility: "internal", description: null }), { token: GL_TOKEN }, GITLAB),
-    { defaultBranch: "main", visibility: "internal", canWrite: true, archived: false, description: "" });
+    { defaultBranch: "main", visibility: "internal", canWrite: true, archived: false, description: "", greenToMerge: null });
   assert.equal((await info(fakeGitLab({ visibility: "public" }), {}, GITLAB)).canWrite, false, "without a token");
 });
 

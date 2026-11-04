@@ -28,10 +28,12 @@ async function testMailbox(connection, libraries) {
   return { counts: imap.counts, drafts: imap.drafts, sent: imap.sent, sending, route: "imap", encryption: imap.encryption };
 }
 
-// The reply as one message: threaded on the reporter's Message-ID, addressed to the reporter only.
-async function replyBytes({ account }, mailer, { replyTo, to, subject, body }) {
+// The reply as one message: threaded on the reporter's Message-ID, addressed to the reporter only; from the sender the connection
+// names, with the connection's address as Reply-To where the sender's address differs from it, else from the account.
+async function replyBytes({ account, sender, address }, mailer, { replyTo, to, subject, body }) {
   const built = await mailer.createTransport({ streamTransport: true, buffer: true, newline: "windows" }).sendMail({
-    from: account,
+    from: sender ? { name: sender.name ?? "", address: sender.address } : account,
+    ...(sender && sender.address !== address ? { replyTo: address } : {}),
     to: { name: to.name ?? "", address: to.address },
     subject,
     text: body,

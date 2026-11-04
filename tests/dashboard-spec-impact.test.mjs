@@ -110,8 +110,10 @@ test("UC-006 3b: an entry that marks a requirement withdrawn, keeping its name, 
 });
 
 test("UC-006 3b: an entry whose impact list cannot be read is not offered for acceptance; the page says the read failed", async () => {
-  // The server fails on the batch and on one of the use cases the list reads.
-  const failing = (url) => (url.pathname === "/graphql" || url.pathname.endsWith(`/contents/${UC3}`) ? new Response("{}", { status: 500 }) : undefined);
+  // The server fails on the batch of files' texts — not on the query of the folders' entries (ITM-1266), which the load reads its snapshot with — and on one
+  // of the use cases the list reads.
+  const batch = (url, init) => url.pathname === "/graphql" && /\bf\d+:object\(/.test(JSON.parse(init.body).query);
+  const failing = (url, init) => (batch(url, init) || url.pathname.endsWith(`/contents/${UC3}`) ? new Response("{}", { status: 500 }) : undefined);
   const srv = await repoServer({ files: FILES, handlers: [failing] });
   const page = await openDashboard({ server: srv, hash: `#spec/${QNAME}/01` });
   assert.doesNotMatch(page.main(), /<button class="btn accept"/, "no Accept without the list");
@@ -180,7 +182,9 @@ test("UC-006 3b: the requests one load of an entry makes, with an empty and with
   const GRAPH = `stored graph ${IMPACT_HEAD}`;
   // A new dashboard load has a fresh in-memory file cache, so it reads the same requests again — but for the stored graph, which the first load read.
   assert.equal(one.cold.filter((r) => r === GRAPH).length, 1, "the stored graph, by one request");
-  assert.deepEqual(one.warm, one.cold.filter((r) => r !== GRAPH));
+  // The references stored beside the graph are asked for once in the same way; this fake stores none, so the graph is read.
+  const REFERENCES = `file ${IMPACT_HEAD}.references.json.gz`;
+  assert.deepEqual(one.warm, one.cold.filter((r) => r !== GRAPH && r !== REFERENCES));
   // The list reads none of the use cases, the architecture files, the tests and the code files of the commit: the graph is the stored one.
   for (const p of [UC1, UC2, UC3, ARC1, MODR, T1, T3, "src/reader.mjs"]) {
     assert.ok(!srv.batches.flat().includes(p), `${p} in no batch`);

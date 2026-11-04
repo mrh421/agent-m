@@ -30,7 +30,7 @@ const CHECKOUT = mkdtempSync(join(tmpdir(), "agent-m-agents-first-"));
 try {
   registerStrategies("tests/job-runner-agents-first.test.mjs", { recipes: {
     "items-of-kind": async () => [{ name: "the items", text: "ITEM-PART-TEXT", sources: [], required: true, size: 0 }],
-    "whole-spec": async () => [], "accepted-use-cases": async () => [], "chapters-for-architecture": async () => [] },
+    "whole-spec": async () => [], "accepted-use-cases": async () => [], "whole-architecture": async () => [], "chapters-for-architecture": async () => [] },
   preconditions: { "architecture-ready": async () => null }, steps: { "due-diligence": async (draft) => ({ draft, findings: [] }) },
   writers: { "open-files": async () => ({ commits: [], files: [], pullRequest: null, shown: null, notes: [] }) } });
 } catch (error) {

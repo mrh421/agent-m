@@ -32,3 +32,12 @@ tests (`RELEASE TESTS ARE NOT WRITTEN BY THE IMPLEMENTER`).
 - Every requirement UC-035 realises has a release test; each new test's counter-proof is recorded in the pull request.
 - Where the page and UC-035 disagree, the test follows UC-035 and the disagreement is named as a finding.
 - Only tests change.
+- **Read at sprint team1/138's probe** (developer-opus-f, not pushed; no existing expectation moves).
+  - `tests/test_progress_view.py` stays, since SPEC.md:1849-1850 names it as the Check. Its Check also says "A definition
+    naming an unknown measure fails validation", so the file holds that case too, through MOD-model-catalogue's
+    interface. If validation accepts the definition, that is a finding.
+  - Its fixtures are data files, not large literals (AGENTS.md §7).
+  - 2c is tested like any other flow: the chart starts at the change, and earlier progress stays readable in the model
+    it was made under. Where the page does not do this, the case is a FINDING `todo` (UC035-S6).
+  - The findings UC035-S1 to S5 (TST-806002, 006, 009, 011, 012) and S6 are not registered in any open item. At the
+    gate, each becomes a new item for the module whose code it points into, named with file:line in the pull request.

@@ -108,6 +108,17 @@ const kindOf = (produced) => produced.replace(EXPLAINED, "").trim();
 // A Time box of none is no time box (MOD-model-catalogue.md, Data: Schema model, ## Flow control).
 const timeBoxOf = (value) => (value === "none" ? null : value);
 
+// The line of a front matter key, counted as MOD-documents counts it for its findings: the line --- first, then each key on
+// a line of its own and each item of a list on one more; line 1 for a key the document lacks.
+function keyLine(fields, wanted) {
+  let line = 2;
+  for (const [key, value] of Object.entries(fields)) {
+    if (key === wanted) return line;
+    line += 1 + (Array.isArray(value) ? value.length : 0);
+  }
+  return 1;
+}
+
 // The two phases a gate stands between, written `<phase> → <phase>`; without the arrow, the whole text as the first.
 function between(written) {
   const at = written.indexOf("→");
@@ -129,6 +140,7 @@ function partsOf(document) {
     kind: text(document.fields.kind),
     adaptedFrom: text(document.fields.adapted_from) || null,
     measure: text(document.fields.measure),
+    measureLine: keyLine(document.fields, "measure"),
     phases: rows("## Phases").map(({ line, cells }) =>
       ({ line, name: text(cells.Name), roles: list(cells.Role), produces: list(cells.Produces).map(kindOf) })),
     transitions: rows("## Transitions").map(({ line, cells }) =>
@@ -155,7 +167,7 @@ function aboutOf(document) {
 
 // A definition as a Model, with its version.
 function modelOf(document, version) {
-  const { artifact, flow, ...parts } = partsOf(document);
+  const { artifact, flow, measureLine, ...parts } = partsOf(document);
   const unlined = (entries) => entries.map(({ line, ...entry }) => entry);
   return {
     ...parts,
@@ -188,7 +200,8 @@ export const modelSchema = Object.freeze({ model: MODEL, practice: PRACTICE });
  * cannot, in validate.mjs — a transition naming a phase that is not defined, or a phase no transition reaches from the first
  * phase; a verification pair naming a missing phase; a phase naming a role, or a gate a decider, that the model does not
  * define; a gate that checks a kind of
- * artifact no earlier phase produces; for pulled work, neither a time box nor a work-in-progress limit, or both. A finding
+ * artifact no earlier phase produces; for pulled work, neither a time box nor a work-in-progress limit, or both; for pulled
+ * work that names no time box, the measure remaining items per time box, which does not fit it. A finding
  * names the file of the model, which has no identifier. A definition with an error finding can be declared by no product.
  * @param {Document} model — a definition, as readDocument returns it with modelSchema.model
  * @returns {Finding[]}

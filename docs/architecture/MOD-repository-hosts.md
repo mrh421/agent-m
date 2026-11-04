@@ -42,6 +42,7 @@ provides:
   - ciRunLog
   - ciRunLabels
   - listIssues
+  - readIssue
   - createIssue
   - commentOnIssue
   - setIssueLabels
@@ -192,11 +193,15 @@ never a reviewed text (`NO TEXT TRAVELS IN A URL`), and never a credential (`A C
   prefix of neither kind of token is refused the same way, and the message says that it is no token of either server;
   no token given (`token` absent or `null`) is no such text. `connect` alone holds the forms of a token: a caller that
   has a pasted text connected stores it only if `connect` accepts it. No request is made yet.
-- `readSnapshot(ref: string) -> Promise<Snapshot>` — the repository at a branch, tag or commit: the commit and its whole
+- `readSnapshot(ref: string, options?: { folders?: string[] }) -> Promise<Snapshot>` — the repository at a branch, tag or commit: the commit and its whole
   tree in a fixed number of requests, however many folders it has — two on GitHub, the commit and then its tree —, then
   one per file read, or one per batch of files `readMany` reads. Through a clone, a commit the clone does not hold is first fetched from the clone's origin by its
   identifier, with the clone's own credentials: the access the clone was made with. `NotFound` then means that the origin
-  does not hold it either. Crosses the network; fails with `NotFound`, `TokenRefused`, `PermissionMissing`,
+  does not hold it either. With `folders` — paths of folders or files —, the snapshot's `paths` are only the files at
+  every depth of those folders and the files named, each with its blob: with a token on GitHub, the commit and then,
+  sent together, the tree of each named folder and the entries of each folder that holds a named file; elsewhere the
+  whole tree is read and narrowed to them. A read of a path outside them fails with `OutsideSnapshot`, naming the path, and never
+  answers as if the file did not exist. Crosses the network; fails with `NotFound`, `TokenRefused`, `PermissionMissing`,
   `RateLimited`, `Unreachable`.
 - `readHistory(path: string | null, options: { ref?: string, limit?: number, changes?: boolean }) ->
   Promise<HistoryEntry[]>` — the commits that changed a path, or the repository, newest first. With `changes: false`,
@@ -229,8 +234,10 @@ never a reviewed text (`NO TEXT TRAVELS IN A URL`), and never a credential (`A C
 - `openPullRequest(request: { branch: string, base: string, title: string, body: string, draft?: boolean }) ->
   Promise<PullRequest>` — crosses the network; fails with `TokenRefused`, `PermissionMissing`, `RateLimited`, `Unreachable`,
   `NotSupported`.
-- `listPullRequests(filter: { state?: "open" | "merged" | "closed" | "all", branch?: string }) -> Promise<PullRequest[]>` —
-  crosses the network; fails as `readSnapshot`.
+- `listPullRequests(filter: { state?: "open" | "merged" | "closed" | "all", branch?: string })
+  -> Promise<PullRequest[]>` — the pages of a listing are asked for at once, once the server has said how many there
+  are, never one after the other. Crosses
+  the network; fails as `readSnapshot`.
 - `containsCommit(ref: string, commit: string) -> Promise<boolean>` — whether the history of a branch or a tag holds the
   commit: on GitHub and GitLab through the server's comparison of the two, in a clone with `git merge-base
   --is-ancestor`. A commit the server does not know is not contained. Crosses the network; fails as `readSnapshot`.
@@ -241,7 +248,8 @@ never a reviewed text (`NO TEXT TRAVELS IN A URL`), and never a credential (`A C
   request's head is still `expectedHead` and the server allows it; branch protection on the server stays in force.
   Crosses the network; fails with `Moved`, `PermissionMissing`, `TokenRefused`, `RateLimited`, `Unreachable`, and with
   `NotMergeable { reason }` when the server refuses the merge.
-- `listCiRuns(filter: { commit?: string, branch?: string, workflow?: string }) -> Promise<CiRun[]>` — the GitHub Actions
+- `listCiRuns(filter: { commit?: string, branch?: string, workflow?: string, event?: string, newest?: number }) -> Promise<CiRun[]>` —
+  with `event`, only the runs of that event (GitHub's `event`, GitLab's `source`); with `newest`, only that many, the newest first, in one request; the GitHub Actions
   runs or GitLab pipelines. Crosses the network; fails as `readSnapshot`.
 - `startWorkflow(workflow: string, ref: string, inputs: Record<string, string>) -> Promise<CiRun | null>` — starts a
   workflow or a pipeline with its inputs; the inputs must hold no credential. Returns the run where the server names it at
@@ -261,8 +269,12 @@ never a reviewed text (`NO TEXT TRAVELS IN A URL`), and never a credential (`A C
 - `ciRunLabels(id: string) -> Promise<string[]>` — the runner labels the run's jobs ask for: on GitHub the `labels` of
   each job of the workflow run, on GitLab the tags of each job of the pipeline; each once, empty for a run whose jobs
   ask for none. Crosses the network; fails as `readSnapshot`.
-- `listIssues(filter: { state?: "open" | "closed" | "all", labels?: string[], search?: string }) -> Promise<Issue[]>` —
-  crosses the network; fails as `readSnapshot`, and with `NotSupported` through a clone.
+- `listIssues(filter: { state?: "open" | "closed" | "all", labels?: string[], search?: string, comments?: boolean }) -> Promise<Issue[]>` —
+  crosses the network; fails as `readSnapshot`, and with `NotSupported` through a clone. With `comments: false`, each
+  issue's `comments` is empty and no comment is asked for; otherwise each issue that has comments is given them.
+- `readIssue(number: number) -> Promise<Issue>` — one issue with its comments, in one request and one per page of its
+  comments. Crosses the network; fails as `listIssues`, and with `NotFound` for a number the repository has no issue
+  of.
 - `createIssue(issue: { title: string, body: string, labels: string[] }) -> Promise<Issue>` — crosses the network; fails
   with `TokenRefused`, `PermissionMissing`, `RateLimited`, `Unreachable`, `NotSupported`.
 - `commentOnIssue(number: number, body: string) -> Promise<void>` — fails as `createIssue`.

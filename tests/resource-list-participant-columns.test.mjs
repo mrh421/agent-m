@@ -47,8 +47,7 @@ test("a list whose table has the optional columns Capabilities and Role is read,
 // guards: A RESOURCE IS USED, A PARTICIPANT DEVELOPS
 // given: the same agent entry in a list without the two columns, in a list with the two columns whose cells are left out (—), and in a list with the column Capabilities alone
 // input: each read, judged by documentFindings and by resourceFindings
-// expect: counter-proof — the list without the two columns, and the list whose cells are left out, are accepted: the row is read, no error, and `capabilities` and `role` are null; the list with Capabilities alone and a
-//   filled cell is refused under the same rule
+// expect: counter-proof — the list without the two columns, and the list whose cells are left out, are accepted: the row is read, no error, and `capabilities` and `role` are null; the list with Capabilities alone and a filled cell is refused under the same rule
 test("the same list without the two columns, or with them left out, is accepted", () => {
   for (const [what, text] of [["without the columns", listOf([AGENT])], ["with the columns left out", listOf([AGENT], [...COLUMNS, "Capabilities", "Role"])]]) {
     const rows = read(text).rows;

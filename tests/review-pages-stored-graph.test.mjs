@@ -118,8 +118,7 @@ test("module/all — Review all of the architecture reads the graph stored for t
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; UC-023
 // given: the same repository without a stored graph
 // input: the route module with the id all
-// expect: no impact list: in its place "The impact list could not be derived: the trace graph of <the head's first 12 characters> is not stored yet …"; the graph is asked for once from trace-cache and, there being
-//         none, is not built (no file only the graph reads is read) — the counter-proof of TST-1121001
+// expect: no impact list: in its place "The impact list could not be derived: the trace graph of <the head's first 12 characters> is not stored yet …"; the graph is asked for once from trace-cache and, there being none, is not built (no file only the graph reads is read) — the counter-proof of TST-1121001
 test("module/all — without a stored graph the page says so and builds none", async () => {
   const fake = fakeProduct({ storedGraph: false });
   const { target } = await draw(fake, "module", { id: "all" });
@@ -136,8 +135,7 @@ test("module/all — without a stored graph the page says so and builds none", a
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; EDITS ARE PREPARED ON THE DASHBOARD
 // given: the repository with the stored graph; MOD-reader opened in the editor and its text edited
 // input: the route module/MOD-reader/edit, then a change of the text
-// expect: the findings across artifacts are the stored graph's: it is read once from trace-cache when the editor opens, and the change of the text reads it no more and builds no graph over the edited
-//         text — no file only the graph reads is read
+// expect: the findings across artifacts are the stored graph's: it is read once from trace-cache when the editor opens, and the change of the text reads it no more and builds no graph over the edited text — no file only the graph reads is read
 test("module/<id>/edit — the findings across artifacts come from the stored graph; an edited text builds no graph", async () => {
   const fake = fakeProduct({ storedGraph: true });
   const { target } = await draw(fake, "module", { id: "MOD-reader", edit: "1" });

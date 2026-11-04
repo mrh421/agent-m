@@ -29,8 +29,8 @@
 // error a refused module is, nor what the notes say; this file reads: a class's `refs` hold the drafted file's `path`; a new file's identifier
 // and its first heading are replaced, and any other mention of an identifier the write renumbers in the drafted texts of the same write is
 // replaced too, the path made `docs/use-cases/UC-<n>-<slug>.md` with the slug of the drafted path; a module whose identifier is ever used
-// is refused with MOD-identifiers' IdentifierTaken, naming it; the notes read `<id> realised "<name>", which matches no requirement; removed`
-// and `<id> realises no requirement`; DueDiligenceMissing carries `decisions: [{ path, registry }]`. A name the module does not provide yet
+// is refused with MOD-identifiers' IdentifierTaken, naming it; the notes read `<id> realised "<name>" which matches no requirement; removed`
+// and `<id> realises no requirement`, each one line holding no comma (the End of the job's record lists a note as one item of `results`, in which a comma separates items); DueDiligenceMissing carries `decisions: [{ path, registry }]`. A name the module does not provide yet
 // is undefined here, so that each test fails by itself. Nothing reaches the network. Each test states its input and its expected result
 // before it runs (given / input / expect). The counter-proofs are recorded in the pull request.
 
@@ -209,8 +209,27 @@ test("open-files — an unknown realised name is removed and noted, and a use ca
   assert.equal(change.files[0].text, useCase("UC-007", "Return a card", "The member returns the card.", [RULE]));
   assert.equal(change.files[1].text, text("---", "id: UC-008", "title: Renew a card", "area: lending", "actors:", "  - Member", "realises:", "---",
     "# UC-008 Renew a card", "", "**Goal.** The member renews the card."));
-  assert.deepEqual(outcome.notes, ['UC-007 realised "AN UNKNOWN RULE", which matches no requirement; removed',
-    'UC-008 realised "AN UNKNOWN RULE", which matches no requirement; removed', "UC-008 realises no requirement"]);
+  assert.deepEqual(outcome.notes, ['UC-007 realised "AN UNKNOWN RULE" which matches no requirement; removed',
+    'UC-008 realised "AN UNKNOWN RULE" which matches no requirement; removed', "UC-008 realises no requirement"]);
+});
+
+// TST-1384001 · level: unit · module: MOD-artifact-edits
+// guards: UC-007; A USE CASE REALISES NAMED REQUIREMENTS; A JOB IS RECORDED IN ITS PRODUCT REPOSITORY
+// given: a drafted new use case that realises A LOAN HAS A DUE DATE, AN UNKNOWN RULE and AN UNKNOWN, SECOND RULE (a name that holds a comma), and another that realises only AN UNKNOWN RULE
+// input: the writer
+// expect: the notes name the first use case with AN UNKNOWN RULE, the first with AN UNKNOWN; SECOND RULE — the comma of the name shown as a semicolon —, and the second use case with AN UNKNOWN RULE and that it realises no requirement; no note holds a comma, since the End of the job's record lists each note as one item of `results`, in which a comma separates items; the first use case is written with neither unknown name
+test("open-files — a note of a removed realised name holds no comma, whatever the name", async () => {
+  assert.ok(open(), `editStrategies.writers["open-files"]: ${artifactEdits.error?.message}`);
+  const fake = fakeHost();
+  const first = useCase("UC-900", "Return a card", "The member returns the card.", [RULE, "AN UNKNOWN RULE", "AN UNKNOWN, SECOND RULE"]);
+  const second = useCase("UC-901", "Renew a card", "The member renews the card.", ["AN UNKNOWN RULE"]);
+  const p1 = UC_PATH("UC-900", "return-a-card"), p2 = UC_PATH("UC-901", "renew-a-card");
+  const outcome = await open()(resultOf([drafted(p1, first), drafted(p2, second)], { classes: [classOf(p1, "new"), classOf(p2, "new")] }), contextOf(fake));
+  assert.equal(fake.writes()[0].change.files[0].text, useCase("UC-007", "Return a card", "The member returns the card.", [RULE]), "both unknown names are removed from the first");
+  assert.deepEqual(outcome.notes, ['UC-007 realised "AN UNKNOWN RULE" which matches no requirement; removed',
+    'UC-007 realised "AN UNKNOWN; SECOND RULE" which matches no requirement; removed',
+    'UC-008 realised "AN UNKNOWN RULE" which matches no requirement; removed', "UC-008 realises no requirement"]);
+  assert.deepEqual(outcome.notes.filter((note) => note.includes(",")), [], "no note holds a comma");
 });
 
 // ---------------------------------------------------------------- nothing to write

@@ -38,7 +38,7 @@ function source(branch) {
 }
 const notStored = (commit) => (error) => error.name === "GraphNotStored" && error.message.includes(`the trace graph of ${commit.slice(0, 12)} is not stored yet`);
 
-// TST-1300001 · level: unit · module: MOD-trace-graph
+// TST-1302012 · level: unit · module: MOD-trace-graph
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: trace-cache holding the graph of the head commit and a latest.json naming another commit whose graph it also holds
 // input: latestGraph(source, head)
@@ -54,7 +54,7 @@ test("latestGraph gives the head's graph where it is stored, with no line, and r
   assert.deepEqual([calls.read, calls.readMany], [[], []]);
 });
 
-// TST-1300002 · level: unit · module: MOD-trace-graph
+// TST-1302013 · level: unit · module: MOD-trace-graph
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: trace-cache holding no graph of the head, and latest.json naming an earlier commit whose graph it holds
 // input: latestGraph(source, head)
@@ -70,7 +70,7 @@ test("latestGraph gives the graph stored last, with the line naming both commits
   assert.deepEqual([calls.read, calls.readMany], [[], []]);
 });
 
-// TST-1300003 · level: unit · module: MOD-trace-graph
+// TST-1302014 · level: unit · module: MOD-trace-graph
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: trace-cache holding no graph of the head and (a) no latest.json; (b) a latest.json naming a commit whose graph it does not hold; (c) a latest.json that is no JSON; (d) a latest.json naming no commit; and (e) a source without readOn
 // input: latestGraph(source, head) for each, a head of its own

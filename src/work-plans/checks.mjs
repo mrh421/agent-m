@@ -28,6 +28,20 @@ const idOf = (document) => text(document?.id ?? document?.fields?.id);
 const fieldList = (document, field) => list(document?.fields?.[field]);
 const titleOf = (document) => text(document?.fields?.title ?? document?.title);
 
+// Whether `from` builds on `target`, directly or through any number of items of the backlog.
+function buildsOnThrough(byId, from, target) {
+  const seen = new Set();
+  const queue = [from];
+  while (queue.length) {
+    const current = queue.pop();
+    if (current === target) return true;
+    if (seen.has(current)) continue;
+    seen.add(current);
+    queue.push(...fieldList(byId.get(current), "builds_on"));
+  }
+  return false;
+}
+
 /**
  * backlogFindings(items: Document[], architecture: Document[]) -> Finding[] — for each item in the order given: an error for
  * an item that realises nothing; an error for an item that names no module that a module file of the architecture describes;
@@ -46,16 +60,22 @@ export function backlogFindings(items, architecture) {
       at("error", REALISES, "the item realises nothing",
         "name at least one requirement or use case the item realises, or remove the item");
     }
-    if (!fieldList(item, "modules").some((name) => described.has(name))) {
+    const named = fieldList(item, "modules");
+    if (!named.some((name) => described.has(name))) {
       at("error", MODULES, "the item names no module the architecture describes",
         "name the modules of the architecture that the item's implementation changes");
+    } else {
+      for (const name of named.filter((one) => !described.has(one))) {
+        at("error", MODULES, `the item names ${name}, which the architecture does not describe`,
+          `name only modules of the architecture, or remove ${name}`);
+      }
     }
     for (const on of fieldList(item, "builds_on")) {
       const other = byId.get(on);
       if (!other) {
         at("error", BACKLOG, `the item builds on ${on}, which does not exist`,
           `name an item of the backlog under builds_on, or remove ${on}`);
-      } else if (fieldList(other, "builds_on").includes(id)) {
+      } else if (buildsOnThrough(byId, on, id)) {
         at("error", BACKLOG, `the item builds on ${on}, which builds on it in turn`,
           `remove ${id} from the items ${on} builds on, or ${on} from the items ${id} builds on`);
       }
@@ -84,7 +104,8 @@ const CYCLE = "MODULES DEPEND ON EACH OTHER WITHOUT A CYCLE";
  *   every module its decision designs (a decision that refines the system and designs a module is a subsystem); the system's step has level `system`;
  * - with `history`, a step whose module (or whose subsystem's) file was removed from the architecture, and a step whose module or subsystem file was changed by a commit later than the step's
  *   own last commit (`readHistory` with `changes: false`, newest entry), each naming the file and the step; a step with no history, a drafted one, is not asked about;
- * - a module ordered before one whose interface it uses (`plan`'s order, by the module steps);
+ * - a module ordered before one whose interface it uses (`plan`'s order, by the module steps); a subsystem's integration ordered before a step of one of its modules, and the system's step
+ *   ordered before any other step (AN IMPLEMENTATION PLAN ASSEMBLES THE SYSTEM FROM ITS MODULES: the modules, "then the integration of each subsystem, then the system");
  * - a step without a phase of the model: absent from the order, or in a phase `workflow.phases` lacks;
  * - of the findings `graphFindings` gives on `traceGraph(source)`, those of the steps' tests of their level and of a cycle among the modules' uses; on `graph`, the graph of the commit, where a caller
  *   whose steps are the commit's own passes it (the plan page), and `source` is then read for no graph.
@@ -124,6 +145,17 @@ export async function planFindings(plan, steps, architecture, workflow, source, 
         add(idOf(module), FOLLOWS, `${idOf(module)} is ordered before ${used}, whose interface it uses`, `order the step of ${used} before the step of ${idOf(module)}`);
       }
     }
+  }
+  // The levels in their order: a subsystem's integration after the steps of its modules, the system after every other step.
+  const placed = (step) => at.get(idOf(step)) ?? Infinity;
+  const later = (step, others) => others.filter((other) => Number.isFinite(placed(step)) && Number.isFinite(placed(other)) && placed(step) < placed(other)).map(idOf);
+  for (const integration of steps.filter((step) => levelOf(step) === "subsystem")) {
+    const after = later(integration, moduleSteps.filter((step) => fieldList(step, "modules").some((name) => fieldList(integration, "modules").includes(name))));
+    if (after.length) add(idOf(integration), ASSEMBLES, `the integration ${idOf(integration)} is ordered before ${after.join(", ")}, the steps of its modules`, `order ${idOf(integration)} after ${after.join(", ")}`);
+  }
+  for (const system of steps.filter((step) => levelOf(step) === "system")) {
+    const after = later(system, steps.filter((step) => levelOf(step) !== "system"));
+    if (after.length) add(idOf(system), ASSEMBLES, `the system's step ${idOf(system)} is ordered before ${after.join(", ")}`, `order ${idOf(system)} after every other step`);
   }
 
   // The phases: every step has one, of the model.

@@ -1,4 +1,4 @@
-// The check `sprint-record-checks` of MOD-work-plans' workStrategies (ITM-619; UC-041 1a), as docs/architecture/MOD-work-plans.md:247-250 states it: "an agent's review that does not name the
+// The check `sprint-record-checks` of MOD-work-plans' workStrategies (ITM-619; UC-041 steps 2 to 6), as docs/architecture/MOD-work-plans.md:247-250 states it: "an agent's review that does not name the
 // sources of its feedback, or does not say that no stakeholder took part when none did (`AN AGENT'S REVIEW NAMES WHERE ITS FEEDBACK CAME FROM`); a retrospective without an entry; a change to the
 // process written as applied rather than proposed (`AN AGENT'S RETROSPECTIVE CHANGES NO PROCESS BY ITSELF`)".
 // Run: node --test tests/work-plans-sprint-record-checks.test.mjs

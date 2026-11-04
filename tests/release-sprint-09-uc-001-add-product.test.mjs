@@ -40,7 +40,7 @@ async function releaseWorld(files = { "README.md": "# Product\n" }) {
   ] });
   const instance = await repoServer({ files: {}, handlers: [
     (url, init) => {
-      requests.push({ url: url.href, authorization: new Headers(init.headers ?? {}).get("Authorization") });
+      requests.push({ url: url.href, method: init.method ?? "GET", body: String(init.body ?? ""), authorization: new Headers(init.headers ?? {}).get("Authorization") });
       return url.origin === API && url.pathname.startsWith(`/repos/${PRODUCT}`) ? product.fetch(url.href, init) : undefined;
     },
   ] });
@@ -136,7 +136,7 @@ test("TST-283 UC-001 release disclosure covers GitHub and GitLab product routes"
 // guards: UC-001; ONE CLICK PER DECISION; ADDING A PRODUCT CREATES ITS LAYOUT; THE DASHBOARD KEEPS ITS PRODUCTS IN THE BROWSER; NO PRODUCT IS NAMED IN THE INSTANCE REPOSITORY; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // given: a browser with its instance token and a public GitHub product containing no review layout
 // input: store the product token, fire a synthetic Add product event, then make one trusted Add product click
-// expect: only the trusted click writes the complete missing layout and canonical browser list; the instance repository remains untouched
+// expect: only the trusted click writes the complete missing layout and canonical browser list; the instance repository remains untouched; the product token goes to the product's API only — its repository requests and the read-only POST /graphql for greenToMerge (ITM-1170), which names the product — and the instance token to none of them
 test("TST-286 UC-001 release transaction guards product writes and browser state", async () => {
   const synthetic = await releaseWorld();
   let main = await addProduct(synthetic);
@@ -157,9 +157,12 @@ test("TST-286 UC-001 release transaction guards product writes and browser state
   assert.ok(!Object.keys(trusted.product.files).some((path) => /CNAME|pages|\.github\/workflows/i.test(path)), "adding the review layout creates no product Pages-site setup");
   assert.deepEqual(JSON.parse(globalThis.localStorage.getItem(`${PREFIX}products`)), [GH], "the dashboard keeps only the product address in this browser");
   assert.equal(JSON.parse(globalThis.localStorage.getItem(`${PREFIX}github-token:${PRODUCT}`)).value, PRODUCT_TOKEN, "the canonical browser store keeps the product key with its product address");
+  const greenRequests = trusted.requests.filter((request) => request.url === `${API}/graphql`);
+  assert.ok(greenRequests.length > 0 && greenRequests.every((request) => request.method === "POST" && request.authorization === `Bearer ${PRODUCT_TOKEN}` && JSON.stringify(JSON.parse(request.body).variables) === JSON.stringify({ owner: PRODUCT.split("/")[0], name: PRODUCT.split("/")[1] })),
+    "the read-only POST /graphql for greenToMerge (ITM-1170) names the product and carries its token");
   assert.ok(trusted.requests.filter((request) => request.url.includes(`/repos/${PRODUCT}`)).every((request) => request.authorization === `Bearer ${PRODUCT_TOKEN}`), "the product credential is sent only on product API requests");
   const tokenRequests = trusted.requests.filter((request) => request.authorization === `Bearer ${PRODUCT_TOKEN}`);
-  assert.ok(tokenRequests.length > 0 && tokenRequests.every((request) => request.url.startsWith(`${API}/repos/${PRODUCT}`)), "every GitHub product-token request stays at its issuing product API");
+  assert.ok(tokenRequests.length > 0 && tokenRequests.every((request) => request.url.startsWith(`${API}/repos/${PRODUCT}`) || greenRequests.includes(request)), "every GitHub product-token request stays at its issuing product API, the read-only greenToMerge request included");
   assert.ok(!trusted.requests.some((request) => request.authorization === `Bearer ${TOKEN}` && request.url.includes(`/repos/${PRODUCT}`)), "the instance key is absent from product requests");
   assert.deepEqual(trusted.instance.writes, [], "the instance repository is never named or written during Add product");
   assert.equal(JSON.parse(globalThis.localStorage.getItem(`${PREFIX}github-token`)).value, TOKEN,

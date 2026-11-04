@@ -311,9 +311,7 @@ class TestBridgeRelease(unittest.TestCase):
     # guards: THE BRIDGE IS ONE FILE PER PLATFORM
     # given: the release build's configuration for each of the three platforms (MOD-bridge-build's Data table) and a release published from three intact platform builds
     # input: the electron-builder target, architecture and file name of each platform; the installer's options on Windows; the files the release publishes
-    # expect: macOS is one disk image (Apple silicon and Intel in one file) and the zip electron-updater needs, Windows one installer for x64 that asks for no administrator, Linux one AppImage for x64, each named
-    #   Agent-M-Bridge-<version>-<platform>.<ext>; the app carries its own Electron (the version the manifest pins, in an archive) and the fuses leave no way to run it as plain Node, so no other runtime is installed
-    #   or needed; the release offers exactly one downloadable file per platform
+    # expect: macOS is one disk image (Apple silicon and Intel in one file) and the zip electron-updater needs, Windows one installer for x64 that asks for no administrator, Linux one AppImage for x64, each named Agent-M-Bridge-<version>-<platform>.<ext>; the app carries its own Electron (the version the manifest pins, in an archive) and the fuses leave no way to run it as plain Node, so no other runtime is installed or needed; the release offers exactly one downloadable file per platform
     def test_the_release_yields_one_file_per_platform_that_carries_its_own_runtime(self):
         for loaded in of_kind("one-file-per-platform"):
             with self.subTest(case=loaded["name"]):
@@ -343,8 +341,7 @@ class TestBridgeRelease(unittest.TestCase):
     # guards: THE BRIDGE IS SIGNED BY ITS PUBLISHER
     # given: three intact platform builds (the counter-proof of TST-1056003)
     # input: publishRelease
-    # expect: every published file has a detached signature that holds against the publisher's public key; SHA256SUMS lists each file's SHA-256; the notes name the publisher of macOS and of Windows and none for
-    #   Linux; the private key is in no published file or note
+    # expect: every published file has a detached signature that holds against the publisher's public key; SHA256SUMS lists each file's SHA-256; the notes name the publisher of macOS and of Windows and none for Linux; the private key is in no published file or note
     def test_a_release_of_verified_files_is_published_with_every_signature_and_the_publishers_names(self):
         for loaded in of_kind("signed"):
             with self.subTest(case=loaded["name"]):

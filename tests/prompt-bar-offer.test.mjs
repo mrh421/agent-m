@@ -7,6 +7,7 @@
 //
 // Module: MOD-prompt-bar
 // Guards: UC-049; THE PAGE NAMES WHERE IT SENDS; A PARTICIPANT DECLARES WHERE IT PROCESSES DATA; A PARTICIPANT DECLARES ITS CAPABILITIES
+// Guards: THE PROMPT BAR'S ENDPOINTS AND CLI SESSIONS ARE BOUND AS PARTICIPANTS ARE
 // Level: unit
 //
 // The store is the browser store over fixture storages; no request leaves this process. Each test states its input and its expected result
@@ -17,6 +18,7 @@ import assert from "node:assert/strict";
 import { openStore, readTabValue, writeSetting, writeTabValue } from "../src/browser-store/index.mjs";
 import * as promptBar from "../src/prompt-bar/index.mjs";
 import { currentJob, latestDraft } from "../src/prompt-bar/index.mjs";
+import * as offer from "../src/prompt-bar/offer.mjs";
 import { offeredAmong, placeOf, readParticipants } from "../src/prompt-bar/offer.mjs";
 import { personOf, whyNot } from "../src/prompt-bar/send.mjs";
 
@@ -179,4 +181,81 @@ test("personOf — a product whose repository is the instance's uses the instanc
   assert.equal(personOf(store, instance, false), "Agent M · alice/agent-m");
   assert.equal(personOf(store, snapshotOf("alice/agent-m"), true, instance), "Agent M · alice/agent-m");
   assert.equal(personOf(store, snapshotOf("alice/other"), true, instance), null);
+});
+
+// The CLI sessions a Bridge of this browser offers (ITM-1187): offer.mjs's sessionsOffered, which startPromptBar offers after endpointsOffered (MOD-prompt-bar, Interfaces: startPromptBar). It is
+// read from the module's file through a namespace, so that its absence fails these cases alone. The Bridges stand behind the global fetch, which keeps every request.
+const BRIDGES = { "http://127.0.0.1:7777": "mac", "http://127.0.0.1:7778": "lab" };
+function bridgesAnswer(agents) {
+  const asked = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    const where = new URL(String(url));
+    asked.push(`${BRIDGES[where.origin] ?? where.origin} ${init.method ?? "GET"} ${where.pathname}`);
+    const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    if (BRIDGES[where.origin] === "lab") return reply({ error: "token-refused", message: "pair again" }, 401);
+    if (where.pathname === "/v1/pair") return reply({ bridge: { name: "mac", version: "1.0.0", platform: "darwin" }, origin: "https://alice.github.io" });
+    if (where.pathname === "/v1/agents") return reply({ agents, missing: [] });
+    return reply({ error: "not-found" }, 404);
+  };
+  return { asked, restore: () => { globalThis.fetch = real; } };
+}
+const CLI = ["draft text", "read the repository", "write to the repository", "run code and tests", "use tools"];
+const DECLARED = { place: "this machine", context: 200000, model: "claude-model", capabilities: CLI };
+
+// TST-1187001 · level: unit · module: MOD-prompt-bar
+// guards: THE PROMPT BAR'S ENDPOINTS AND CLI SESSIONS ARE BOUND AS PARTICIPANTS ARE; UC-049
+// given: a store holding the endpoint complete (place, context, model), the endpoint modelless (no model), and the Bridge mac, which lists its agents claude and codex ready, whose sessions declare: mac:claude the place "this machine", the context 200000, the model claude-model and the capabilities a CLI agent is prefilled with; mac:codex the same without a model
+// input: offer.mjs's sessionsOffered(store), and endpointsOffered(store)
+// expect: sessionsOffered gives exactly one participant — { name "mac:claude", type "CLI agent", model "claude-model", context 200000, price null, place "this machine", the declared capabilities, route "bridge mac agent claude" } —, after the two requests GET /v1/pair and GET /v1/agents to mac and no other; endpointsOffered gives complete alone
+test("sessionsOffered — each ready agent of a stored Bridge whose session declares a place, a context and a model, in the Participant shape", async () => {
+  assert.equal(typeof offer.sessionsOffered, "function", "offer.mjs gives sessionsOffered");
+  const store = freshStore();
+  writeSetting(store, "endpoint:complete", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-x", key: "k", place: "Anthropic, USA", context: 200000 });
+  writeSetting(store, "endpoint:modelless", { kind: "openai-compatible", url: "https://models.example/v1", model: "", key: "k", place: "Anthropic, USA", context: 200000 });
+  writeSetting(store, "bridge:mac", { address: "http://127.0.0.1:7777", token: "token-mac" });
+  writeSetting(store, "session:mac:claude", DECLARED);
+  writeSetting(store, "session:mac:codex", { ...DECLARED, model: "" });
+  const net = bridgesAnswer([{ name: "claude", version: "1", ready: true, loggedIn: true }, { name: "codex", version: "1", ready: true, loggedIn: true }]);
+  try {
+    assert.deepEqual(await offer.sessionsOffered(store), [{ name: "mac:claude", type: "CLI agent", model: "claude-model", context: 200000, price: null, place: "this machine",
+      capabilities: CLI, route: "bridge mac agent claude" }]);
+    assert.deepEqual(net.asked, ["mac GET /v1/pair", "mac GET /v1/agents"]);
+  } finally {
+    net.restore();
+  }
+  assert.deepEqual(promptBar.endpointsOffered(store).map((each) => each.name), ["complete"]);
+});
+
+// TST-1187002 · level: unit · module: MOD-prompt-bar
+// guards: THE PROMPT BAR'S ENDPOINTS AND CLI SESSIONS ARE BOUND AS PARTICIPANTS ARE; UC-049
+// given: (a) a store that keeps no Bridge; (b) the Bridge mac, which lists its agent claude not ready, its session declared; (c) the Bridge lab, which refuses its token, its session declared; (d) the Bridge far, reached through the jump host at a port, while no jump host is stored, its session declared
+// input: offer.mjs's sessionsOffered(store) for each
+// expect: (a) no session and no request; (b) no session — an agent that is not ready is not offered —, after mac's two requests; (c) no session, after one request, GET /v1/pair to lab, and nothing thrown; (d) no session, no request, and nothing thrown
+test("sessionsOffered — none without a Bridge, none of an agent not ready, none of a Bridge that cannot be tested", async () => {
+  assert.equal(typeof offer.sessionsOffered, "function", "offer.mjs gives sessionsOffered");
+  const net = bridgesAnswer([{ name: "claude", version: "1", ready: false, loggedIn: false }]);
+  try {
+    assert.deepEqual(await offer.sessionsOffered(freshStore()), []);
+    assert.deepEqual(net.asked, []);
+    const notReady = freshStore();
+    writeSetting(notReady, "bridge:mac", { address: "http://127.0.0.1:7777", token: "token-mac" });
+    writeSetting(notReady, "session:mac:claude", DECLARED);
+    assert.deepEqual(await offer.sessionsOffered(notReady), []);
+    assert.deepEqual(net.asked, ["mac GET /v1/pair", "mac GET /v1/agents"]);
+    net.asked.length = 0;
+    const refused = freshStore();
+    writeSetting(refused, "bridge:lab", { address: "http://127.0.0.1:7778", token: "token-lab" });
+    writeSetting(refused, "session:lab:claude", DECLARED);
+    assert.deepEqual(await offer.sessionsOffered(refused), []);
+    assert.deepEqual(net.asked, ["lab GET /v1/pair"]);
+    net.asked.length = 0;
+    const far = freshStore();
+    writeSetting(far, "bridge:far", { port: 41001, token: "token-far" });
+    writeSetting(far, "session:far:claude", DECLARED);
+    assert.deepEqual(await offer.sessionsOffered(far), []);
+    assert.deepEqual(net.asked, []);
+  } finally {
+    net.restore();
+  }
 });

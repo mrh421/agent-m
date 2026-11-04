@@ -63,7 +63,7 @@ test("TST-418101: prompting source follows the author account, not the product o
 // guards: UC-019; ONE DEFINITION, THREE DRIVERS
 // given: the endpoint record names paired Bridge release-bridge, with its configured loopback address and token
 // input: the prompt bar sends the message for the open requirement, which the conversation hands on to change-requirements (UC-049 4a.1)
-// expect: no direct model request; every exchange goes to that named Bridge — the conversation's, then one POST /v1/ask of change-requirements that carries the same instruction and the requirement A LOAN HAS A DUE DATE
+// expect: drawing the bar sent the Bridge testBridge's two requests, GET /v1/pair and GET /v1/agents, and nothing else; no direct model request; every exchange goes to that named Bridge — the conversation's, then one POST /v1/ask of change-requirements that carries the same instruction and the requirement A LOAN HAS A DUE DATE
 test("TST-418102: a named Bridge endpoint uses the Bridge transport from the bar", async () => {
   const s = await scenario({ bridge: true });
   const positive = await ask(bridgeAt({ address: "http://127.0.0.1:9418", token: "fixture-pairing-token" }),
@@ -71,6 +71,7 @@ test("TST-418102: a named Bridge endpoint uses the Bridge transport from the bar
   assert.deepEqual(JSON.parse(positive.text).draft, draft(), "known positive: the actual Bridge client reads the fixture draft");
   assert.deepEqual(s.bridgeRequests.map((request) => [request.method, new URL(request.url).pathname]), [["POST", "/v1/ask"], ["GET", "/v1/ask/fixture-ask"]]);
   assert.ok(s.bridgeRequests.every((request) => request.headers["x-agent-m-bridge-token"] === "fixture-pairing-token"));
+  assert.deepEqual(s.testRequests.map((request) => `${request.method} ${request.path}`), ["GET /v1/pair", "GET /v1/agents"], "drawing the bar tested the one Bridge the browser keeps, with its two requests");
   s.bridgeRequests.length = 0;
   await run(s);
   assert.equal(s.endpointRequests.length, 0, "a named Bridge endpoint is never contacted directly");
@@ -124,7 +125,7 @@ test("TST-418104: a follow-up in the bar is sent only on Send, with the draft as
 // level: release
 // module: MOD-prompt-bar; MOD-participant-list; MOD-site-frame
 // guards: UC-019; A PARTICIPANT DECLARES ITS CAPABILITIES; A PARTICIPANT DECLARES WHERE IT PROCESSES DATA; EVERY STEP EXPLAINS ITSELF
-// given: a draft-capable endpoint participant (drafter, this machine) and a read-only one (observer, Anthropic, USA), and a CI agent that the bar does not offer
+// given: a draft-capable endpoint participant (drafter, this machine) and a read-only CLI session of the Bridge release-bridge (observer, Anthropic, USA), and a CI agent of the instance's list that the bar does not offer
 // input: open the page of the requirement, read the bar, choose drafter, Send and Review the draft
 // expect: the bar names drafter with its place, the only participant that can do the kind, and neither observer nor the CI agent, and there is nothing to choose among; nothing is sent before Send; the bar and the draft page each hold a folded "What is this?"
 test("TST-418105: offered participants, processing places and folded explanations are visible", async () => {

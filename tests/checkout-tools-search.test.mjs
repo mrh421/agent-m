@@ -31,8 +31,7 @@ function checkout(t, files, tracked = []) {
 // guards: UC-049
 // given: a git checkout with a.txt tracked ("needle one\nhay\n"), b.md untracked ("hay\na needle\n"), c.log ignored by .gitignore ("needle in log\n")
 // input: grep "needle"; grep "needle" with include "*.md"; grep "absent"
-// expect: "Found 2 matches\n<root>/a.txt:\n  Line 1: needle one\n\n<root>/b.md:\n  Line 2: a needle"; with include only b.md: "Found 1 matches\n<root>/b.md:\n  Line 2: a needle";
-//   "No files found"
+// expect: "Found 2 matches\n<root>/a.txt:\n  Line 1: needle one\n\n<root>/b.md:\n  Line 2: a needle"; with include only b.md: "Found 1 matches\n<root>/b.md:\n  Line 2: a needle"; "No files found"
 test("TST-1240040: grep searches the files git lists, in opencode's form", async (t) => {
   const { root, context } = checkout(t, { "a.txt": "needle one\nhay\n", "b.md": "hay\na needle\n", "c.log": "needle in log\n", ".gitignore": "*.log\n" }, ["a.txt", ".gitignore"]);
   assert.equal(await tools.grep({ pattern: "needle" }, context), `Found 2 matches\n${root}/a.txt:\n  Line 1: needle one\n\n${root}/b.md:\n  Line 2: a needle`);
@@ -44,8 +43,7 @@ test("TST-1240040: grep searches the files git lists, in opencode's form", async
 // guards: UC-049
 // given: a git checkout with many.txt holding 150 lines "hit 1" … "hit 150"
 // input: grep "hit"
-// expect: the text begins "Found 100 matches (more matches available)\n<root>/many.txt:\n  Line 1: hit 1", holds "  Line 100: hit 100" and not "  Line 101:", and ends
-//   "\n\n(Results truncated. Consider using a more specific path or pattern.)"
+// expect: the text begins "Found 100 matches (more matches available)\n<root>/many.txt:\n  Line 1: hit 1", holds "  Line 100: hit 100" and not "  Line 101:", and ends "\n\n(Results truncated. Consider using a more specific path or pattern.)"
 test("TST-1240041: grep stops at 100 matches and says so", async (t) => {
   const { root, context } = checkout(t, { "many.txt": `${Array.from({ length: 150 }, (_, i) => `hit ${i + 1}`).join("\n")}\n` });
   const found = await tools.grep({ pattern: "hit" }, context);
@@ -59,9 +57,7 @@ test("TST-1240041: grep stops at 100 matches and says so", async (t) => {
 // guards: UC-049
 // given: a git checkout with f/1.txt … f/150.txt, f/deep/x.md and top.md, all untracked
 // input: glob "*.md"; glob "f/**/*.md"; glob "*.txt"; glob "*.none"; glob "*.md" with path "top.md"
-// expect: "*.md" lists "<root>/f/deep/x.md" and "<root>/top.md"; "f/**/*.md" lists only "<root>/f/deep/x.md"; "*.txt" lists 100 paths and ends "\n\n(Results are
-//   truncated: showing first 100 results. Consider using a more specific path or pattern.)"; "*.none" answers "No files found"; a file as path answers
-//   "glob path must be a directory: <root>/top.md"
+// expect: "*.md" lists "<root>/f/deep/x.md" and "<root>/top.md"; "f/**/*.md" lists only "<root>/f/deep/x.md"; "*.txt" lists 100 paths and ends "\n\n(Results are truncated: showing first 100 results. Consider using a more specific path or pattern.)"; "*.none" answers "No files found"; a file as path answers "glob path must be a directory: <root>/top.md"
 test("TST-1240042: glob matches the files git lists and stops at 100", async (t) => {
   const files = { "f/deep/x.md": "x\n", "top.md": "top\n" };
   for (let n = 1; n <= 150; n++) files[`f/${n}.txt`] = `${n}\n`;

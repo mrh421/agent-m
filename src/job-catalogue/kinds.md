@@ -15,6 +15,7 @@ its prompt `prompt.md` and the schema of the draft it expects, `answer.schema.js
 | propose-groups | kinds/propose-groups |
 | draft-plan | kinds/draft-plan |
 | propose-items | kinds/propose-items |
+| check-affected-modules | kinds/check-affected-modules |
 | close-sprint | kinds/close-sprint |
 | implement | kinds/implement |
 | refactor | kinds/refactor |

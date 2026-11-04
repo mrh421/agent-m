@@ -131,6 +131,18 @@ for this repair; any amendment preserves the published109 Selection history and 
   effective owned-code counter-proof/exact restoration for each new case, truthful native result records and
   independent release authorship. Maintaining the named old body literals imposes no new-case proof replay or quota.
   No test, probe, source change, retry, assignment or selection is authorized by this REGISTER refinement itself.
+- **The planning run** (sprint team1/122, on `main` at `0e928b61b`). A stand-in added `stream: false` to both forms of
+  the OpenAI-compatible body in `providerRequest`. Over 341 files that name MOD-endpoint-calls or a module whose code
+  calls it (MOD-bridge-client, MOD-bridge-jobs, MOD-runtimes, MOD-settings-pages, MOD-workflow-entries,
+  MOD-desktop-shell), ten cases fail only with it, each a case of the table above: TST-472213, TST-472223, TST-487003,
+  TST-487005, TST-488001, TST-488012, TST-488014, TST-472084, TST-292001 and TST-472517. No case outside the table
+  fails.
+  - The other cases of the table could not be read on that machine: TST-268001 and TST-268901 fail there with and
+    without the change (Electron), TST-269901 fails there with and without it, TST-294001 is skipped there, and
+    `system-uc-003-dashboard-bridge` and `release-uc-003-dashboard-https-bridge` hang there and were left out. CI reads
+    them.
+  - The four release cases of the table (TST-268901, TST-269901, TST-266002, TST-472517) are changed by
+    developer-sonnet-l, who implements none of the endpoint behaviour, on the item's branch in a commit of its own.
 
 ## Design Reading
 

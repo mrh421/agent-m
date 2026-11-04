@@ -55,7 +55,7 @@ const PHONE_MENU_EXPECTED = {
   ],
   review: [
     ["requirements", "#spec", false], ["use-cases", "#uc", false], ["architecture", "#arc", false],
-    ["implementation", "#backlog", false], ["tests", "#schedule", false], ["releases", "#release", false],
+    ["implementation", "#progress", false], ["tests", "#schedule", false], ["releases", "#release", false],
     ["maintenance", "#mail", false], ["settings", "#settings", false],
   ],
 };
@@ -67,10 +67,7 @@ const CLAUSES = [
 
 // What the pages do today that the check names: route -> clause -> the finding, as measured in the controlled Electron at a phone's width
 // (at a desktop's width every route passes). Each is a todo until the module of its route fixes it; each fix is an item of that module.
-const TODAY = {
-  "#arc": { widths: "the table of the modules is wider than a phone's window (src/trace-pages/flow.mjs, MOD-trace-pages); ITM-1159, The architecture and modules views fit a phone" },
-  "#module": { widths: "the table of the modules is wider than a phone's window (src/trace-pages/flow.mjs, MOD-trace-pages); ITM-1159, The architecture and modules views fit a phone" },
-};
+const TODAY = {};
 
 // ---------------------------------------------------------------- drawing
 
@@ -174,6 +171,12 @@ const setUp = async () => {
   await page.evaluate(`document.querySelector("main").insertAdjacentHTML("beforeend",
     '<div id="planted-unrendered" class="unrendered"><p>Diagram error: planted</p><pre><code>flowchart LR</code></pre></div>')`);
   planted.afterDiagram = await page.evaluate(MEASURE(390));
+  // The counter-proof of the closed <details>: two buttons 10 px square in one, first closed — displayed nowhere —, then opened.
+  await page.evaluate(`document.querySelector("main").insertAdjacentHTML("beforeend", '<details id="planted-details"><summary>planted</summary>'
+    + '<p><button style="width:10px;height:10px;padding:0">y</button><button style="width:10px;height:10px;padding:0;margin-left:2px">y</button></p></details>')`);
+  planted.closedDetails = await page.evaluate(MEASURE(390));
+  await page.evaluate(`document.getElementById("planted-details").open = true`);
+  planted.openDetails = await page.evaluate(MEASURE(390));
   console.log(`site-usability ${JSON.stringify([...measured].map(([key, value]) => [key, value.sheets, value.targets.length, value.widths.length]))}`);
 };
 // A failure after the window opened carries the tail of the browser child's stderr (withStderr), which nothing else writes.
@@ -255,8 +258,7 @@ const assertFolds = (page, actual, expected) => {
 // guards: EVERY PAGE SHARES ONE LOOK AND WORKS ON A PHONE; UC-046
 // given: the live main entry page at a 390 px phone viewport
 // input: the menu's button clicked once, then again
-// expect: one button named Menu (aria-expanded false, at least 24 x 24 px, controlling the menu) and the menu hidden; after the click aria-expanded
-//   true and the literal eight-entry main-menu contract, every entry visible and no sideways menu scrolling; after the second click folded again
+// expect: one button named Menu (aria-expanded false, at least 24 x 24 px, controlling the menu) and the menu hidden; after the click aria-expanded true and the literal eight-entry main-menu contract, every entry visible and no sideways menu scrolling; after the second click folded again
 test("TST-920001 the main entry page folds its eight process-menu entries behind one Menu button at 390 px", () => {
   assertFolds("main", phoneMenus.main, PHONE_MENU_EXPECTED.main);
 });
@@ -399,9 +401,28 @@ test(`${testId(904, CASES[904].plantedSheet)}: a planted embedded style sheet fa
   assert.deepEqual(planted.after.sheets, ["an embedded <style> element"]);
 });
 
+// ---------------------------------------------------------------- a target in a closed <details>
+
+// TST-904205 · level: system · module: MOD-site-frame
+// guards: EVERY PAGE SHARES ONE LOOK AND WORKS ON A PHONE
+// given: the page of the counter-proofs with two buttons 10 px square, 2 px apart, planted in a <details>
+// input: the target-size check, with the <details> closed and then opened
+// expect: closed, no finding names the buttons, since the page displays neither; opened, the check names them. The links in the closed <details> of a route's explanations are no targets either, so that the box the browser still reports for one does not take part in the spacing of the link that stands where the box lies (SPEC EVERY PAGE SHARES ONE LOOK AND WORKS ON A PHONE).
+test(`${testId(904, CASES[904].closedDetails)}: a button in a closed <details> is no target: the check names none`, () => {
+  assert.equal(planted.closedDetails.targets.some((finding) => finding.includes('"y"')), false, `findings: ${planted.closedDetails.targets.join("; ")}`);
+});
+
+test(`${testId(904, CASES[904].openDetails)}: the same buttons in the opened <details> fail the target-size check`, () => {
+  assert.ok(planted.openDetails.targets.includes('button "y" is 10 x 10 px'), `findings: ${planted.openDetails.targets.join("; ")}`);
+});
+
 // ---------------------------------------------------------------- a diagram that failed
 
-// given: every route drawn at both widths; input: the blocks of the page with the class `unrendered`, which MOD-markdown-render shows for a diagram that fails; expect: none
+// TST-904134 · level: system · module: MOD-site-frame
+// guards: EVERY PAGE SHARES ONE LOOK AND WORKS ON A PHONE
+// given: every route drawn at both widths
+// input: the blocks of the page with the class `unrendered`, which MOD-markdown-render shows for a diagram that fails
+// expect: none
 for (const route of ROUTES) {
   test(`${testId(904, route.ids[904].diagrams)}: ${route.address} holds no block that did not render, such as a diagram that failed`, () => {
     for (const [kind] of WIDTHS) {
@@ -422,7 +443,10 @@ test(`${testId(904, CASES[904].diagramAfter)}: a planted failed diagram fails th
 
 // ---------------------------------------------------------------- a changed file
 
-// given: the fixture's use case UC-001, accepted at an earlier text and changed since; input: the routes that draw it, at both widths, and each `pre.diff` in <main>;
+// TST-904168 · level: system · module: MOD-site-frame
+// guards: EVERY PAGE SHARES ONE LOOK AND WORKS ON A PHONE
+// given: the fixture's use case UC-001, accepted at an earlier text and changed since
+// input: the routes that draw it, at both widths, and each `pre.diff` in <main>
 // expect: the route draws at least one difference box (the known positive that the checks above meet it), and each has tabindex "0" (ITM-921)
 for (const address of ["#uc/UC-001", "#review/uc"]) {
   test(`${testId(904, ROUTES.find((each) => each.address === address).ids[904].box)}: ${address} draws the difference box of the changed use case, which the keyboard reaches`, () => {

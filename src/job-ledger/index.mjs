@@ -411,8 +411,11 @@ function compareRows(a, b) {
 }
 
 // listJobs(products: { address: string, snapshot: Snapshot }[], live: Map<string, LiveState>) -> Promise<JobRow[]> —
-// every job of every product given, newest first, waiting at a gate first among those that have not ended. A record
-// that cannot be read is listed with what could be read and the reason.
+// every job of every product given, newest first, waiting at a gate first among those that have not ended. The records
+// of each snapshot are named to its readMany first, so that they are read in batches (A PAGE LOAD READS THE REPOSITORY
+// IN BATCHES); a snapshot without readMany reads each record by itself, as MOD-progress-measures' facts.mjs calls it
+// (`readMany?.`). A record that cannot be read is listed with what could be read and the reason: a failed readMany is
+// met again by each record's own read, which names it.
 //
 // Gap (MOD-job-ledger.md, Interfaces): the line gives no Promise<...>, but a snapshot's read(path) is MOD-repository-
 // hosts' own async Promise<string | null> (its file, Interfaces), the only way to reach a job record's text; this
@@ -421,6 +424,9 @@ export async function listJobs(products, live) {
   const rows = [];
   for (const { address, snapshot } of products) {
     const paths = snapshot.paths.filter((path) => JOB_PATH.test(path));
+    try {
+      await snapshot.readMany?.(paths);
+    } catch { /* each record's own read below meets the failure, and the record is listed with its reason */ }
     for (const path of paths) {
       let record, source;
       try {

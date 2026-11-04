@@ -1,5 +1,5 @@
 // watch.mjs — reading the served products, taking jobs and running them (MOD-bridge-jobs, Parts: watch.mjs; Interfaces: startWatching,
-// stopWatching). Of it, ITM-327 builds taking and running the queued jobs of this Bridge's agents; resuming after a gate and advancing runs are other items'; ITM-1033 adds an agent's sprint close.
+// stopWatching). Of it, ITM-327 builds taking and running the queued jobs of this Bridge's agents; resuming after a gate is another item's; ITM-1033 adds an agent's sprint close.
 //
 // Module: MOD-bridge-jobs
 //

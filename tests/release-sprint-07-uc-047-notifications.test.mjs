@@ -219,7 +219,8 @@ test("CONFIGURATION LIVES IN THE BROWSER — Switch on is kept in this browser's
   const written = [];
   const server = await repoServer({
     files: {},
-    handlers: [(url, init) => { if (init.method && init.method !== "GET") written.push(`${init.method} ${url.href}`); return undefined; }],
+    // GitHub's GraphQL queries are reads sent as POST — the folders a load reads its snapshot with (ITM-1266) —, no write.
+    handlers: [(url, init) => { if (init.method && init.method !== "GET" && url.href !== "https://api.github.com/graphql") written.push(`${init.method} ${url.href}`); return undefined; }],
   });
   const browser = installBrowser();
   try {

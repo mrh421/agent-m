@@ -105,21 +105,40 @@ function repoOf(web, files) {
 const INSTANCE_WEB = "https://github.com/alice/agent-m", PRODUCT_WEB = "https://github.com/alice/thesis-tool";
 const COLUMNS = "| Name | Type | Model | Context | Price | Capabilities | Processing place | Route |\n|---|---|---|---|---|---|---|---|";
 const WORKERS = "draft text, read the repository, write to the repository, run code and tests, use tools";
+// The instance's list holds a person only: the prompt bar offers this browser's endpoints, and reads no participant list for the offer (UC-049 1).
 const REGISTER = "# Participants of this instance\n\n**REGISTER**\n\nThe fixture instance.\n\n" + COLUMNS + "\n"
-  + "| alice | person | — | — | — | read the repository, write to the repository | — | account github.com/alice |\n"
-  + "| tooler | model endpoint | model-t | 200000 | — | " + WORKERS + " | Anthropic, USA | endpoint ep1 secret KEY_A |\n";
+  + "| alice | person | — | — | — | read the repository, write to the repository | — | account github.com/alice |\n";
 
-// ---------------------------------------------------------------- the model endpoint behind fetch
+// ---------------------------------------------------------------- the model endpoint and the Bridge behind fetch
+// tooler is an endpoint this tab calls (its last test found that it uses tools); handy is an endpoint called through the Bridge lab-pc that names the CI secret KEY_A, so that what it hands on is spawned as its own job (UC-049 4a.2).
 const replies = [...input.replies];
+const asked = new Map();
 const completion = (message) => new Response(JSON.stringify({ choices: [{ message }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), { status: 200, headers: { "content-type": "application/json" } });
 const stray = [];
-globalThis.fetch = async (url) => {
+const envelope = (next) => JSON.stringify({ draft: { answer: next.answer, ...(next.handOver ? { handOver: next.handOver } : {}) }, answers: [] });
+const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+globalThis.fetch = async (url, init = {}) => {
   const where = new URL(String(url));
+  if (where.origin === "http://127.0.0.1:4711") {
+    // testBridge's two requests, which drawing the bar sends, and the ask of the endpoint handy.
+    if (where.pathname === "/v1/pair") return json({ bridge: { name: "lab-pc", version: "1.0.0", platform: "linux" }, origin: "https://alice.github.io" });
+    if (where.pathname === "/v1/agents") return json({ agents: [], missing: [] });
+    if (where.pathname === "/v1/ask" && init.method === "POST") {
+      const next = replies.shift();
+      if (!next) throw new Error("the Bridge was asked more often than the case says");
+      asked.set("ask-" + (asked.size + 1), next);
+      return json({ ask: "ask-" + asked.size });
+    }
+    const made = /^\/v1\/ask\/(ask-\d+)$/.exec(where.pathname)?.[1];
+    if (made) return json({ state: "done", text: envelope(asked.get(made)), calls: [], usage: null, error: null });
+    stray.push(String(url));
+    return new Response("{}", { status: 404 });
+  }
   if (where.origin !== "https://models.example") { stray.push(String(url)); return new Response("{}", { status: 404 }); }
   const next = replies.shift();
   if (!next) throw new Error("the endpoint was asked more often than the case says");
   if (next.calls) return completion({ content: null, tool_calls: next.calls.map(({ id, name, args }) => ({ id, type: "function", function: { name, arguments: JSON.stringify(args) } })) });
-  return completion({ content: JSON.stringify({ draft: { answer: next.answer, ...(next.handOver ? { handOver: next.handOver } : {}) }, answers: [] }) });
+  return completion({ content: envelope(next) });
 };
 jobRunner.registerStrategies("tests/test_conversation_not_recorded.py", { recipes: { "chapters-for-page": async () => [] } });
 
@@ -129,7 +148,10 @@ const instance = repoOf(INSTANCE_WEB, { "SPEC.md": "# Instance spec\n", "docs/pa
   ...(input.recording ? { "docs/conversation-recording.md": "---\nrecording: on\n---\n# Recording of conversations\n" } : {}) });
 const product = repoOf(PRODUCT_WEB, { "SPEC.md": "# Spec\n", "docs/notes.md": "# Notes\n\nOld text.\n", ".github/workflows/agent-m-jobs.yml": "name: agent-m-jobs\n" });
 const store = browserStore.openStore("alice/agent-m");
-browserStore.writeSetting(store, "endpoint:ep1", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-t", key: "sk-fixture-KEY" });
+browserStore.writeSetting(store, "endpoint:tooler", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-t", key: "sk-fixture-KEY", place: "Anthropic, USA", context: 200000 });
+browserStore.writeSetting(store, "last-test:endpoint:tooler", { at: "2026-10-19T12:00:00Z", outcome: "ok", tools: true });
+browserStore.writeSetting(store, "endpoint:handy", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-t", key: "sk-fixture-KEY", place: "Anthropic, USA", context: 200000, secret: "KEY_A", bridge: "lab-pc" });
+browserStore.writeSetting(store, "bridge:lab-pc", { address: "http://127.0.0.1:4711", token: "pairing-token-fixture" });
 browserStore.writeSetting(store, "github-token", { value: "github_pat_INSTANCE0123456789abcdef", name: "alice", expires: "2027-01-01" });
 browserStore.writeSetting(store, "github-token:alice/thesis-tool", { value: "github_pat_PRODUCT0123456789abcdefg", name: "alice", expires: "2027-01-01" });
 const subject = { key: "page", title: "The lending tool", kind: "converse", entry: "requirements", paramsFor: () => ({ page: "The page shows the lending tool." }), draftRoute: null, withhold: null, refuses: [] };

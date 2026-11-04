@@ -41,8 +41,7 @@ const draftRouteOf = (key) => `draft/subject=${encodeURIComponent(key)}`;
 // guards: UC-049; UC-019; A PROMPTED USE-CASE CHANGE SEES ITS NEIGHBOURS
 // given: the page of the open use case UC-007 of a product; its editor
 // input: the subject of the route `use-case` with the id UC-007, and with the id UC-007 and the part edit
-// expect: for both the same subject — no kind of its own, entry use-cases, title "UC-007 Derive use cases", key "use-case/id=UC-007/product=<the product's address, encoded>",
-//   draftRoute "draft/subject=<that key, encoded>", no withhold, refuses []; its parameters for a participant {useCase: "UC-007", version: the blob of the file as it stands}
+// expect: for both the same subject — no kind of its own, entry use-cases, title "UC-007 Derive use cases", key "use-case/id=UC-007/product=<the product's address, encoded>", draftRoute "draft/subject=<that key, encoded>", no withhold, refuses []; its parameters for a participant {useCase: "UC-007", version: the blob of the file as it stands}
 test("use-case/<id> and its editor — the subject is the use case, with the change kind and the draft route", async () => {
   const fake = fakeProduct();
   const key = `use-case/id=UC-007/product=${PRODUCT}`;
@@ -64,9 +63,7 @@ test("use-case/<id> and its editor — the subject is the use case, with the cha
 // guards: UC-049; UC-023
 // given: the pages of the architecture decision ARC-001 and of the module file MOD-reader
 // input: the subject of the route `decision` with the id ARC-001, and of the route `module` with the id MOD-reader and the part edit
-// expect: no kind of its own and entry architecture for both; keys "decision/id=ARC-001/product=<address>" and "module/id=MOD-reader/product=<address>"; titles "ARC-001 Lending is a
-//   desk" and "MOD-reader Reading a book"; their draft routes "draft/subject=<key, encoded>"; the parameters {target: "ARC-001", version: the file's blob} and {target: "MOD-reader",
-//   version: the file's blob}
+// expect: no kind of its own and entry architecture for both; keys "decision/id=ARC-001/product=<address>" and "module/id=MOD-reader/product=<address>"; titles "ARC-001 Lending is a desk" and "MOD-reader Reading a book"; their draft routes "draft/subject=<key, encoded>"; the parameters {target: "ARC-001", version: the file's blob} and {target: "MOD-reader", version: the file's blob}
 test("decision/<id> and module/<id> — the subject is the architecture file, with change-architecture", async () => {
   const fake = fakeProduct();
   const cases = [["decision", { id: "ARC-001" }, "ARC-001", "ARC-001 Lending is a desk", ARC1], ["module", { id: "MOD-reader", edit: "1" }, "MOD-reader", "MOD-reader Reading a book", MOD_READER]];
@@ -86,8 +83,7 @@ test("decision/<id> and module/<id> — the subject is the architecture file, wi
 // guards: UC-019; THE PERSON WHO PROMPTS IS A SOURCE
 // given: a product whose SPEC holds the requirement A LOAN HAS A DUE DATE in the section "## 1. Lending"; the instance's author github.com/alice, whose person source SRC-alice the product links
 // input: the subject of the route `requirement` with the name A LOAN HAS A DUE DATE
-// expect: no kind of its own, entry requirements, title "A LOAN HAS A DUE DATE", key "requirement/name=<the name, encoded>/product=<address>", draftRoute "draft/subject=<key, encoded>";
-//   the parameters {requirements: ["A LOAN HAS A DUE DATE"], source: "SRC-alice", version: the blob of the section "## 1. Lending"}
+// expect: no kind of its own, entry requirements, title "A LOAN HAS A DUE DATE", key "requirement/name=<the name, encoded>/product=<address>", draftRoute "draft/subject=<key, encoded>"; the parameters {requirements: ["A LOAN HAS A DUE DATE"], source: "SRC-alice", version: the blob of the section "## 1. Lending"}
 test("requirement/<name> — the subject is the requirement, with change-requirements and the person's own source", async () => {
   const fake = fakeProduct();
   const subject = (await draw(fake, "requirement", { name: LOAN })).subject();
@@ -104,8 +100,7 @@ test("requirement/<name> — the subject is the requirement, with change-require
 // guards: UC-019; THE PERSON WHO PROMPTS IS A SOURCE
 // given: the page of a new requirement in the section "## 1. Lending"
 // input: the subject of the route `requirements` with the section "## 1. Lending"
-// expect: no kind of its own; title "New requirement in ## 1. Lending"; key "requirements/section=<the heading, encoded>/product=<address>"; draftRoute "draft/subject=<key, encoded>"; the parameters
-//   {requirements: [], section: "## 1. Lending", source: "SRC-alice", version: the blob of the section}
+// expect: no kind of its own; title "New requirement in ## 1. Lending"; key "requirements/section=<the heading, encoded>/product=<address>"; draftRoute "draft/subject=<key, encoded>"; the parameters {requirements: [], section: "## 1. Lending", source: "SRC-alice", version: the blob of the section}
 test("requirements/new — the subject is the new requirement in its section, with the person's own source", async () => {
   const fake = fakeProduct();
   const subject = (await draw(fake, "requirements", { section: HEADING })).subject();
@@ -121,8 +116,7 @@ test("requirements/new — the subject is the new requirement in its section, wi
 // guards: UC-019; UC-006
 // given: the SPEC change entry 01 of a queue, which proposes the section "## 1. Lending" with both of its requirements
 // input: the subject of the route `spec-entry` with the id spec-2026-03-01_sample-01
-// expect: no kind of its own, entry requirements, title "spec-2026-03-01_sample-01", key "spec-entry/id=spec-2026-03-01_sample-01/product=<address>", draftRoute "draft/subject=<key, encoded>";
-//   the parameters {target: "spec-2026-03-01_sample-01", requirements: ["A LOAN HAS A DUE DATE", "A BOOK IS SHELVED"], source: "SRC-alice", version: the blob of the SPEC section "## 1. Lending", which the job reads}
+// expect: no kind of its own, entry requirements, title "spec-2026-03-01_sample-01", key "spec-entry/id=spec-2026-03-01_sample-01/product=<address>", draftRoute "draft/subject=<key, encoded>"; the parameters {target: "spec-2026-03-01_sample-01", requirements: ["A LOAN HAS A DUE DATE", "A BOOK IS SHELVED"], source: "SRC-alice", version: the blob of the SPEC section "## 1. Lending", which the job reads}
 test("spec-entry/<id> — the subject is the entry, with the requirements of its proposal", async () => {
   const fake = fakeProduct();
   const subject = (await draw(fake, "spec-entry", { id: ENTRY_ID })).subject();
@@ -139,8 +133,7 @@ test("spec-entry/<id> — the subject is the entry, with the requirements of its
 // guards: UC-019; THE PERSON WHO PROMPTS IS A SOURCE
 // given: a product whose links file names no source, so that the instance's author has no personal source the product links
 // input: the subject of the route `requirement` with the name A LOAN HAS A DUE DATE, then its parameters for a participant
-// expect: the parameters are given all the same, with the requirement and no source: a subject is context only, and a change of requirements refuses by its own precondition
-//   (MOD-spec-changes' person-source), which names the missing steps; the subject of a use case of the same product still gives its parameters
+// expect: the parameters are given all the same, with the requirement and no source: a subject is context only, and a change of requirements refuses by its own precondition (MOD-spec-changes' person-source), which names the missing steps; the subject of a use case of the same product still gives its parameters
 test("requirement/<name> — without a linked source of the person, the subject's parameters give no source and refuse nothing", async () => {
   const fake = fakeProduct({ ...PRODUCT_FILES, "docs/sources.md": NO_LINKS });
   const subject = (await draw(fake, "requirement", { name: LOAN })).subject();
@@ -155,8 +148,7 @@ test("requirement/<name> — without a linked source of the person, the subject'
 // guards: UC-049; THE PAGE NAMES WHERE IT SENDS
 // given: the instance's own page, with no product chosen, and the same use case on a product's page
 // input: the subject of the route `use-case` with the id UC-007 on each
-// expect: the keys differ — "use-case/id=UC-007" on the instance's page, "use-case/id=UC-007/product=<address>" on the product's — so that a draft is shown only on the page it was drafted on; the
-//   instance's draft route is "draft/subject=use-case%2Fid%3DUC-007"
+// expect: the keys differ — "use-case/id=UC-007" on the instance's page, "use-case/id=UC-007/product=<address>" on the product's — so that a draft is shown only on the page it was drafted on; the instance's draft route is "draft/subject=use-case%2Fid%3DUC-007"
 test("use-case/<id> — the same route on the instance and on a product are two subjects", async () => {
   const fake = fakeProduct();
   const own = (await draw(fake, "use-case", { id: "UC-007" }, { context: { ...contextOf(fake, { product: false }), instance: { repository: "alice/thesis-tool", host: fake.host } } })).subject();
@@ -260,8 +252,7 @@ async function draftSubject(fake, { key = UC7_KEY, kind = "change-use-case", par
 // guards: UC-019; UC-049
 // given: the conversation's draft for the page of UC-007, kind change-use-case, prepared with {useCase: "UC-007", version: the blob of UC-007, instruction: "change it", conversation: []}, whose result holds one file
 // input: the subject of the route draft with the part subject=<that key>
-// expect: key "use-case/id=UC-007/product=<address>"; no kind of its own; title "UC-007"; draftRoute "draft/subject=<that key, percent-encoded>"; withhold null; refuses [];
-//   its parameters for a participant exactly the draft's {useCase: "UC-007", version: the blob of UC-007, instruction: "change it", conversation: []} plus draft: the result as it was kept
+// expect: key "use-case/id=UC-007/product=<address>"; no kind of its own; title "UC-007"; draftRoute "draft/subject=<that key, percent-encoded>"; withhold null; refuses []; its parameters for a participant exactly the draft's {useCase: "UC-007", version: the blob of UC-007, instruction: "change it", conversation: []} plus draft: the result as it was kept
 test("draft — the subject is the draft's: its key, kind and title, its own draft route, and the draft as it stands in its parameters", async () => {
   const fake = fakeProduct();
   const result = unusedFiles();
@@ -303,8 +294,7 @@ test("draft — the subject of an architecture, a requirements and a conversatio
 // guards: UC-019; A DRAFTED CHANGE IS SHOWN AGAINST THE CURRENT TEXT
 // given: the page of UC-007 drawn, whose subject writes its draft route; the conversation keeps a draft for that subject; and a draft for the instance's own page of UC-007 (key "use-case/id=UC-007")
 // input: the subject of the route draft shown with the parameters the frame reads from the first subject's draft route; the same for the instance's key
-// expect: the draft route of the route draft is the string the page's subject wrote - "draft/subject=" and the key percent-encoded, which holds the product's address encoded twice - and for the instance
-//   "draft/subject=use-case%2Fid%3DUC-007"; each read back as {name: "draft", params: {subject: <the key>}}; the route draft drawn with it shows one editor, data-path "docs/use-cases/UC-007-derive-use-cases.md"
+// expect: the draft route of the route draft is the string the page's subject wrote - "draft/subject=" and the key percent-encoded, which holds the product's address encoded twice - and for the instance "draft/subject=use-case%2Fid%3DUC-007"; each read back as {name: "draft", params: {subject: <the key>}}; the route draft drawn with it shows one editor, data-path "docs/use-cases/UC-007-derive-use-cases.md"
 test("draft — its draft route is the form the subject that wrote it used, and is read back as the key", async () => {
   const fake = fakeProduct();
   const page = await draw(fake, "use-case", { id: "UC-007" });

@@ -112,7 +112,7 @@ test("TST-266001: public Settings sends a local model test through the real comp
   assert.deepEqual(JSON.parse(globalThis.localStorage.getItem(`${PREFIX}endpoint:local`)), expectedStored, "the saved record persists after the completed request");
   assert.match(main.querySelector(".endpoint-result").textContent, /controlled-model is working/, "failure node: public dashboard renders the composed Bridge answer");
   assert.deepEqual(received, [{ path: "/v1/chat/completions", authorization: `Bearer ${key}`, body: { model: "controlled-model", messages: [{ role: "user", content: "Call agent_m_probe once. It is a harmless capability check." }], max_tokens: 64,
-    tools: [{ type: "function", function: { name: "agent_m_probe", description: "Report that tool calling works without changing anything.", parameters: { type: "object", properties: {}, additionalProperties: false } } }] } }], "failure node: real jobHandlers made exactly one short controlled-model request");
+    tools: [{ type: "function", function: { name: "agent_m_probe", description: "Report that tool calling works without changing anything.", parameters: { type: "object", properties: {}, additionalProperties: false } } }], stream: false } }], "failure node: real jobHandlers made exactly one short controlled-model request");
   assert.equal(server.requests.some((request) => request.includes(key)), false, "the dashboard request ledger contains no endpoint credential");
   assert.equal(bridge.address.includes(key), false, "the Bridge address contains no credential");
   assert.equal(globalThis.document.cookie, "", "endpoint configuration did not create a cookie");

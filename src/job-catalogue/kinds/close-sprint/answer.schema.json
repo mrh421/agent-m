@@ -106,6 +106,93 @@
           "kind"
         ]
       }
+    },
+    "newItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "fields": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string",
+                "enum": [
+                  "module",
+                  "subsystem",
+                  "system"
+                ]
+              },
+              "realises": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "modules": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "builds_on": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "tests": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "origin": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "integrates": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "level",
+              "realises",
+              "modules",
+              "tests",
+              "origin"
+            ]
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "heading": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "heading",
+                "text"
+              ]
+            }
+          }
+        },
+        "required": [
+          "fields",
+          "sections"
+        ]
+      }
     }
   },
   "required": [

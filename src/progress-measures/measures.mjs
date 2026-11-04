@@ -7,7 +7,7 @@
 // Module: MOD-progress-measures
 //
 // A team's sprint is the record docs/backlog/sprints/<team>/<nn>.md, read with MOD-work-plans' planSchemas.sprint; a team's
-// newest sprint is its running one while it is neither closed — its record holds ## Review — nor past its end, else its last.
+// newest sprint is its running one while it is neither closed — its record holds ## Review — nor ended (MOD-work-plans' sprintsToClose), else its last.
 // An item is done on the day a pull request naming it — in its head branch or its title — is merged.
 //
 // The board (MOD-progress-measures, Interfaces: progressIn, "for a model with a work-in-progress limit"). Where the module file leaves a
@@ -33,6 +33,7 @@
 //   - With the requirements unknown, the grid has no entry and says so; an unknown state of a step is neither done nor in progress.
 
 import { planGrid } from "../model-catalogue/index.mjs";
+import { sprintsToClose } from "../work-plans/index.mjs";
 
 const DAY = 86400000;
 const SPRINT_PATH = /^docs\/backlog\/sprints\/([^/]+)\/(\d+)\.md$/;
@@ -110,10 +111,14 @@ function flowOf(model, since, facts, today) {
 }
 
 // A team's sprint: its items with their states, the remaining items per day from its start to its end — to today while it
-// runs —, and whether that burn-down is final. With the pull requests unknown, the burn-down is not guessed: it is empty.
+// runs —, and whether that burn-down is final: the sprint is closed (## Review) or MOD-work-plans' sprintsToClose names it as ended. With the pull requests unknown, the burn-down is not guessed: it is empty.
 function teamSprint(team, record, states, pullRequests, today) {
-  const end = text(record.fields?.end) || text(sectionsOf(record, "## Ended")[0]?.fields?.at);
-  const final = sectionsOf(record, "## Review").length > 0 || Boolean(end && end < today);
+  const closes = sprintsToClose([record], states, today);
+  const final = sectionsOf(record, "## Review").length > 0 || closes.length > 0;
+  // A sprint ended because every item it selects is done ended on the day the last of them was merged.
+  const byItems = closes.some((each) => each.because === "every selected item done") && pullRequests !== "unknown"
+    ? selectionOn(record, "9999-12-31").map((item) => doneOn(item, pullRequests)).sort().at(-1) : "";
+  const end = text(record.fields?.end) || text(sectionsOf(record, "## Ended")[0]?.fields?.at) || text(byItems);
   const last = end && end < today ? end : today;
   const items = selectionOn(record, "9999-12-31").map((item) => states.find((s) => s?.item === item)
     ?? { item, state: "unknown", reason: null, job: null, pullRequest: null });

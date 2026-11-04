@@ -99,8 +99,7 @@ test("TST-641001 before any page is started, no route is loaded, and the link to
 // guards: UC-013
 // given: the review page at #host, whose route `host` embeds the route `part` into an element of its own with { key: "audit", tag: "v1" }
 // input: the page starts
-// expect: `part` is rendered once, after `host`, into that element, with the params { key: "audit", tag: "v1" }; the route area reads "part audit v1"; the hash is still "#host";
-//   `part` is given the very context `host` was given; the host's embedding did not fail and its render ran to its end
+// expect: `part` is rendered once, after `host`, into that element, with the params { key: "audit", tag: "v1" }; the route area reads "part audit v1"; the hash is still "#host"; `part` is given the very context `host` was given; the host's embedding did not fail and its render ran to its end
 test("TST-641002 on the review page, the route of another view is rendered into the element of the calling route", async () => {
   const page = await start({ embedding: { name: "part", params: { key: "audit", tag: "v1" } } });
   assert.deepEqual(seen.drawn, ["host", "part"]);
@@ -117,8 +116,7 @@ test("TST-641002 on the review page, the route of another view is rendered into 
 // guards: UC-013
 // given: the review page at #host, whose route `host` embeds the route `missing`, which no view of the page serves, with { key: "audit" } and catches what it is thrown
 // input: the page starts
-// expect: the host caught one error, named RouteNotLoaded; its element holds exactly one <a>, whose href is "#missing/key=audit" and whose text is "Open missing"; only `host` was
-//   rendered; the host's render ran to its end
+// expect: the host caught one error, named RouteNotLoaded; its element holds exactly one <a>, whose href is "#missing/key=audit" and whose text is "Open missing"; only `host` was rendered; the host's render ran to its end
 test("TST-641003 on the review page, a route no view serves gives RouteNotLoaded and a link in the element", async () => {
   await start({ embedding: { name: "missing", params: { key: "audit" } } });
   assert.deepEqual(seen.caught, ["RouteNotLoaded"]);
@@ -134,8 +132,7 @@ test("TST-641003 on the review page, a route no view serves gives RouteNotLoaded
 // guards: UC-013
 // given: the review page at #host/product=<https://github.com/acme/widget> in a browser that keeps that product, whose route `host` embeds first `part`, then `missing`
 // input: the page starts
-// expect: `part` is given the context of the product https://github.com/acme/widget; the link to `missing` has the href
-//   "#missing/key=audit/product=https%3A%2F%2Fgithub.com%2Facme%2Fwidget"
+// expect: `part` is given the context of the product https://github.com/acme/widget; the link to `missing` has the href "#missing/key=audit/product=https%3A%2F%2Fgithub.com%2Facme%2Fwidget"
 test("TST-641004 with a product shown, the embedded route sees the product and the link keeps it", async () => {
   const fragment = `#host/product=${encodeURIComponent(WIDGET)}`;
   await start({ fragment, products: [WIDGET], embedding: { name: "part", params: { key: "audit", tag: "v1" } } });

@@ -102,7 +102,7 @@ test("kindOf — a kind that names no tools has an empty list and no limit", asy
     seen += 1;
     assert.deepEqual([kind.tools, kind.toolLimit], [[], null], name);
   }
-  assert.equal(seen, 15, "the other 15 kinds were looked at");
+  assert.equal(seen, 16, "the other 16 kinds were looked at");
 });
 
 // TST-2026301 · level: unit · module: MOD-job-catalogue

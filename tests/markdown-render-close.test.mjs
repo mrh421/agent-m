@@ -40,8 +40,7 @@ async function withConfirm(answers, body) {
 // guards: UC-018; EDITS ARE PREPARED ON THE DASHBOARD
 // given: an editor opened on "current\n" whose text a person changed to "changed\n", and a confirmation that first declines, then accepts the discard
 // input: editor.close() twice
-// expect: the first call returns false, asks "Discard unsaved changes?" and leaves the editor drawn with the text "changed\n" in it; the second returns true, asks the same
-//   question again and the editor is removed
+// expect: the first call returns false, asks "Discard unsaved changes?" and leaves the editor drawn with the text "changed\n" in it; the second returns true, asks the same question again and the editor is removed
 test("TST-603010 close of an edited editor returns false when the discard is declined and true when it is accepted", async () => {
   await withConfirm([false, true], async (asked) => {
     const target = document.createElement("div");

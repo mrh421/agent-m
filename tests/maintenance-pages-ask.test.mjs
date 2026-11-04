@@ -51,8 +51,7 @@ async function issue(f, number) {
 // guards: AN ISSUE WAITING FOR A REPORTER IS LABELLED; EVERY OUTGOING MAIL IS RELEASED BY A PERSON; ONE CLICK PER DECISION; UC-039
 // given: the open issue 6 and its mail, found, without a draft
 // input: the person's click on Ask the reporter; the dialog of Send and wait declined; the person's click on Send and wait and the dialog's confirmation
-// expect: a question draft to that reporter alone is stored (subject Re: its subject, the original quoted) and shown with Send and wait, not Send; declining sends nothing; the confirmation sends once; the issue is labelled waiting-for-reporter and a question-sent
-//         note is written; no change of the issue's state is made: it stays open
+// expect: a question draft to that reporter alone is stored (subject Re: its subject, the original quoted) and shown with Send and wait, not Send; declining sends nothing; the confirmation sends once; the issue is labelled waiting-for-reporter and a question-sent note is written; no change of the issue's state is made: it stays open
 test("Ask the reporter opens a question draft, Send and wait sends only after the confirmation, and the issue stays open", async () => {
   const f = await fixture();
   const detail = await issue(f, 6);

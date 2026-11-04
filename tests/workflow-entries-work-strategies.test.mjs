@@ -20,8 +20,7 @@ import { composeProduct } from "../src/workflow-entries/compose.mjs";
 // guards: ONE DEFINITION, THREE DRIVERS; UC-010; UC-045
 // given: a product's job-workflow environment, and nothing registered with the job runner yet; a probe that, before composing, registers a recipe under a name no module offers
 // input: composeProduct(env), then registerStrategies("probe", { recipes: { "architecture-and-model": … } })
-// expect: before composing, the probe's registration of a name no module offers succeeds; after composing, registering `architecture-and-model` throws DuplicateStrategy
-// { strategy: "architecture-and-model", owners: ["MOD-work-plans", "probe"] }, and composing made no request
+// expect: before composing, the probe's registration of a name no module offers succeeds; after composing, registering `architecture-and-model` throws DuplicateStrategy { strategy: "architecture-and-model", owners: ["MOD-work-plans", "probe"] }, and composing made no request
 test("composing a product registers the recipe architecture-and-model under MOD-work-plans — MOD-workflow-entries", async () => {
   const real = globalThis.fetch, calls = [];
   globalThis.fetch = async (...args) => { calls.push(args); throw new Error("composing must make no request"); };

@@ -84,12 +84,11 @@ const queueFiles = (w) => writtenFiles(w).filter((entry) => entry.path.startsWit
 
 // TST-584101 · level: component · module: MOD-maintenance-pages, MOD-issue-handling, MOD-job-catalogue
 // guards: UC-012; EVERY ARTIFACT NAMES ITS ORIGIN; THE PERSON WHO PROMPTS IS A SOURCE; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
-// given: known positive first — the issue 7 labelled change; the product links the source SRC-alice, whose register entry in the instance is of the account github.com/alice, the account of the instance's owner; the participant answers a new candidate and a conflict
+// given: known positive first — the issue 7 labelled change; the product links the source SRC-alice, whose register entry in the instance is of the account github.com/alice, the account of the instance's owner; the participant answers a new candidate
 // input: the route issue 7; a participant and a name; Run by a person; Save by a script and then by a person
-// expect: the run panel offers Run; the job's first request to the endpoint carries the issue's title and text; the candidates are listed by class, the new one and the conflict; before the person's click nothing is written under docs/spec-freigaben/; after it a queue whose index names
-//   `**Issue:** #7 of https://github.com/alice/product` and whose rationale names the issue and the source SRC-alice; the conflict is not written
+// expect: the run panel offers Run; the job's first request to the endpoint carries the issue's title and text; the candidate is listed by class, the new one; before the person's click nothing is written under docs/spec-freigaben/; after it a queue whose index names `**Issue:** #7 of https://github.com/alice/product` and whose rationale names the issue and the source SRC-alice
 test("issue — Save runs change-requirements with the issue and the person's source and writes a queue naming the issue", async () => {
-  const w = start(WITH_SOURCE);
+  const w = start({ ...WITH_SOURCE, answer: () => ({ draft: { candidates: [CANDIDATE] }, answers: [] }) });
   const detail = await ready(w);
   const panel = one(changeOf(detail), "run-panel");
   assert.equal(byClass(panel, "blocking").length, 0, "nothing blocks the job");
@@ -99,7 +98,7 @@ test("issue — Save runs change-requirements with the issue and the person's so
   assert.ok(w.kept.endpoint.length >= 1, "the participant was asked");
   const sent = JSON.stringify(w.kept.endpoint[0].body);
   assert.ok(sent.includes("Export loses pages 7") && sent.includes("the export is cut off after the second page"), "the prompt carries the issue's part");
-  assert.deepEqual(byClass(changeOf(detail), "candidate").map((node) => node.getAttribute("data-class")), ["new", "conflict"]);
+  assert.deepEqual(byClass(changeOf(detail), "candidate").map((node) => node.getAttribute("data-class")), ["new"]);
   assert.ok(textOf(byClass(changeOf(detail), "candidate")[0]).includes(CANDIDATE.name));
   assert.deepEqual(queueFiles(w), [], "nothing is written before Save");
 
@@ -114,10 +113,9 @@ test("issue — Save runs change-requirements with the issue and the person's so
   const files = queueFiles(w);
   const index = files.find((entry) => entry.path.endsWith("/index.md"));
   assert.ok(index, `a queue index is written: ${files.map((entry) => entry.path)}`);
-  assert.ok(index.content.includes("**Issue:** #7 of https://github.com/alice/product"), index.content);
   const rationale = files.find((entry) => entry.path.endsWith(".begruendung.md"));
+  assert.ok(rationale.content.includes("**Issue:** #7 of https://github.com/alice/product"), rationale.content);
   assert.ok(rationale.content.includes("issue #7 of https://github.com/alice/product") && rationale.content.includes(SOURCE), rationale.content);
-  assert.ok(!files.some((entry) => entry.content.includes(CONFLICT.name)), "a conflict nobody decided is not written");
   assert.equal(w.kept.issues.find((issue) => issue.number === 7).state, "open");
 });
 

@@ -12,7 +12,7 @@
 import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { INSTANCE_URL, PRODUCT_URL, OTHER_URL, browser, network, instanceFiles, smallProduct, timers, PRODUCT, OTHER, INSTANCE } from "./main-page-home-harness.mjs";
-import { sourcesOf } from "../src/main-page/jobs.mjs";
+import { sourcesOf } from "../src/main-page/sources.mjs";
 
 let net;
 afterEach(() => {

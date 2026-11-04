@@ -57,7 +57,7 @@ specification first, and only then into code.
    restores. It is merged once the product's Definition of Done holds (UC-002, step 8), and the issue
    is closed with a link to the fix.
 6. **Change:** Agent M drafts the changed requirements against the existing ones (as in UC-005), with
-   an impact list, and writes them as a queue under `docs/spec-freigaben/` naming the issue. After the
+   an impact list, and writes them as entries under `docs/spec-freigaben/`, each naming the issue. After the
    author accepts them (UC-006), the downstream jobs — use cases, architecture, code, tests — become
    available, and the issue moves to the backlog (UC-033).
 
@@ -77,7 +77,7 @@ sequenceDiagram
     M->>P: regression test first, then fix
     P->>G: pull request, green CI, issue closed
     A->>M: change - draft against existing requirements
-    M->>G: queue naming the issue, accepted per UC-006
+    M->>G: entries naming the issue, accepted per UC-006
 ```
 
 ## Alternative flows

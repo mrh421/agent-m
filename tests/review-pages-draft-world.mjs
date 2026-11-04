@@ -19,7 +19,9 @@ import { withStoredGraph } from "./stored-graph-fake.mjs";
 export const { openStore, writeSetting, writeTabValue, readTabValue } = await import("../src/browser-store/index.mjs");
 export const { finding } = await import("../src/text-tools/index.mjs");
 export const pages = await import("../src/review-pages/index.mjs").catch((error) => ({ error }));
-export const routeNamed = (name) => pages.view?.routes.find((candidate) => candidate.name === name);
+// Each route as the frame shows it: the route its `module` gives, which carries `leave`, `unsaved` and `reads` (MOD-site-frame's Route).
+const imported = new Map(await Promise.all((pages.view?.routes ?? []).map(async (route) => [route.name, await route.module()])));
+export const routeNamed = (name) => imported.get(name);
 
 // ---------------------------------------------------------------- the browser: session storage and the spy on fetch
 

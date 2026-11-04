@@ -37,10 +37,12 @@ const shown = (l) => elements(l.node, (e) => e.localName === "button" && e.textC
 
 
 def keys_written(catalogue_source: str) -> list[str]:
-    """Every key MOD-browser-store can write: its literal keys, and each family as a key with a sample name after its prefix."""
+    """Every key MOD-browser-store can write: its literal keys, and each family as a key with a sample name after its prefix; a family
+    whose value ends in `:[^:]+` (a key of two names) is sampled with both names."""
     literal = re.search(r"LITERAL_KEYS = new Set\(\[(.*?)\]\)", catalogue_source, re.S).group(1)
     families = re.search(r"KEY_FAMILIES = \[(.*?)\];", catalogue_source, re.S).group(1)
-    return re.findall(r'"([^"]+)"', literal) + [p + "sample" for p in re.findall(r"/\^([a-z-]+:)\.\+\$/", families)]
+    return re.findall(r'"([^"]+)"', literal) + [p + "sample" + (":sample" if last else "")
+                                                 for p, last in re.findall(r"/\^([a-z-]+:)\.\+(:\[\^:\]\+)?\$/", families)]
 
 
 def keys_without_place(keys: list[str], places: dict) -> list[str]:
@@ -54,7 +56,7 @@ PLACES = {
     "github-token": "GitHub token", "products": "Products", "notifications": "Notifications", "notified": "Notifications",
     "bridge": "Bridge", "jump-host": "Jump host", "mailbox": "Mailbox", "browser": "Browser identifier", "not-an-issue": "Mails marked not an issue",
     "github-token:sample": "GitHub token: sample", "gitlab-token:sample": "GitLab token: sample", "endpoint:sample": "Endpoint: sample",
-    "bridge:sample": "Bridge: sample", "remote-session:sample": "Remote session: sample",
+    "bridge:sample": "Bridge: sample", "remote-session:sample": "Remote session: sample", "session:sample:sample": "CLI session: sample:sample",
     "last-test:sample": "GitHub token", "acknowledged:sample": "GitHub token", "resource-key:sample": "Resource key: sample",
 }
 STORED = {
@@ -64,6 +66,7 @@ STORED = {
     "github-token:sample": TOKEN, "gitlab-token:sample": TOKEN,
     "endpoint:sample": {"url": "https://m.example/v1", "kind": "openai-compatible", "model": "m", "key": "k", "throughBridge": False},
     "bridge:sample": {"address": "http://localhost:8765", "token": "labtok"}, "remote-session:sample": {"port": 20001, "token": BRIDGE_SECRET},
+    "session:sample:sample": {"place": "this computer", "context": 200000, "model": "claude-opus-5", "capabilities": ["read the repository"]},
     "last-test:sample": {"at": "2026-09-29T10:00:00.000Z", "outcome": "working"}, "acknowledged:sample": "2026-09-01",
     "resource-key:sample": {"value": "hub_KEY0123456789", "stored": "2026-09-01T00:00:00.000Z"},
 }
@@ -136,10 +139,10 @@ class TestedAndCleared(unittest.TestCase):
         buttons = {title: b for title, b in r}
         clears = ("Clear", "Disconnect", "Switch off")
         for title in ("GitHub token", "Products", "GitHub token: sample", "GitLab token: sample", "Jump host", "Remote session: sample",
-                      "Bridge: sample", "Endpoint: sample", "Mailbox", "Notifications"):
+                      "Bridge: sample", "Endpoint: sample", "CLI session: sample:sample", "Mailbox", "Notifications"):
             self.assertTrue(any(c in buttons[title] for c in clears), f"{title} can be cleared")
         for title in ("GitHub token", "GitHub token: sample", "GitLab token: sample", "Jump host", "Remote session: sample",
-                      "Bridge: sample", "Endpoint: sample", "Mailbox", "Notifications"):
+                      "Bridge: sample", "Endpoint: sample", "CLI session: sample:sample", "Mailbox", "Notifications"):
             self.assertIn("Test", buttons[title], f"{title} can be tested")
         self.assertIn("Test", buttons["Managed products"], "each product address is tested where the list is shown")
 

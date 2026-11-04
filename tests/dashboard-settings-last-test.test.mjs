@@ -133,7 +133,8 @@ async function inconclusiveRepositoryTest(answer, expected, { untested = false }
   failing = true;
   await repositoryControl(box, "test").fire("click");
   assert.equal(failures, 1, "the actual Test reaches the controlled failure endpoint exactly once");
-  assert.deepEqual(world.srv.requests.slice(from).map((request) => request.replace(/^(handler|other) /, "")), ["GET https://api.github.com/repos/akmaier/agent-m"], "Test adds no other API call, including when fetch throws before the harness labels a response");
+  // ITM-1170: beside the record, repositoryInfo sends the GraphQL request of greenToMerge, which the harness logs as a batch of no file.
+  assert.deepEqual(world.srv.requests.slice(from).map((request) => request.replace(/^(handler|other) /, "")).sort(), ["GET https://api.github.com/repos/akmaier/agent-m", "batch 0"], "Test adds no other API call, including when fetch throws before the harness labels a response");
   const result = repositoryControl(box, "result").textContent;
   assert.match(result, expected, "the current error is shown separately at the public Test result");
   assert.doesNotMatch(result, /expired|regenerated|deleted|refused your/i, "this response does not diagnose a refused credential");

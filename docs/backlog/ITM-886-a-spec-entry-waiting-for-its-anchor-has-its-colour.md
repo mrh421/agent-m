@@ -19,16 +19,19 @@ origin:
 
 ## Outcome
 
-A SPEC entry in the state "waiting for its anchor" (`src/spec-changes/queues.mjs:207`) has no colour rule.
-`docs/assets/style.css:26-30` colours open, accepted, applied, approved, changed, stale and superseded only. A rule for it
-cannot go into `docs/assets/style.css`, a file outside every module (`CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT`).
-MOD-site-frame.md:85 names that file as taken over: "what of it the views' routes still need moves into `look.css`". So
-this item belongs to MOD-site-frame's moving job. It moves the status rules into `look.css`, and the new state gets its
-colour there.
+A SPEC entry in the state "waiting for its anchor" has no colour rule on the review pages. Their page of the entry gives
+its badge the status `waiting-for-its-anchor` (`src/review-pages/spec-entries.mjs:80`), and `badge` makes it the class
+`b-waiting-for-its-anchor` (`src/review-pages/common.mjs:24-26`). The status rules moved into `look.css` with
+`c358b76c`, which removed `docs/assets/style.css`; `src/site-frame/look.css:124-132` colours open, applied, approved,
+changed, stale, accepted and superseded only. The trace page already colours the state, as `b-superseded`
+(`src/trace-pages/flow.mjs:608`). What is left is the rule in `look.css` for the review pages' class.
 
 ## Acceptance
 
 - The badge of an entry waiting for its anchor carries a class that `look.css` colours, distinct from accepted. A test
   checks it, with a counter-proof.
-- The status rules the routes use come from `look.css`, as MOD-site-frame.md:85 states.
+- The status rules the routes use come from `look.css` (built by `c358b76c`).
 - The first commit holds only the tests, and CI is red on it. No stub is committed.
+- The Product Owner's planning run, on `main` at `ecc7de406`, with a stand-in rule for `b-waiting-for-its-anchor` in
+  `look.css`: 24 test files that name `look.css`, a style sheet, the class or the SPEC entries, `site-usability` and
+  `site-accessibility`. 506 cases pass and 3 todos stay, with and without it. No test of another module changes.

@@ -7,6 +7,8 @@
 //
 // Module: MOD-test-pages
 
+import { heads } from "./routes.mjs";
+
 const TESTS_VIEWS = [
   { label: "Schedule", name: "schedule", params: {} },
   { label: "Browser", name: "trace", params: { key: "tests" } },
@@ -38,4 +40,4 @@ async function render(target, context, params = {}) {
   target.replaceChildren(testsViews(context, params.shown ?? null));
 }
 
-export const route = { name: "tests-views", entry: null, title: "Tests", render };
+export const route = { ...heads.testsViews, render };

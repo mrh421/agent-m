@@ -1,7 +1,7 @@
 // Classified candidates written as change queues (ITM-338) — MOD-spec-changes' writer `queue-entries` of specStrategies, as docs/architecture/MOD-spec-changes.md states it:
-// the candidates written by the result's classes, as the person left them, as a new queue of the SPEC each belongs in — a candidate that constrains the development process to a queue
-// of the instance's SPEC, its class decided with classifyCandidates against that SPEC and its open queues, every other to one of the product's —, one commit for each queue; one entry
-// for each section the candidates touch, as entrySections composes it with the job's `source`; a candidate that points to a source the product does not link not written, the
+// the candidates written by the result's classes, as the person left them, as entries of the SPEC each belongs in — a candidate that constrains the development process to the
+// instance's SPEC, its class decided with classifyCandidates against that SPEC and its open queues, every other to the product's —, one commit for each SPEC; one entry for each section
+// the candidates touch, as entrySections composes it with the job's `source`, appended to that section's queue or starting it; a candidate that points to a source the product does not link not written, the
 // outcome's notes naming it with that source; each rationale with its origin, its impact list, the version, participant, model, date and rounds, in the schema
 // `queue-rationale.schema.md`; the commit with the job's provenance lines; nothing committed when every section already stands as written; SPEC.md untouched.
 // Run: node --test tests/spec-changes-queue-entries.test.mjs
@@ -20,8 +20,8 @@
 //   - A candidate's class is the one in `result.classes` for its name, as the person left it; one without a class is not written. A conflict is written as the class the person gave it.
 //   - A process candidate's class is decided anew with classifyCandidates over the instance's SPEC and the requirements of its open queues, keys name and rule; a candidate that restates a
 //     requirement only an open entry holds is not written, and noted.
-//   - A queue's folder is `docs/spec-freigaben/<date><letter>_<slug>/` with the day of the job and the first letter, none, b, c …, no queue of that day in the repository has; the slug is the
-//     kind and the job. Its entries are named by their section; `SPEC.md` is the target of every entry. `entscheidungen.md` is written with no decision.
+//   - A section's queue is `docs/spec-freigaben/<package>/` (MOD-spec-changes, Data): `reading` for `## 1. Reading`, `process` for `## 1. Process`; an entry is `NN-<package>.md`, NN one more than
+//     any number the queue's index or decisions name; `SPEC.md` is the target of every entry. A new queue's `entscheidungen.md` is written with no decision.
 //   - A candidate's `source` is a source it points to; one that `linkedVersion` gives no version for is not written, and the note names the candidate and the source.
 //   - The impact list of an entry is, for each requirement it changes, the artifacts that name it — MOD-trace-graph's requirementImpact — or that nothing does; a new requirement has none.
 // A name the module does not provide yet fails each test by itself. The counter-proofs are in the pull request.
@@ -73,8 +73,8 @@ const hostOf = (name) => {
     commitFiles: async (change) => { commits.push(change); return { commit: `${name}-commit-${commits.length}`.padEnd(40, "0"), url: "https://example.test/commit" }; } };
 };
 
-function fixture({ spec = PRODUCT_SPEC, productPaths = [], instancePaths = [] } = {}) {
-  const productFiles = { "SPEC.md": spec, "docs/sources.md": LINKS, "docs/use-cases/UC-001-read-a-file.md": useCase };
+function fixture({ spec = PRODUCT_SPEC, productPaths = [], instancePaths = [], productExtra = {} } = {}) {
+  const productFiles = { "SPEC.md": spec, "docs/sources.md": LINKS, "docs/use-cases/UC-001-read-a-file.md": useCase, ...productExtra };
   const instanceFiles = { "SPEC.md": INSTANCE_SPEC, "docs/sources/SRC-fixture-book.md": BOOK_ENTRY,
     [`${OPEN_QUEUE}/index.md`]: text("# SPEC approvals — queue 2026-10-10 · an idea", "", "**Zieldatei aller Einträge:** `SPEC.md`", "", "| Nr | Datei | Anker (Überschrift, wortgetreu) | bis (exklusiv) | Commits |", "|---|---|---|---|---|", "| 01 | `SPEC.md` | ## 2. Open process | — | — |"),
     [`${OPEN_QUEUE}/01-open-process.md`]: OPEN_ENTRY,
@@ -93,6 +93,7 @@ const resultOf = (candidates, classes = candidates.map((item) => classOf(item)))
   remaining: [], forPerson: [], stepFindings: [], classes, stoppedBecause: "passed", gate: null, usage: [], written: null });
 const filesOf = (commit) => Object.fromEntries(commit.files.map((file) => [file.path, file.text ?? new TextDecoder().decode(file.bytes)]));
 const folderOf = (commit) => [...new Set(commit.files.map((file) => file.path.split("/").slice(0, 3).join("/")))];
+const READING_Q = "docs/spec-freigaben/reading", WRITING_Q = "docs/spec-freigaben/writing", PROCESS_Q = "docs/spec-freigaben/process";
 
 const CHANGE = candidate("A BETTER NAME", { rule: "A reader reads a file whole, or says why not.", check: "`tests/better.test.mjs`", class: "change", of: "A SAMPLE RULE" });
 const NEW = candidate("A WRITER NAMES ITS FILE", { rule: "A writer names the file it wrote.", class: "new" });
@@ -103,7 +104,7 @@ const CONFLICT = candidate("CONTRADICTS ANOTHER", { rule: "A reader sees nothing
 // guards: A CHANGE IS PROPOSED UNDER THE EXISTING NAME; A DUPLICATE ADDS A SOURCE, NOT A REQUIREMENT; A CONFLICT IS DECIDED BY A PERSON; UC-005
 // given: a result with a change of A SAMPLE RULE, a new requirement, a duplicate of A WRITE RULE and an undecided conflict with ANOTHER SAMPLE RULE, all constraining the product
 // input: the writer
-// expect: one commit to the product's repository holding one queue; its entries the sections the candidates touch — Reading with the change, Writing with the new requirement and the added source —, each the whole section as entrySections composes it with the job's source; the conflict in none; nothing committed to the instance
+// expect: one commit to the product's repository; an entry for each section the candidates touch, each starting its section's queue — docs/spec-freigaben/reading with the change, docs/spec-freigaben/writing with the new requirement and the added source —, each the whole section as entrySections composes it with the job's source; each index titled after its section with its row 01; the conflict in none; nothing committed to the instance
 test("queue-entries — each class is written as the classes say, an undecided conflict not at all", async () => {
   assert.ok(writer, "the writer is offered");
   const f = fixture();
@@ -115,19 +116,18 @@ test("queue-entries — each class is written as the classes say, an undecided c
   const written = filesOf(commit);
   const expected = entrySections(PRODUCT_SPEC, result.draft, result.classes, "SRC-fixture-book");
   assert.deepEqual(expected.map((section) => section.anchor), ["## 1. Reading", "## 2. Writing"]);
-  const [folder] = folderOf(commit);
-  assert.match(folder, /^docs\/spec-freigaben\/2026-10-12_derive-requirements-job-20261012-0900-ab12$/);
-  assert.equal(written[`${folder}/01-reading.md`], expected[0].text);
-  assert.equal(written[`${folder}/02-writing.md`], expected[1].text);
-  assert.ok(written[`${folder}/01-reading.md`].includes("**A SAMPLE RULE** *(Product Owner; SRC-fixture-book, ch. 8)*\nA reader reads a file whole, or says why not."));
-  assert.ok(written[`${folder}/02-writing.md`].includes("**A WRITER NAMES ITS FILE**"));
-  assert.ok(written[`${folder}/02-writing.md`].includes("*(Product Owner; SRC-fixture-book, ch. 9)*"));
+  assert.deepEqual(folderOf(commit), [READING_Q, WRITING_Q]);
+  assert.equal(written[`${READING_Q}/01-reading.md`], expected[0].text);
+  assert.equal(written[`${WRITING_Q}/01-writing.md`], expected[1].text);
+  assert.ok(written[`${READING_Q}/01-reading.md`].includes("**A SAMPLE RULE** *(Product Owner; SRC-fixture-book, ch. 8)*\nA reader reads a file whole, or says why not."));
+  assert.ok(written[`${WRITING_Q}/01-writing.md`].includes("**A WRITER NAMES ITS FILE**"));
+  assert.ok(written[`${WRITING_Q}/01-writing.md`].includes("*(Product Owner; SRC-fixture-book, ch. 9)*"));
   assert.ok(!Object.values(written).some((body) => body.includes("CONTRADICTS ANOTHER") || body.includes("A reader sees nothing.")));
-  const index = written[`${folder}/index.md`];
-  assert.match(index, /^# SPEC approvals — queue 2026-10-12 · /);
+  const index = written[`${READING_Q}/index.md`];
+  assert.match(index, /^# SPEC approvals — queue reading · Reading\n/);
   assert.match(index, /\*\*Zieldatei aller Einträge:\*\* `SPEC\.md`/);
   assert.match(index, /\| 01 \| `SPEC\.md` \| ## 1\. Reading \| — \| — \|/);
-  assert.match(index, /\| 02 \| `SPEC\.md` \| ## 2\. Writing \| — \| — \|/);
+  assert.match(written[`${WRITING_Q}/index.md`], /^# SPEC approvals — queue writing · Writing\n[\s\S]*\| 01 \| `SPEC\.md` \| ## 2\. Writing \| — \| — \|/);
   assert.deepEqual([commit.branch, commit.expectedHead], ["main", "h".repeat(40)]);
   assert.deepEqual(outcome.commits.length, 1);
   assert.deepEqual([outcome.pullRequest, outcome.shown], [null, null]);
@@ -155,7 +155,7 @@ test("queue-entries — a conflict the person resolved is written as decided", a
 // guards: A REQUIREMENT NAMES WHAT IT CONSTRAINS; UC-005
 // given: two candidates that constrain the process, which the classes say are new, among those of the product: one with a new rule, one that restates GATES ARE NAMED word for word, and one that restates A PROCESS IDEA, which only an open entry of the instance holds
 // input: the writer
-// expect: the instance's repository gets a queue of its own in its own commit: the section Process with the new requirement and the added source of GATES ARE NAMED — the class decided anew by rule, not as the classes say —; the one that only an open entry holds is not written and noted by name; the product's repository gets only its own candidates; two commits
+// expect: the instance's repository gets the entry of its section's queue docs/spec-freigaben/process in its own commit: the section Process with the new requirement and the added source of GATES ARE NAMED — the class decided anew by rule, not as the classes say —; the one that only an open entry holds is not written and noted by name; the product's repository gets only its own candidates; two commits
 test("queue-entries — a candidate that constrains the process goes to the instance's queue, its class decided against its SPEC and its open queues", async () => {
   const f = fixture();
   const gate = candidate("A JOB NAMES A GATE", { rule: "A job names the gate it stops at.", constrains: "process" });
@@ -169,9 +169,8 @@ test("queue-entries — a candidate that constrains the process goes to the inst
   assert.ok(productBodies.includes("A WRITER NAMES ITS FILE"));
   assert.ok(!productBodies.includes("A JOB NAMES A GATE") && !productBodies.includes("GATES ARE LISTED"), "a process candidate is not the product's");
   const written = filesOf(f.instance.host.commits[0]);
-  const [folder] = folderOf(f.instance.host.commits[0]);
-  assert.match(folder, /^docs\/spec-freigaben\/2026-10-12_/);
-  const section = written[`${folder}/01-process.md`];
+  assert.deepEqual(folderOf(f.instance.host.commits[0]), [PROCESS_Q]);
+  const section = written[`${PROCESS_Q}/01-process.md`];
   assert.ok(section.includes("**A JOB NAMES A GATE** *(SRC-fixture-book, ch. 8)*"));
   assert.ok(section.includes("**GATES ARE NAMED** *(Product Owner; SRC-fixture-book, ch. 8)*"), "restated by rule: a source added, not a requirement");
   assert.ok(!section.includes("**GATES ARE LISTED**"));
@@ -208,11 +207,10 @@ test("queue-entries — each entry has its rationale with the impact list and th
   await writer(resultOf([CHANGE, NEW]), f.context);
   const commit = f.product.host.commits[0];
   const written = filesOf(commit);
-  const [folder] = folderOf(commit);
   const schema = loadSchema(readFileSync(new URL("../src/spec-changes/queue-rationale.schema.md", import.meta.url), "utf8"), "MOD-spec-changes");
-  const reading = written[`${folder}/01-reading.begruendung.md`], writing = written[`${folder}/02-writing.begruendung.md`];
-  for (const [name, body] of [["01-reading", reading], ["02-writing", writing]]) {
-    assert.deepEqual(documentFindings(schema, readDocument(schema, `${folder}/${name}.begruendung.md`, body)), [], `${name}: no finding`);
+  const reading = written[`${READING_Q}/01-reading.begruendung.md`], writing = written[`${WRITING_Q}/01-writing.begruendung.md`];
+  for (const [name, body] of [["reading/01-reading", reading], ["writing/01-writing", writing]]) {
+    assert.deepEqual(documentFindings(schema, readDocument(schema, `docs/spec-freigaben/${name}.begruendung.md`, body)), [], `${name}: no finding`);
     for (const label of ["**The change.**", "**Why.**", "**Impact list.**", "**Origin.**", "**Provenance.**"]) assert.ok(body.includes(label), `${name}: ${label}`);
     assert.ok(body.includes("SRC-fixture-book") && body.includes("ch. 8"));
     assert.match(body, /unreleased/);
@@ -227,8 +225,8 @@ test("queue-entries — each entry has its rationale with the impact list and th
   const trailers = provenanceLines({ agentM: { version: "unreleased", commit: "c".repeat(40) }, jobId: "JOB-20261012-0900-ab12", kind: "derive-requirements", participant: DRAFTER, rounds: 2, instruction: null });
   assert.ok(commit.message.endsWith(trailers.join("\n")), "the provenance lines end the message");
   assert.ok(!Object.keys(written).some((path) => path.includes("docs/approvals/")));
-  const decisions = written[`${folder}/entscheidungen.md`];
-  assert.match(decisions, /^# Decisions — queue /);
+  const decisions = written[`${READING_Q}/entscheidungen.md`];
+  assert.match(decisions, /^# Decisions — queue reading Reading\n/);
   assert.ok(!/uebernommen/.test(decisions));
   const indexed = { ...sourceSchemas() };
   assert.ok(indexed.entry, "the register's schema is untouched");
@@ -267,16 +265,20 @@ test("queue-entries — nothing is committed when every section already stands a
 
 // TST-473002 · level: unit · module: MOD-spec-changes
 // guards: A REVIEWED ARTIFACT ENTERS THE DEFAULT BRANCH AS OPEN; UC-005
-// given: a repository that holds a queue of the day, and one more of the day with the letter b
-// input: the writer
-// expect: the new queue's folder has the letter c; with none of the day the letter is absent
-test("queue-entries — the queue of the day takes the next letter", async () => {
-  const f = fixture({ productPaths: ["docs/spec-freigaben/2026-10-12_first/index.md", "docs/spec-freigaben/2026-10-12b_second/index.md", "docs/spec-freigaben/2026-10-11_other/index.md"] });
+// given: a product whose queue docs/spec-freigaben/writing lists entry 01 in its index and names entry 02 in its decisions, an entry that left the index; and, apart, a product with no queue of Writing
+// input: the writer of a new requirement of the section Writing
+// expect: the entry is 03 of the queue writing — 03-writing.md, its rationale and the row `| 03 |` appended to the index, every other byte of it as it was, no decisions written —; without a queue it starts the queue with 01
+test("queue-entries — an entry of a section's queue takes one more than any number its index or decisions name", async () => {
+  const index = text("# SPEC approvals — queue writing · Writing", "", "**Zieldatei aller Einträge:** `SPEC.md`", "", "| Nr | Datei | Anker (Überschrift, wortgetreu) | bis (exklusiv) | Commits |", "|---|---|---|---|---|", "| 01 | `SPEC.md` | ## 2. Writing | — | — |");
+  const productExtra = { [`${WRITING_Q}/index.md`]: index, [`${WRITING_Q}/01-writing.md`]: "## 2. Writing\n", [`${WRITING_Q}/entscheidungen.md`]: text("# Decisions — queue writing Writing", "", "Append-only.", "| 2026-10-11 10:00 UTC | 2 | uebernommen | approval:spec-writing-02-aaaaaaaaaaaa.md |") };
+  const f = fixture({ productExtra });
   await writer(resultOf([NEW]), f.context);
-  assert.match(folderOf(f.product.host.commits[0])[0], /^docs\/spec-freigaben\/2026-10-12c_/);
+  const written = filesOf(f.product.host.commits[0]);
+  assert.deepEqual(Object.keys(written).sort(), [`${WRITING_Q}/03-writing.begruendung.md`, `${WRITING_Q}/03-writing.md`, `${WRITING_Q}/index.md`]);
+  assert.equal(written[`${WRITING_Q}/index.md`], index + "| 03 | `SPEC.md` | ## 2. Writing | — | — |\n");
   const g = fixture();
   await writer(resultOf([NEW]), g.context);
-  assert.match(folderOf(g.product.host.commits[0])[0], /^docs\/spec-freigaben\/2026-10-12_/);
+  assert.ok(Object.keys(filesOf(g.product.host.commits[0])).includes(`${WRITING_Q}/01-writing.md`), "known positive: without a queue, entry 01");
 });
 
 // TST-473003 · level: unit · module: MOD-spec-changes
@@ -291,8 +293,8 @@ test("queue-entries — a change by prompt names the person's source and the con
   await writer(resultOf([CHANGE]), f.context);
   const commit = f.product.host.commits[0];
   const written = filesOf(commit);
-  const [folder] = folderOf(commit);
-  assert.match(folder, /_change-requirements-job-20261012-0900-ab12$/);
+  const folder = READING_Q;
+  assert.deepEqual(folderOf(commit), [folder]);
   assert.ok(written[`${folder}/01-reading.md`].includes("*(Product Owner; SRC-fixture-book, ch. 8)*"));
   const rationale = written[`${folder}/01-reading.begruendung.md`];
   assert.ok(rationale.includes("a conversation in the prompt bar on /spec.html"), rationale);
@@ -307,16 +309,15 @@ test("queue-entries — a change by prompt names the person's source and the con
 // guards: A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON; UC-019
 // given: a job of change-requirements whose parameters carry a source, the page "/spec.html" and the instruction "Make the reader say why a file cannot be read."
 // input: the writer
-// expect: the queue's index.md holds no word of the instruction and no "instruction:" label, and no file of the commit holds the instruction
+// expect: the queue's index.md, with its row of the entry, holds no word of the instruction and no "instruction:" label, and no file of the commit holds the instruction
 test("queue-entries — the queue's index holds no instruction of the person", async () => {
   const f = fixture();
   f.context.kind = { name: "change-requirements" };
   f.context.params = { source: "SRC-fixture-book", page: "/spec.html", instruction: "Make the reader say why a file cannot be read." };
   await writer(resultOf([CHANGE]), f.context);
   const written = filesOf(f.product.host.commits[0]);
-  const [folder] = folderOf(f.product.host.commits[0]);
-  const index = written[`${folder}/index.md`];
-  assert.ok(index.includes("**Decision:**"), index);
+  const index = written[`${READING_Q}/index.md`];
+  assert.ok(index.includes("| 01 | `SPEC.md` | ## 1. Reading |"), index);
   assert.ok(!index.includes("say why a file cannot be read") && !/instruction:/i.test(index), index);
   assert.ok(!Object.values(written).some((text) => text.includes("say why a file cannot be read")), "no file holds the instruction");
 });
@@ -344,8 +345,7 @@ test("queue-entries — a change of a requirement the SPEC does not hold is left
 test("queue-entries — the candidates of a section are written in the order of the draft", async () => {
   const f = fixture();
   await writer(resultOf([candidate("FIRST NEW RULE"), candidate("SECOND NEW RULE")]), f.context);
-  const [folder] = folderOf(f.product.host.commits[0]);
-  const body = filesOf(f.product.host.commits[0])[`${folder}/01-writing.md`];
+  const body = filesOf(f.product.host.commits[0])[`${WRITING_Q}/01-writing.md`];
   assert.ok(body.indexOf("**A WRITE RULE**") < body.indexOf("**FIRST NEW RULE**") && body.indexOf("**FIRST NEW RULE**") < body.indexOf("**SECOND NEW RULE**"));
 });
 
@@ -353,24 +353,22 @@ test("queue-entries — the candidates of a section are written in the order of 
 // guards: A REVIEWED ARTIFACT ENTERS THE DEFAULT BRANCH AS OPEN; UC-005
 // given: a product that is its own instance — one repository, one host, one SPEC — and a result with a candidate for the product and one that constrains the process; and, apart, a product and an instance that are two repositories
 // input: the writer
-// expect: in one repository two commits whose queues are of one day: the first the day, the second the day with the letter b, no file written twice; in two repositories each queue the day alone
-test("queue-entries — two queues of one day in one repository get the day and then the day with b", async () => {
+// expect: in one repository two commits to one section's queue, writing: the first starts it with entry 01, the second adds entry 02, its index holding both rows — no entry file is written twice; in two repositories the product's entry 01 of writing and the instance's entry 01 of process
+test("queue-entries — two commits to one section's queue in one repository give two numbers", async () => {
   const f = fixture();
   f.context.instance = { snapshot: f.product.snapshot, host: f.product.host, checkout: null };
   await writer(resultOf([NEW, candidate("A PROCESS RULE", { constrains: "process" })]), f.context);
   assert.equal(f.product.host.commits.length, 2);
-  const [first, second] = f.product.host.commits.map((commit) => folderOf(commit)[0]);
-  assert.match(first, /^docs\/spec-freigaben\/2026-10-12_derive-requirements/);
-  assert.match(second, /^docs\/spec-freigaben\/2026-10-12b_derive-requirements/);
-  assert.equal(first.replace("2026-10-12_", "").length > 0, true);
-  assert.equal(second.replace("2026-10-12b_", ""), first.replace("2026-10-12_", ""), "the slug is the same: the letter tells them apart");
-  const paths = f.product.host.commits.flatMap((commit) => commit.files.map((file) => file.path));
-  assert.equal(new Set(paths).size, paths.length, "no file is written twice");
+  const [first, second] = f.product.host.commits.map(filesOf);
+  assert.ok(Object.hasOwn(first, `${WRITING_Q}/01-writing.md`) && Object.hasOwn(second, `${WRITING_Q}/02-writing.md`), Object.keys(second).join(" "));
+  assert.match(second[`${WRITING_Q}/index.md`], /\| 01 \| [^\n]*\n\| 02 \| /);
+  const paths = f.product.host.commits.flatMap((commit) => commit.files.map((file) => file.path)).filter((path) => !path.endsWith("/index.md"));
+  assert.equal(new Set(paths).size, paths.length, "no entry file is written twice");
 
   const g = fixture();
   await writer(resultOf([NEW, candidate("A PROCESS RULE", { constrains: "process" })]), g.context);
-  assert.match(folderOf(g.product.host.commits[0])[0], /^docs\/spec-freigaben\/2026-10-12_/);
-  assert.match(folderOf(g.instance.host.commits[0])[0], /^docs\/spec-freigaben\/2026-10-12_/, "another repository: no letter");
+  assert.deepEqual(folderOf(g.product.host.commits[0]), [WRITING_Q]);
+  assert.deepEqual(folderOf(g.instance.host.commits[0]), [PROCESS_Q], "another repository: its own section's queue");
 });
 
 // TST-1360301 · level: unit · module: MOD-spec-changes
@@ -398,8 +396,7 @@ const GATE_CHANGE = (name, rule) => candidate(name, { rule, check: "`tests/gate.
 // guards: A CHANGE IS PROPOSED UNDER THE EXISTING NAME; UC-005
 // given: a result with A BETTER NAME and A SECOND NAME, both classed as changes of A SAMPLE RULE of the product; and, to show the same call writing, the result with A BETTER NAME alone
 // input: the writer
-// expect: the one change is written (known positive: one commit to the product); both together reject with an error named TwoChanges, whose requirement is "A SAMPLE RULE" and whose candidates are ["A BETTER NAME", "A SECOND NAME"];
-//   the product's host and the instance's host take no commit
+// expect: the one change is written (known positive: one commit to the product); both together reject with an error named TwoChanges, whose requirement is "A SAMPLE RULE" and whose candidates are ["A BETTER NAME", "A SECOND NAME"]; the product's host and the instance's host take no commit
 test("queue-entries — two changes of one requirement are refused and nothing is written", async () => {
   const known = fixture();
   await writer(resultOf([CHANGE]), known.context);
@@ -414,8 +411,7 @@ test("queue-entries — two changes of one requirement are refused and nothing i
 // guards: A CHANGE IS PROPOSED UNDER THE EXISTING NAME; A REQUIREMENT NAMES WHAT IT CONSTRAINS
 // given: a result with a new requirement of the product and two candidates that constrain the process, each classed as a change of GATES ARE NAMED of the instance; and, to show the same call writing both queues, the result with one of the two
 // input: the writer
-// expect: with one process change the product's host and the instance's host take one commit each (known positive); with both, an error named TwoChanges whose requirement is "GATES ARE NAMED" and whose candidates are
-//   ["A JOB NAMES A GATE", "A JOB LISTS A GATE"], and neither host takes a commit: the product's queue, which could be written, is not written before the instance's refusal
+// expect: with one process change the product's host and the instance's host take one commit each (known positive); with both, an error named TwoChanges whose requirement is "GATES ARE NAMED" and whose candidates are ["A JOB NAMES A GATE", "A JOB LISTS A GATE"], and neither host takes a commit: the product's queue, which could be written, is not written before the instance's refusal
 test("queue-entries — two changes in the instance's SPEC leave the product's queue unwritten too", async () => {
   const first = GATE_CHANGE("A JOB NAMES A GATE", "A job names the gate it stops at.");
   const second = GATE_CHANGE("A JOB LISTS A GATE", "A job lists the gate it stops at.");
@@ -432,16 +428,15 @@ test("queue-entries — two changes in the instance's SPEC leave the product's q
 // guards: A CHANGE IS PROPOSED UNDER THE EXISTING NAME
 // given: a result with a change of A SAMPLE RULE and a change of A WRITE RULE of the product
 // input: the writer
-// expect: one commit to the product, whose queue holds the section Reading with the first change's rule and the section Writing with the second's: one change of each requirement is written as before
+// expect: one commit to the product, whose queues hold the section Reading with the first change's rule and the section Writing with the second's: one change of each requirement is written as before
 test("queue-entries — one change of each requirement is written as before", async () => {
   const f = fixture();
   const other = candidate("A WRITER NAME", { rule: "A writer writes a file whole, or says why not.", check: "`tests/writer.test.mjs`", class: "change", of: "A WRITE RULE" });
   await writer(resultOf([CHANGE, other]), f.context);
   assert.equal(f.product.host.commits.length, 1);
   const written = filesOf(f.product.host.commits[0]);
-  const [folder] = folderOf(f.product.host.commits[0]);
-  assert.ok(written[`${folder}/01-reading.md`].includes("**A SAMPLE RULE** *(Product Owner; SRC-fixture-book, ch. 8)*\nA reader reads a file whole, or says why not."));
-  assert.ok(written[`${folder}/02-writing.md`].includes("**A WRITE RULE** *(Product Owner; SRC-fixture-book, ch. 8)*\nA writer writes a file whole, or says why not."));
+  assert.ok(written[`${READING_Q}/01-reading.md`].includes("**A SAMPLE RULE** *(Product Owner; SRC-fixture-book, ch. 8)*\nA reader reads a file whole, or says why not."));
+  assert.ok(written[`${WRITING_Q}/01-writing.md`].includes("**A WRITE RULE** *(Product Owner; SRC-fixture-book, ch. 8)*\nA writer writes a file whole, or says why not."));
 });
 
 // ---------------------------------------------------------------- a queue is written to no repository when one refuses (ITM-666)
@@ -452,8 +447,7 @@ const GATE = candidate("A JOB NAMES A GATE", { rule: "A job names the gate it st
 // guards: A GENERATED ARTIFACT IS A PROPOSAL; A REQUIREMENT NAMES WHAT IT CONSTRAINS
 // given: a result with a new requirement of the product and a candidate that constrains the process; and, to show the same call writing, the same fixture with both hosts present
 // input: the writer, with the instance's host missing, then with the product's host missing, then with the instance's host missing and no candidate that constrains the process
-// expect: with both hosts, two commits, the product's first (known positive); with the instance's host missing, an error named NoHost and no commit to the product's host; with the product's host missing, an error named NoHost and no commit to the instance's host;
-//   with the instance's host missing and nothing for the instance to write, no error and one commit to the product's host
+// expect: with both hosts, two commits, the product's first (known positive); with the instance's host missing, an error named NoHost and no commit to the product's host; with the product's host missing, an error named NoHost and no commit to the instance's host; with the instance's host missing and nothing for the instance to write, no error and one commit to the product's host
 test("queue-entries — a repository without a host refuses before the other is written, and only when it gets a queue", async () => {
   const known = fixture();
   const outcome = await writer(resultOf([NEW, GATE]), known.context);
@@ -492,8 +486,7 @@ test("queue-entries — a commit the server refuses as moved comes after the fir
 // guards: A GENERATED ARTIFACT IS A PROPOSAL
 // given: a result with a new requirement of the product and a candidate that constrains the process, each snapshot and host wrapped to record the paths read and the host calls made
 // input: the writer
-// expect: the product's snapshot is read at SPEC.md twice and the use case once; the instance's at SPEC.md three times and at each of the three files of its open queue once; each host's repositoryInfo is called once; nothing else is read
-//   (the numbers are those of the writer before this change, measured on it)
+// expect: the product's snapshot is read at SPEC.md twice, at docs/sources.md once — the links that give the source's version —, the use case once, and the index and decisions of the queue writing once each; the instance's at SPEC.md three times, at the register entry of the source once, at each of the three files of its open queue once, and at the index and decisions of the queue process once each; each host's repositoryInfo is called once; nothing else is read (the numbers are those of the writer, measured on it)
 test("queue-entries — the writer reads each file as often as before", async () => {
   const f = fixture();
   const reads = { product: [], instance: [] }, infos = { product: 0, instance: 0 };
@@ -507,15 +500,15 @@ test("queue-entries — the writer reads each file as often as before", async ()
   await writer(resultOf([NEW, GATE]), f.context);
   assert.deepEqual(infos, { product: 1, instance: 1 });
   const counted = (list) => Object.fromEntries([...new Set(list)].sort().map((path) => [path, list.filter((each) => each === path).length]));
-  assert.deepEqual(counted(reads.product), { "SPEC.md": 2, "docs/use-cases/UC-001-read-a-file.md": 1 });
-  assert.deepEqual(counted(reads.instance), { "SPEC.md": 3, [`${OPEN_QUEUE}/01-open-process.md`]: 1, [`${OPEN_QUEUE}/entscheidungen.md`]: 1, [`${OPEN_QUEUE}/index.md`]: 1 });
+  assert.deepEqual(counted(reads.product), { "SPEC.md": 2, "docs/sources.md": 1, [`${WRITING_Q}/entscheidungen.md`]: 1, [`${WRITING_Q}/index.md`]: 1, "docs/use-cases/UC-001-read-a-file.md": 1 });
+  assert.deepEqual(counted(reads.instance), { "SPEC.md": 3, [`${OPEN_QUEUE}/01-open-process.md`]: 1, [`${OPEN_QUEUE}/entscheidungen.md`]: 1, [`${OPEN_QUEUE}/index.md`]: 1, "docs/sources/SRC-fixture-book.md": 1, [`${PROCESS_Q}/entscheidungen.md`]: 1, [`${PROCESS_Q}/index.md`]: 1 });
 });
 
 // ---------------------------------------------------------------- a queue drafted from an issue names the issue (ITM-1247)
 //
 // The job's parameter `issue` is the number of the product's issue the change comes from; the product's address is the context's `product.address`. The reading this file takes, where the
-// module file leaves one open: the rationale's **Origin.** names the issue as `issue #<number> of <product address>` after the source; the index's line is `**Issue:** #<number> of <product
-// address>`, in every queue the job writes, the instance's too, since the change comes from the product's issue.
+// module file leaves one open: the rationale's **Origin.** names the issue as `issue #<number> of <product address>` after the source; the rationale's line is `**Issue:** #<number> of <product
+// address>` (MOD-spec-changes, Data), in every entry the job writes, the instance's too, since the change comes from the product's issue.
 
 const ADDRESS = "https://github.com/alice/product";
 const originOf = (rationale) => /\*\*Origin\.\*\* ([^\n]*)/.exec(rationale)?.[1] ?? "";
@@ -524,29 +517,26 @@ const originOf = (rationale) => /\*\*Origin\.\*\* ([^\n]*)/.exec(rationale)?.[1]
 // guards: EVERY ARTIFACT NAMES ITS ORIGIN; UC-012
 // given: a job whose parameters carry the source SRC-fixture-book and the issue 12, with a new requirement of the product and one that constrains the process
 // input: the writer
-// expect: in both queues each rationale's origin names the source with its passage and "issue #12 of https://github.com/alice/product", and still reads without a finding in the schema queue-rationale;
-//   each index holds the line "**Issue:** #12 of https://github.com/alice/product" above the line "**Zieldatei aller Einträge:**"
-test("queue-entries — with the parameter issue, each rationale names the issue as its origin and each index holds the line Issue", async () => {
+// expect: in both commits each rationale's origin names the source with its passage and "issue #12 of https://github.com/alice/product", each rationale holds the line "**Issue:** #12 of https://github.com/alice/product", and still reads without a finding in the schema queue-rationale; no index holds the line
+test("queue-entries — with the parameter issue, each rationale names the issue as its origin and holds the line Issue", async () => {
   const f = fixture();
   f.context.params = { source: "SRC-fixture-book", issue: 12 };
   await writer(resultOf([NEW, GATE]), f.context);
   const schema = loadSchema(readFileSync(new URL("../src/spec-changes/queue-rationale.schema.md", import.meta.url), "utf8"), "MOD-spec-changes");
   const commits = [...f.product.host.commits, ...f.instance.host.commits];
-  assert.equal(commits.length, 2, "a queue in the product and one in the instance");
+  assert.equal(commits.length, 2, "an entry in the product and one in the instance");
   for (const commit of commits) {
     const written = filesOf(commit);
-    const [folder] = folderOf(commit);
     const rationales = Object.keys(written).filter((path) => path.endsWith(".begruendung.md"));
     assert.ok(rationales.length > 0);
     for (const path of rationales) {
       const said = originOf(written[path]);
       assert.ok(said.includes("SRC-fixture-book") && said.includes("ch. 8"), `${path}: the source stays named: ${said}`);
       assert.ok(said.includes(`issue #12 of ${ADDRESS}`), `${path}: the issue is named as the origin: ${said}`);
+      assert.ok(written[path].split("\n").includes(`**Issue:** #12 of ${ADDRESS}`), written[path]);
       assert.deepEqual(documentFindings(schema, readDocument(schema, path, written[path])), [], `${path}: no finding`);
     }
-    const index = written[`${folder}/index.md`];
-    assert.ok(index.split("\n").includes(`**Issue:** #12 of ${ADDRESS}`), index);
-    assert.ok(index.indexOf("**Issue:**") < index.indexOf("**Zieldatei aller Einträge:**"), "the line stands above the target's line");
+    for (const path of Object.keys(written).filter((each) => each.endsWith("/index.md"))) assert.ok(!written[path].includes("**Issue:**"), path);
   }
 });
 
@@ -554,7 +544,7 @@ test("queue-entries — with the parameter issue, each rationale names the issue
 // guards: EVERY ARTIFACT NAMES ITS ORIGIN; UC-005
 // given: the same job without the parameter issue; and, to show the same check finding the line, the job with the issue 12
 // input: the writer
-// expect: with the issue, a file of the commit holds "**Issue:**" (known positive); without it, no file holds it and every rationale's origin is "Source SRC-fixture-book, passages: ch. 8.", as before
+// expect: with the issue, a file of the commit holds "**Issue:**" (known positive); without it, no file holds it and every rationale's origin is "Source SRC-fixture-book, passages: ch. 8. Source version: 2026-10-01.", the version the product links
 test("queue-entries — without the parameter issue, no queue names an issue", async () => {
   const known = fixture();
   known.context.params = { source: "SRC-fixture-book", issue: 12 };
@@ -567,7 +557,7 @@ test("queue-entries — without the parameter issue, no queue names an issue", a
   for (const commit of commits) {
     const written = filesOf(commit);
     assert.ok(!Object.values(written).some((body) => body.includes("**Issue:**")), "no line Issue");
-    for (const path of Object.keys(written).filter((each) => each.endsWith(".begruendung.md"))) assert.equal(originOf(written[path]), "Source SRC-fixture-book, passages: ch. 8.");
+    for (const path of Object.keys(written).filter((each) => each.endsWith(".begruendung.md"))) assert.equal(originOf(written[path]), "Source SRC-fixture-book, passages: ch. 8. Source version: 2026-10-01.");
   }
 });
 
@@ -575,8 +565,8 @@ test("queue-entries — without the parameter issue, no queue names an issue", a
 // guards: EVERY ARTIFACT NAMES ITS ORIGIN; UC-012
 // given: the product's repository after the writer committed a queue for a job with the issue 12, and after one for a job without an issue: a snapshot holding the files of the commit beside the product's own
 // input: queues over each snapshot
-// expect: the queue written with the issue reads back with issue { number: 12, product: "https://github.com/alice/product" }; the one written without, with issue null
-test("queue-entries — queues reads back the issue a written queue names", async () => {
+// expect: the entry written with the issue reads back with issue { number: 12, product: "https://github.com/alice/product" }; the one written without, with issue null
+test("queue-entries — queues reads back the issue a written entry names", async () => {
   for (const [params, expected] of [[{ source: "SRC-fixture-book", issue: 12 }, { number: 12, product: ADDRESS }], [{ source: "SRC-fixture-book" }, null]]) {
     const f = fixture();
     f.context.params = params;
@@ -585,6 +575,86 @@ test("queue-entries — queues reads back the issue a written queue names", asyn
     const [folder] = folderOf(f.product.host.commits[0]);
     const queue = (await specChanges.queues(snapshotOf({ ...f.productFiles, ...written }))).find((each) => each.folder === folder);
     assert.ok(queue, `the written queue ${folder} is read`);
-    assert.deepEqual(queue.issue, expected);
+    assert.deepEqual(queue.entries.map((entry) => entry.issue), [expected]);
   }
+});
+
+// ---------------------------------------------------------------- a proposal names the version of its source (ITM-1391)
+//
+// The reading this file takes, where the module file leaves one open: "the source passage and version" of a rationale's origin (MOD-spec-changes, Data) is the version the product's link names of
+// the job's source, which is the version the job read (UC-005 step 1: "reads exactly the linked version"). The origin names it in a sentence of its own after the sentence that names the source
+// and its passages: `Source version: <version>.`; a job whose source the product links at no version names none.
+
+const NEWER_ROW = `| \`2026-11-01\` | 2026-11-01 | — | the fixture | 1 file, listed below; version hash \`${"2".repeat(64)}\` |`;
+const NEWER_FILES = ["", "### Files of 2026-11-01", "", "| File | SHA-256 |", "|---|---|", `| \`08_chapter.md\` | \`${"b".repeat(64)}\` |`].join("\n");
+const TWO_VERSIONS = `${BOOK_ENTRY.replace(/(\| `2026-10-01` \|[^\n]*\n)/, `$1${NEWER_ROW}\n`).replace(/\n$/, "")}\n${NEWER_FILES}\n`;
+const linksAt = (version, hash) => LINKS.replace(`| 2026-10-01 | ${"1".repeat(64)} |`, `| ${version} | ${hash} |`);
+
+// TST-1391001 · level: unit · module: MOD-spec-changes
+// guards: A LIVING SOURCE IS PINNED; EVERY ARTIFACT NAMES ITS ORIGIN; UC-005
+// given: a product that links SRC-fixture-book at version 2026-10-01; a result with a change and a new requirement of the product and a candidate that constrains the process, so that a queue is written in the product and one in the instance; and, in the same fixture, the job with the issue 12 and the job of a change by prompt
+// input: the writer
+// expect: in both queues every rationale's origin is "Source SRC-fixture-book, passages: ch. 8. Source version: 2026-10-01." and reads without a finding in the schema queue-rationale; with the issue, "Source SRC-fixture-book, passages: ch. 8; issue #12 of https://github.com/alice/product. Source version: 2026-10-01."; by prompt, the version stands before the sentence that names the conversation
+test("queue-entries — each rationale's origin names the version of the source the product links", async () => {
+  const schema = loadSchema(readFileSync(new URL("../src/spec-changes/queue-rationale.schema.md", import.meta.url), "utf8"), "MOD-spec-changes");
+  const originsOf = async (adjust = () => {}) => {
+    const f = fixture();
+    adjust(f.context);
+    await writer(resultOf([CHANGE, NEW, GATE]), f.context);
+    const commits = [...f.product.host.commits, ...f.instance.host.commits];
+    assert.equal(commits.length, 2, "a queue in the product and one in the instance");
+    return commits.flatMap((commit) => Object.entries(filesOf(commit)).filter(([path]) => path.endsWith(".begruendung.md")).map(([path, body]) => {
+      assert.deepEqual(documentFindings(schema, readDocument(schema, path, body)), [], `${path}: no finding`);
+      return originOf(body);
+    }));
+  };
+  const plain = await originsOf();
+  assert.ok(plain.length >= 3, "a rationale for each entry of both queues");
+  for (const origin of plain) assert.equal(origin, "Source SRC-fixture-book, passages: ch. 8. Source version: 2026-10-01.");
+  for (const origin of await originsOf((context) => { context.params = { source: "SRC-fixture-book", issue: 12 }; })) {
+    assert.equal(origin, `Source SRC-fixture-book, passages: ch. 8; issue #12 of ${ADDRESS}. Source version: 2026-10-01.`);
+  }
+  for (const origin of await originsOf((context) => { context.kind = { name: "change-requirements" }; context.params = { source: "SRC-fixture-book", page: "/spec.html", instruction: "Make the reader say why." }; })) {
+    assert.match(origin, /^Source SRC-fixture-book, passages: ch\. 8\. Source version: 2026-10-01\. Asked in a conversation in the prompt bar on \/spec\.html\.$/);
+  }
+});
+
+// TST-1391002 · level: unit · module: MOD-spec-changes
+// guards: A LIVING SOURCE IS PINNED; UC-005
+// given: a register entry that records two versions, 2026-10-01 and the later 2026-11-01; the product links the earlier one; and, to show the same call naming the later, the product linking that
+// input: the writer
+// expect: with the earlier linked, every rationale names 2026-10-01 and not 2026-11-01 — the version the product's link names, not the newest the register holds; with the later linked (known positive), it names 2026-11-01
+test("queue-entries — the version named is the one the product links, not the newest the register holds", async () => {
+  const originsWith = async (links) => {
+    const f = fixture();
+    f.instanceFiles["docs/sources/SRC-fixture-book.md"] = TWO_VERSIONS;
+    f.productFiles["docs/sources.md"] = links;
+    await writer(resultOf([NEW]), f.context);
+    return Object.entries(filesOf(f.product.host.commits[0])).filter(([path]) => path.endsWith(".begruendung.md")).map(([, body]) => originOf(body));
+  };
+  const later = await originsWith(linksAt("2026-11-01", "2".repeat(64)));
+  assert.ok(later.length > 0 && later.every((origin) => origin.includes("Source version: 2026-11-01.") && !origin.includes("2026-10-01")), `known positive: the later version, when it is the one linked: ${later}`);
+  const earlier = await originsWith(LINKS);
+  assert.ok(earlier.length > 0);
+  for (const origin of earlier) assert.ok(origin.includes("Source version: 2026-10-01.") && !origin.includes("2026-11-01"), origin);
+});
+
+// TST-1391003 · level: unit · module: MOD-spec-changes
+// guards: A LIVING SOURCE IS PINNED; EVERY ARTIFACT NAMES ITS ORIGIN; UC-005
+// given: a product whose links file is absent, so that it links the job's source at no version; and, to show the same call naming one, the product with its links
+// input: the writer
+// expect: with the links, a file of the queue holds "Source version: 2026-10-01" (known positive); without them the queue is written all the same and no file holds "Source version": every origin is "Source SRC-fixture-book, passages: ch. 8."
+test("queue-entries — a source the product links at no version is named without one", async () => {
+  const known = fixture();
+  await writer(resultOf([NEW]), known.context);
+  assert.ok(Object.values(filesOf(known.product.host.commits[0])).some((body) => body.includes("Source version: 2026-10-01")), "known positive: the version is found");
+  const f = fixture();
+  delete f.productFiles["docs/sources.md"];
+  await writer(resultOf([NEW]), f.context);
+  assert.equal(f.product.host.commits.length, 1, "the queue is written");
+  const written = filesOf(f.product.host.commits[0]);
+  assert.ok(!Object.values(written).some((body) => body.includes("Source version")), "no file names a source version");
+  const rationales = Object.entries(written).filter(([path]) => path.endsWith(".begruendung.md"));
+  assert.ok(rationales.length > 0);
+  for (const [path, body] of rationales) assert.equal(originOf(body), "Source SRC-fixture-book, passages: ch. 8.", path);
 });

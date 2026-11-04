@@ -97,6 +97,8 @@ function contextOf(files) {
   const host = (snapshot) => ({
     async repositoryInfo() { return { defaultBranch: "main", visibility: "public", canWrite: true, archived: false, description: "" }; },
     async readSnapshot() { return snapshot; },
+    // The file at each commit, as the one snapshot holds it (MOD-repository-hosts' readFileAt), for the declared model the route reads first (ITM-1260).
+    async readFileAt(path, commits) { const held = await snapshot.read(path); return new Map(commits.map((commit) => [commit, held])); },
     async listPullRequests() { return []; },
     async containsCommit() { return false; },
   });

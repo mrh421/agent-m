@@ -116,9 +116,7 @@ const STEPS = "The author has no personal source linked to this product. Registe
 // guards: UC-019; UC-049
 // given: the specification of a library on its default branch main, product https://github.com/acme/library; the requirement A LOAN HAS A DUE DATE opened
 // input: route.subject(params, context)
-// expect: key "trace/key=specification/ref=main/requirement=A%20LOAN%20HAS%20A%20DUE%20DATE/product=https%3A%2F%2Fgithub.com%2Facme%2Flibrary";
-//   draftRoute exactly "draft/subject=" + encodeURIComponent(key), written out: "draft/subject=trace%2Fkey%3Dspecification%2Fref%3Dmain%2Frequirement%3DA%2520LOAN%2520HAS%2520A%2520DUE%2520DATE%2Fproduct%3Dhttps%253A%252F%252Fgithub.com%252Facme%252Flibrary";
-//   the part subject=<value> read back as the frame reads it gives the key
+// expect: key "trace/key=specification/ref=main/requirement=A%20LOAN%20HAS%20A%20DUE%20DATE/product=https%3A%2F%2Fgithub.com%2Facme%2Flibrary"; draftRoute exactly "draft/subject=" + encodeURIComponent(key), written out: "draft/subject=trace%2Fkey%3Dspecification%2Fref%3Dmain%2Frequirement%3DA%2520LOAN%2520HAS%2520A%2520DUE%2520DATE%2Fproduct%3Dhttps%253A%252F%252Fgithub.com%252Facme%252Flibrary"; the part subject=<value> read back as the frame reads it gives the key
 test("TST-558001 the draft route of an open requirement is draft/subject=<the key, encoded>, and reads back as the key", async () => {
   const page = await shown();
   click(named(page.target, LOAN));
@@ -132,9 +130,7 @@ test("TST-558001 the draft route of an open requirement is draft/subject=<the ke
 // guards: UC-019; UC-049
 // given: the same specification; the group "1. Lending" (holding A LOAN HAS A DUE DATE then A BOOK IS SHELVED) opened; then A BOOK IS SHELVED opened inside it
 // input: route.subject for the group, then with the requirement open
-// expect: group: key "trace/key=specification/ref=main/requirements=%5B%22A%20LOAN%20HAS%20A%20DUE%20DATE%22%2C%22A%20BOOK%20IS%20SHELVED%22%5D/product=https%3A%2F%2Fgithub.com%2Facme%2Flibrary" and
-//   draftRoute "draft/subject=trace%2Fkey%3Dspecification%2Fref%3Dmain%2Frequirements%3D%255B%2522A%2520LOAN%2520HAS%2520A%2520DUE%2520DATE%2522%252C%2522A%2520BOOK%2520IS%2520SHELVED%2522%255D%2Fproduct%3Dhttps%253A%252F%252Fgithub.com%252Facme%252Flibrary",
-//   read back as the key; with the requirement open: the draft route of A BOOK IS SHELVED, which differs from the group's and reads back as that subject's own key
+// expect: group: key "trace/key=specification/ref=main/requirements=%5B%22A%20LOAN%20HAS%20A%20DUE%20DATE%22%2C%22A%20BOOK%20IS%20SHELVED%22%5D/product=https%3A%2F%2Fgithub.com%2Facme%2Flibrary" and draftRoute "draft/subject=trace%2Fkey%3Dspecification%2Fref%3Dmain%2Frequirements%3D%255B%2522A%2520LOAN%2520HAS%2520A%2520DUE%2520DATE%2522%252C%2522A%2520BOOK%2520IS%2520SHELVED%2522%255D%2Fproduct%3Dhttps%253A%252F%252Fgithub.com%252Facme%252Flibrary", read back as the key; with the requirement open: the draft route of A BOOK IS SHELVED, which differs from the group's and reads back as that subject's own key
 test("TST-558002 the draft route of an open group is draft/subject=<its key, encoded>, and the narrower subject has a route of its own", async () => {
   const page = await shown();
   click(toggled(page.target, "1. Lending"));
@@ -154,8 +150,7 @@ test("TST-558002 the draft route of an open group is draft/subject=<its key, enc
 // guards: UC-019; THE PERSON WHO PROMPTS IS A SOURCE
 // given: a requirement open on main; the known positive: the product links the person's source SRC-acme-person; then (a) the links file holds no row for the person, (b) the register holds only a person of another account, (c) the context has no instance, (d) the instance's Host fails
 // input: route.subject, then subject.paramsFor(participant), under a fetch spy
-// expect: known positive: the parameters hold requirements [LOAN] and source "SRC-acme-person"; (a) to (d): the subject is still given, names no kind, and paramsFor refuses nothing — it gives requirements [LOAN] and no
-//   source, since a subject is context only and a change of requirements refuses by its own precondition (MOD-spec-changes' person-source); no fetch is made
+// expect: known positive: the parameters hold requirements [LOAN] and source "SRC-acme-person"; (a) to (d): the subject is still given, names no kind, and paramsFor refuses nothing — it gives requirements [LOAN] and no source, since a subject is context only and a change of requirements refuses by its own precondition (MOD-spec-changes' person-source); no fetch is made
 test("TST-558003 without the person's source linked by the product, the subject gives the requirement and no source, and refuses nothing", async () => {
   const before = globalThis.fetch;
   const requests = [];

@@ -16,7 +16,6 @@
 
 import { readSetting, writeSetting } from "../browser-store/index.mjs";
 import { parseAddress } from "../repository-hosts/index.mjs";
-import { waitingForAcceptance } from "../progress-measures/index.mjs";
 import { currentRegistration } from "./permission.mjs";
 
 const CHECK_EVERY_MS = 60 * 1000; // every minute, the page looks whether a check is due
@@ -56,6 +55,8 @@ async function check(page, repoState) {
   const { store } = page;
   const notifications = readSetting(store, "notifications");
   if (!due(notifications)) return;
+  // What waits is read with MOD-progress-measures, imported only for a check that is due: a page with the switch off loads none of it.
+  const { waitingForAcceptance } = await import("../progress-measures/index.mjs");
 
   const firstCheck = notifications.checked === null;
   const notifiedAll = readSetting(store, "notified") ?? {};

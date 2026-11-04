@@ -25,9 +25,7 @@ const lines = (count, text = (n) => `line ${n}`) => Array.from({ length: count }
 // guards: UC-049
 // given: a file long.txt of 2500 lines "line 1" … "line 2500", each ended by a newline
 // input: read long.txt; read it with offset 2001; read it with offset 5 and limit 10
-// expect: the first begins "<path><root>/long.txt</path>\n<type>file</type>\n<content>\n1: line 1\n", ends "2000: line 2000\n\n(Showing lines 1-2000 of 2500. Use
-//   offset=2001 to continue.)\n</content>" and holds no line 2001; the second ends "2500: line 2500\n\n(End of file - total 2500 lines)\n</content>"; the third holds
-//   lines 5 to 14 and "(Showing lines 5-14 of 2500. Use offset=15 to continue.)"
+// expect: the first begins "<path><root>/long.txt</path>\n<type>file</type>\n<content>\n1: line 1\n", ends "2000: line 2000\n\n(Showing lines 1-2000 of 2500. Use offset=2001 to continue.)\n</content>" and holds no line 2001; the second ends "2500: line 2500\n\n(End of file - total 2500 lines)\n</content>"; the third holds lines 5 to 14 and "(Showing lines 5-14 of 2500. Use offset=15 to continue.)"
 test("TST-1240010: read pages through a long file", async (t) => {
   const root = checkout(t);
   writeFileSync(join(root, "long.txt"), `${lines(2500).join("\n")}\n`);
@@ -48,8 +46,7 @@ test("TST-1240010: read pages through a long file", async (t) => {
 // guards: UC-049
 // given: wide.txt of 100 lines of 1000 "a" each; one.txt with one line of 2500 "b"
 // input: read wide.txt; read one.txt
-// expect: wide.txt shows lines 1 to 51 — 50 KB is 51200 bytes, each line counts its bytes and one for the newline before it — and ends "(Output capped at 50 KB.
-//   Showing lines 1-51. Use offset=52 to continue.)\n</content>"; one.txt shows "1: " and 2000 "b" followed by "... (line truncated to 2000 chars)"
+// expect: wide.txt shows lines 1 to 51 — 50 KB is 51200 bytes, each line counts its bytes and one for the newline before it — and ends "(Output capped at 50 KB. Showing lines 1-51. Use offset=52 to continue.)\n</content>"; one.txt shows "1: " and 2000 "b" followed by "... (line truncated to 2000 chars)"
 test("TST-1240011: read caps its output at 50 KB and a line at 2000 characters", async (t) => {
   const root = checkout(t);
   writeFileSync(join(root, "wide.txt"), `${lines(100, () => "a".repeat(1000)).join("\n")}\n`);
@@ -66,8 +63,7 @@ test("TST-1240011: read caps its output at 50 KB and a line at 2000 characters",
 // guards: UC-049
 // given: a checkout with data.bin holding a zero byte, a folder docs/ with guide.md and sub/, and short.txt of 3 lines
 // input: read data.bin; read docs; read docs/guide, the name without its extension; read short.txt with offset 10
-// expect: "Cannot read binary file: <root>/data.bin"; the listing "<path><root>/docs</path>\n<type>directory</type>\n<entries>\nguide.md\nsub/\n\n(2 entries)\n</entries>";
-//   "File not found: <root>/docs/guide\n\nDid you mean one of these?\n<root>/docs/guide.md"; "Offset 10 is out of range for this file (3 lines)"
+// expect: "Cannot read binary file: <root>/data.bin"; the listing "<path><root>/docs</path>\n<type>directory</type>\n<entries>\nguide.md\nsub/\n\n(2 entries)\n</entries>"; "File not found: <root>/docs/guide\n\nDid you mean one of these?\n<root>/docs/guide.md"; "Offset 10 is out of range for this file (3 lines)"
 test("TST-1240012: read refuses a binary file, lists a folder and names a near file for a missing one", async (t) => {
   const root = checkout(t);
   writeFileSync(join(root, "data.bin"), Buffer.from([0x41, 0x00, 0x42]));
@@ -85,8 +81,7 @@ test("TST-1240012: read refuses a binary file, lists a folder and names a near f
 // guards: RESTRICTED CONTENT GOES ONLY WHERE ITS SOURCE PERMITS
 // given: a checkout whose folder sources/norm/ holds text.md, the content of the restricted source SRC-norm, which the places allow only at "on-premises"
 // input: read sources/norm/text.md and grep "clause" for a drafter at "us-cloud"; the same for a drafter at "on-premises"
-// expect: at us-cloud the read answers "refused: sources/norm/text.md holds content of SRC-norm, which may not go to us-cloud" and the grep holds no line of
-//   the file and that refusal; known positive: at on-premises the read holds "1: clause one" and the grep "Line 1: clause one"
+// expect: at us-cloud the read answers "refused: sources/norm/text.md holds content of SRC-norm, which may not go to us-cloud" and the grep holds no line of the file and that refusal; known positive: at on-premises the read holds "1: clause one" and the grep "Line 1: clause one"
 test("TST-1240013: read and grep give a restricted source's content only where its source permits", async (t) => {
   const root = checkout(t);
   mkdirSync(join(root, "sources", "norm"), { recursive: true });

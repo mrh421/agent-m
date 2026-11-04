@@ -25,7 +25,8 @@
 //     with exit code 100, so that a script that leaves the cache path fails loudly.
 //   - `sudo` runs its command, or, when FAKE_SUDO_DENY is set, refuses `chmod -x` with exit code 1 (a machine where the programs
 //     cannot be taken away).
-//   - `npm` and `openbox` do nothing and end with 0.
+//   - `npm` and `openbox` do nothing and end with 0; a call of `npm` that installs electron@44.5.1 leaves, as npm does, the
+//     package's `node_modules/electron/install.js` under its `--prefix`, here a script that does nothing.
 //   - `cat` records the files it is given and then waits one second, so that a read that the script waits for takes a second
 //     longer than one that it does not.
 // The counter-proof of the cases on the hooks is the same script with the `chmod` replaced by `true` (the model then records
@@ -66,6 +67,14 @@ const SUDO = `#!/bin/bash
 if [ -n "$FAKE_SUDO_DENY" ] && [ "$1" = chmod ] && [ "$2" = -x ]; then echo "sudo: chmod refused" >&2; exit 1; fi
 exec "$@"
 `;
+const NPM = `#!/bin/bash
+case " $* " in *" electron@44.5.1 "*)
+  prefix=""; previous=""
+  for argument in "$@"; do [ "$previous" = "--prefix" ] && prefix="$argument"; previous="$argument"; done
+  mkdir -p "$prefix/node_modules/electron" && : > "$prefix/node_modules/electron/install.js";;
+esac
+exit 0
+`;
 const CAT = `#!/bin/bash
 for file in "$@"; do echo "$file" >> "$FAKE_READ"; done
 sleep 1
@@ -77,7 +86,7 @@ const shim = join(work, "bin");
 const catShim = join(work, "cat-bin");
 mkdirSync(shim);
 mkdirSync(catShim);
-for (const [dir, name, body] of [[shim, "apt-get", APT], [shim, "sudo", SUDO], [shim, "openbox", "#!/bin/bash\necho openbox 3.6.1\n"], [shim, "npm", "#!/bin/bash\nexit 0\n"],
+for (const [dir, name, body] of [[shim, "apt-get", APT], [shim, "sudo", SUDO], [shim, "openbox", "#!/bin/bash\necho openbox 3.6.1\n"], [shim, "npm", NPM],
   [catShim, "cat", CAT]]) {
   writeFileSync(join(dir, name), body);
   chmodSync(join(dir, name), 0o755);

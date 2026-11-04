@@ -7,6 +7,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, rmdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import assert from "node:assert/strict";
 
@@ -49,6 +50,9 @@ async function stageElectron(cache) {
     const found = evidence(`Electron ${stage}`, result);
     if (result.status !== 0) throw new Error(`Electron ${stage} failed after ${Date.now() - started}ms; ${JSON.stringify(found)}`);
   };
+  // Where Agent M's schedule `setup` (tests/test-schedule-setup.sh) installs Electron, a path the schedule's `cache` names: first.
+  const setUp = join(homedir(), "agent-m-electron-44/node_modules/electron");
+  if (existsSync(executableOf(setUp))) return executableOf(setUp);
   try {
     if (!existsSync(executableOf(installed))) {
       acquire("package acquisition", "npm", ["install", "--no-save", "--prefix", cache, "electron@44.5.1"]);

@@ -35,6 +35,7 @@ import { readFileSync } from "node:fs";
 import { approvalSchema } from "../src/approvals/index.mjs";
 import { writeDocument } from "../src/documents/index.mjs";
 import { withStoredGraph } from "./stored-graph-fake.mjs";
+import { until as settled } from "./review-pages-wait.mjs";
 
 // Every commit the fakes of this file make is its own: MOD-trace-graph's storedGraph keeps a commit's graph for the page.
 let commitsMade = 0;
@@ -42,7 +43,8 @@ let commitsMade = 0;
 const { openStore, writeSetting } = await import("../src/browser-store/index.mjs");
 const { registerStrategies } = await import("../src/job-runner/index.mjs");
 const pages = await import("../src/review-pages/index.mjs").catch((error) => ({ error }));
-const route = pages.view?.routes.find((candidate) => candidate.name === "decision");
+// The route as the frame shows it: the one its `module` gives, which carries `leave` and `unsaved` (MOD-site-frame's Route).
+const route = await pages.view?.routes.find((candidate) => candidate.name === "decision")?.module();
 (pages.view?.strategies ?? []).forEach((strategies, at) => registerStrategies(`tests/review-pages-draft-architecture.test.mjs#${at}`, strategies));
 // The step due-diligence is registered by no module yet; a stub stands for it, and gives way when a module registers it.
 try { registerStrategies("tests/review-pages-draft-architecture.test.mjs#stub", { steps: { "due-diligence": async (draft) => ({ draft, findings: [] }) } }); } catch { /* registered by a module */ }
@@ -350,7 +352,7 @@ test("decision/draft — the derivation covers every requirement and every use c
 // guards: ARCHITECTURE IS DESIGNED ONLY AGAINST ACCEPTED USE CASES; UC-022
 // given: a product whose use case UC-002 is open (no approval record), UC-001 accepted
 // input: the page; then the choice of drafter-a and reviewer-b and the run panel
-// expect: an error finding naming UC-002 and not UC-001, with a link Review UC-002 to #use-case/id=UC-002; the run panel offers no Run and lists the finding as blocking; nothing sent
+// expect: an error finding naming UC-002 and not UC-001, with a link Review UC-002 to #use-case/id=UC-002/product=<the product's address, percent-encoded>; the run panel offers no Run and lists the finding as blocking; nothing sent
 test("decision/draft — an open use case is named with the link to its review, and nothing is derived", async () => {
   endpointsAnswer();
   const files = { ...READY };
@@ -362,8 +364,8 @@ test("decision/draft — an open use case is named with the link to its review, 
   assert.ok(finding.className.split(" ").includes("error"));
   assert.match(finding.textContent, /UC-002/);
   assert.ok(!/UC-001/.test(finding.textContent), "the accepted use case is not named");
-  assert.equal(linksTo(target, "#use-case/id=UC-002").length, 1);
-  assert.equal(linksTo(target, "#use-case/id=UC-001").length, 0);
+  assert.equal(linksTo(target, `#use-case/id=UC-002/product=${encodeURIComponent(ON_GITHUB.web)}`).length, 1);
+  assert.equal(linksTo(target, `#use-case/id=UC-001/product=${encodeURIComponent(ON_GITHUB.web)}`).length, 0);
   const panel = await panelFor(target, "drafter-a", "reviewer-b");
   assert.equal(runButtons(panel).length, 0, "no Run");
   assert.match(byClass(panel, "li", "blocking")[0].textContent, /UC-002/);
@@ -374,7 +376,7 @@ test("decision/draft — an open use case is named with the link to its review, 
 // guards: THE FIRST ARCHITECTURE IS DESIGNED AS A WHOLE; UC-022
 // given: a product whose use cases are accepted and whose change queue holds an entry no record decides
 // input: the page; then the choice of drafter-a and reviewer-b and the run panel
-// expect: a warning finding naming the entry's proposal, with a link to #spec-entry to decide it first; the run panel still offers Run — the SPEC change is the person's choice, not a block
+// expect: a warning finding naming the entry's proposal, with a link to #spec-entry/product=<the product's address, percent-encoded> to decide it first; the run panel still offers Run — the SPEC change is the person's choice, not a block
 test("decision/draft — an open SPEC change is named with the choice to decide it first, and Run is still offered", async () => {
   endpointsAnswer();
   const entry = `${QUEUE}/01-a-rule.md`;
@@ -385,7 +387,7 @@ test("decision/draft — an open SPEC change is named with the choice to decide 
   assert.ok(finding, "a finding is shown");
   assert.ok(finding.className.split(" ").includes("warning"));
   assert.ok(finding.textContent.includes(entry), finding.textContent);
-  assert.equal(linksTo(target, "#spec-entry").length, 1);
+  assert.equal(linksTo(target, `#spec-entry/product=${encodeURIComponent(ON_GITHUB.web)}`).length, 1);
   const panel = await panelFor(target, "drafter-a", "reviewer-b");
   assert.equal(runButtons(panel).length, 1, "Run is offered");
   assert.equal(requests.length, 0, "nothing sent");
@@ -395,7 +397,7 @@ test("decision/draft — an open SPEC change is named with the choice to decide 
 // guards: THE FIRST ARCHITECTURE IS DESIGNED AS A WHOLE; UC-022
 // given: a product that holds an architecture decision already, ARC-001
 // input: the page; then the run panel
-// expect: an error finding saying the product has an architecture, with a link naming UC-023 to #decision; the run panel offers no Run
+// expect: an error finding saying the product has an architecture, with a link naming UC-023 to #decision/product=<the product's address, percent-encoded>; the run panel offers no Run
 test("decision/draft — an existing architecture leads to UC-023, and no first architecture is drafted beside it", async () => {
   endpointsAnswer();
   const fake = fakeProduct({ ...READY, [ARC_PATH]: text("---", "id: ARC-001", "title: The whole system", "---", "# ARC-001 The whole system") });
@@ -404,7 +406,7 @@ test("decision/draft — an existing architecture leads to UC-023, and no first 
   assert.ok(finding, "a finding is shown");
   assert.ok(finding.className.split(" ").includes("error"));
   assert.match(finding.textContent, /architecture already/);
-  const leading = linksTo(target, "#decision");
+  const leading = linksTo(target, `#decision/product=${encodeURIComponent(ON_GITHUB.web)}`);
   assert.ok(leading.some((each) => /UC-023/.test(each.textContent)), "a link names UC-023");
   const panel = await panelFor(target, "drafter-a", "reviewer-b");
   assert.equal(runButtons(panel).length, 0, "no Run");
@@ -568,7 +570,7 @@ test("decision/draft — a job on the CI route is queued there and not run in th
 
 // ---------------------------------------------------------------- after Run
 
-// TST-443001 - level: unit - module: MOD-review-pages
+// TST-443001 · level: unit · module: MOD-review-pages
 // guards: UC-022; THE ROUNDS ARE COUNTED AND SHOWN; A REUSE DECISION RECORDS ITS DUE DILIGENCE; A REVIEW FINDING IS WEIGHED BEFORE IT IS ACTED ON
 // given: a run returns a decision and a module; the reviewer leaves one warning that the drafter answers; the product has MIT as LICENSE; the registry knows gpl-lib and not missing-lib
 // input: Run on decision/draft
@@ -599,7 +601,7 @@ test("decision/draft - after Run shows the architecture draft, rounds, due dilig
   assert.ok(byClass(result, "input", "reuse-candidate").some((box) => /gpl-lib/.test(box.value)));
 });
 
-// TST-443002 - level: unit - module: MOD-review-pages
+// TST-443002 · level: unit · module: MOD-review-pages
 // guards: UC-022; A PRODUCT DECLARES ITS LICENCE; A REUSED LICENCE IS SHOWN AGAINST THE PRODUCT'S
 // given: a run returns a decision whose chosen package has MIT, but the product has no LICENSE
 // input: Run on decision/draft
@@ -624,7 +626,7 @@ test("decision/draft - after Run, without LICENSE, due diligence is shown as not
   assert.match(diligence, /mit-lib \(npm\) - chosen\s+MIT\s+not checked/);
 });
 
-// TST-443003 - level: unit - module: MOD-review-pages
+// TST-443003 · level: unit · module: MOD-review-pages
 // guards: A REVIEWED ARTIFACT ENTERS THE DEFAULT BRANCH AS OPEN; A GENERATED ARTIFACT IS A PROPOSAL; ONE CLICK PER DECISION
 // given: the architecture draft waits for the author after Run
 // input: the author changes the decision text and clicks Write proposals
@@ -652,7 +654,7 @@ test("decision/draft - Write proposals writes the draft as the author left it", 
   assert.ok(proposalWrites[0].files.some((file) => file.path.startsWith("docs/architecture/ARC-") && file.text.includes("The author kept the package.")));
 });
 
-// TST-443004 - level: unit - module: MOD-review-pages
+// TST-443004 · level: unit · module: MOD-review-pages
 // guards: A REUSE DECISION RECORDS ITS DUE DILIGENCE; ONE CLICK PER DECISION
 // given: the due-diligence step marks a blocked npm registry and the product has a CI route available
 // input: Run, then Write proposals
@@ -683,7 +685,7 @@ test("decision/draft - a blocked registry keeps Write proposals from writing and
   assert.equal(proposalWrites.length, 0);
 });
 
-// TST-443005 - level: unit - module: MOD-review-pages
+// TST-443005 · level: unit · module: MOD-review-pages
 // guards: AN ARCHITECTURE DRAFT IS CHECKED BEFORE A PERSON SEES IT; UC-022
 // given: the architecture draft waits after Run and the checker's later drafter answer returns a checked draft
 // input: the author edits the decision text and clicks Check this edit
@@ -712,6 +714,157 @@ test("decision/draft - Check this edit runs the whole draft again", async () => 
   assert.ok(calls.ep1 >= 2, "the correction loop can redraft from the edited draft when checks find work");
   assert.ok(calls.ep2 >= 2, "the reviewer checks the edited draft");
   assert.match(decision.value, /The checked draft came back/);
+});
+
+// TST-1392001 · level: unit · module: MOD-review-pages
+// guards: UC-022; WHAT A PERSON DECIDES IS NOT SENT BACK
+// given: the ready product; the reviewer finds once that the requirement A BOOK IS SHELVED cannot be kept by the architecture, under A CONFLICT IS DECIDED BY A PERSON, which derive-architecture leaves to the person; a second run whose reviewer finds nothing
+// input: Run on decision/draft, drafter-a with reviewer-b; the shown architecture draft is read
+// expect: known positive — the graph check's finding on MOD-lending is sent back and stands in the drafter's second request; the conflict stands in no request to the drafter; the shown draft lists it in <ul class="for-person"> in the compiler form, with its file, line, rule and text, and the rounds do not hold it; counter-proof — the run without it shows no such list
+test("decision/draft - a finding only the author decides is shown with the draft, apart from the rounds", async () => {
+  const conflict = { artifact: ARC_DRAFT_PATH, line: 9, kind: "warning", rule: "A CONFLICT IS DECIDED BY A PERSON",
+    what: `the requirement ${OTHER} cannot be kept by this architecture`, fix: "the author decides whether to keep the requirement" };
+  const calls = endpointsAndRegistries({ reviewerFindings: [[conflict]], registry: { [NPM_GPL]: packageData("GPL-3.0") } });
+  const target = await show(fakeProduct({ ...READY, LICENSE: "MIT License\n" }));
+  await panelFor(target, "drafter-a", "reviewer-b");
+  click(runButtons(target)[0]);
+  await until(() => byClass(target, "section", "architecture-result").length === 1, "the architecture result");
+  assert.ok(calls.ep1 >= 2 && /designed by no decision/.test(drafterBodies[1]), "known positive: a finding sent back stands in the drafter's next request");
+  assert.ok(drafterBodies.every((body) => !body.includes(conflict.what)), "the conflict is not sent back");
+  const result = byClass(target, "section", "architecture-result")[0];
+  const line = `${ARC_DRAFT_PATH}:9: warning: the requirement ${OTHER} cannot be kept by this architecture [A CONFLICT IS DECIDED BY A PERSON] — the author decides whether to keep the requirement`;
+  assert.deepEqual(byClass(result, "ul", "for-person").flatMap((list) => find(list, (node) => node.localName === "li").map((item) => item.textContent)), [line], "the author is shown it");
+  assert.ok(byClass(result, "section", "rounds").every((rounds) => !rounds.textContent.includes(conflict.what)), "apart from the rounds");
+
+  endpointsAndRegistries({ reviewerFindings: [[]], registry: { [NPM_GPL]: packageData("GPL-3.0") } });
+  const plain = await show(fakeProduct({ ...READY, LICENSE: "MIT License\n" }));
+  await panelFor(plain, "drafter-a", "reviewer-b");
+  click(runButtons(plain)[0]);
+  await until(() => byClass(plain, "section", "architecture-result").length === 1, "the architecture result");
+  assert.equal(byClass(plain, "ul", "for-person").length, 0, "counter-proof: nothing for the person, no list");
+});
+
+// ---------------------------------------------------------------- the reuse candidate the author chooses (ITM-1393)
+
+// UC-022 step 8: the author may "pick a different alternative for a reuse decision"; 7a: a candidate not found in its registry "is not proposed". The readings (the pull request names them):
+// picking a candidate makes it the chosen one in the decision's text — its name, ecosystem and repository take the place of the drafted chosen one's in `## Decision`, and the drafted one's
+// take the picked one's place in `## Alternatives` —, so that Write proposals writes the draft as the person left it and the step due-diligence, run again then (MOD-job-runner's writeResult),
+// marks it chosen; the listing of a candidate not found is its row of the due-diligence table, which names the address queried.
+
+// TST-1393001 · level: unit · module: MOD-review-pages
+// guards: UC-022; A REUSE DECISION RECORDS ITS DUE DILIGENCE
+// given: the draft shown after Run, whose decision ARC-900 chooses mit-lib against gpl-lib, both known to the registry; the product's LICENSE is MIT
+// input: the author picks gpl-lib among the reuse candidates of ARC-900, and presses Write proposals
+// expect: known positive — the choices are mit-lib (npm) - chosen and gpl-lib (npm), and the drafted decision names mit-lib as chosen; the decision written names gpl-lib as the chosen candidate under Decision and mit-lib under Alternatives, and its due-diligence row of gpl-lib is marked chosen
+test("decision/draft - the reuse candidate the author picks is the one Write proposals writes as chosen", async () => {
+  endpointsAndRegistries({ drafts: [architectureDraft({ candidate: "mit-lib", alternative: "gpl-lib" })], registry: { [NPM_MIT]: packageData("MIT"), [NPM_GPL]: packageData("GPL-3.0") } });
+  const fake = fakeProduct({ ...READY, LICENSE: "MIT License\n" });
+  const target = await show(fake);
+  await panelFor(target, "drafter-a", "reviewer-b");
+  click(runButtons(target)[0]);
+  await settled(target, () => byClass(target, "section", "architecture-result").length === 1, "the architecture result");
+  const choices = byClass(target, "input", "reuse-candidate");
+  assert.deepEqual(choices.map((box) => box.value), ["mit-lib (npm) - chosen", "gpl-lib (npm)"], "known positive: both are choices");
+  const decision = byClass(target, "textarea", "draft-text").find((box) => box.getAttribute("data-path") === ARC_DRAFT_PATH);
+  assert.match(decision.value, /^\| mit-lib \| npm \|[^\n]*\| chosen \|$/m, "known positive: the draft chooses mit-lib");
+
+  const other = choices.find((box) => box.value === "gpl-lib (npm)");
+  other.checked = true;
+  other.dispatchEvent(new Event("change"));
+  click(byClass(target, "button", "write-proposals")[0]);
+  await settled(target, () => byClass(target, "p", "written").length === 1, "the write result");
+
+  const written = fake.writes().flatMap((change) => change.files).find((file) => file.path.startsWith("docs/architecture/ARC-"))?.text ?? "";
+  const section = (heading) => new RegExp(`^## ${heading}\\n([^]*?)(?=^## )`, "m").exec(written)?.[1] ?? "";
+  assert.match(section("Decision"), /^\| gpl-lib \| npm \|[^\n]*\| chosen \|$/m, "gpl-lib is the chosen candidate");
+  assert.doesNotMatch(section("Decision"), /mit-lib/, "mit-lib is not chosen");
+  assert.match(section("Alternatives"), /^\| mit-lib \| npm \|/m, "mit-lib is an alternative");
+  assert.match(section("Due diligence"), /^\| gpl-lib \(npm\) - chosen \|/m, "the due diligence marks gpl-lib chosen");
+});
+
+// TST-1393002 · level: unit · module: MOD-review-pages
+// guards: UC-022; DUE DILIGENCE IS FETCHED, NOT RECALLED
+// given: the draft shown after Run, whose decision ARC-900 chooses missing-lib, which the registry does not know, against mit-lib, which it knows
+// input: the reuse candidates the page offers for ARC-900 are read
+// expect: known positive — the due-diligence table lists missing-lib as not found - the name may be invented, with the address queried, https://registry.npmjs.org/missing-lib; mit-lib (npm) is offered as a choice; missing-lib is not proposed: no choice names it
+test("decision/draft - a reuse candidate its registry does not know is not offered as a choice", async () => {
+  endpointsAndRegistries({ drafts: [architectureDraft({ candidate: "missing-lib", alternative: "mit-lib" })], registry: { [NPM_MIT]: packageData("MIT") } });
+  const target = await show(fakeProduct({ ...READY, LICENSE: "MIT License\n" }));
+  await panelFor(target, "drafter-a", "reviewer-b");
+  click(runButtons(target)[0]);
+  await settled(target, () => byClass(target, "section", "architecture-result").length === 1, "the architecture result");
+  const missing = find(byClass(target, "section", "due-diligence")[0], (node) => node.localName === "tr").map((each) => each.textContent).find((each) => each.includes("missing-lib")) ?? "";
+  assert.match(missing, /not found - the name may be invented/, "known positive: the table lists it as not found");
+  assert.ok(missing.includes(NPM_MISSING), "known positive: with the address queried");
+  const choices = byClass(target, "input", "reuse-candidate").map((box) => box.value);
+  assert.ok(choices.includes("mit-lib (npm)"), `known positive: the candidate that exists is offered: ${choices.join(", ")}`);
+  assert.ok(!choices.some((value) => value.startsWith("missing-lib")), `missing-lib is not proposed: ${choices.join(", ")}`);
+});
+
+// ---------------------------------------------------------------- the draft explains its step (ITM-1394)
+
+// EVERY STEP EXPLAINS ITSELF; UC-022 step 8, the draft shown after Run, which asks the author to review it, change it, choose a library and press Write proposals; and 7c, where the
+// author decides on a licence "with a folded explanation of what a licence permits". The readings (the pull request names them): the step's own explanation is the topic the kind
+// names as `loop`, as the use cases' draft does, and for the architecture that is `architecture-reviewer` — what the rounds, the findings left and a finding only the author decides
+// are; the due-diligence table carries `due-diligence`; while a row's compatibility with the product's licence reads other than `yes` — not known to be compatible, or not checked —,
+// the table carries `licence-permits` once, below it, and the rows stay as MOD-reuse-facts writes them.
+const EXPLAINED = (node) => node.localName === "details" && find(node, (each) => each.localName === "summary")[0]?.textContent === "What is this?";
+const foldedText = (root) => find(root, EXPLAINED).map((each) => each.textContent.replace(/\s+/g, " "));
+const DUE_DILIGENCE_TEXT = /^What is this\? ?Before you accept a library, Agent M does a due diligence/;
+const LICENCE_TEXT = /^What is this\? ?A licence is the permission under which you may use someone else's software/;
+const NPM_MIT_TWO = "https://registry.npmjs.org/mit-two";
+async function draftShown({ product = { ...READY, LICENSE: "MIT License\n" }, draft = architectureDraft(), registry = { [NPM_GPL]: packageData("GPL-3.0") }, reviewerFindings = [[]] } = {}) {
+  endpointsAndRegistries({ drafts: [draft], reviewerFindings, registry });
+  const target = await show(fakeProduct(product));
+  await panelFor(target, "drafter-a", "reviewer-b");
+  click(runButtons(target)[0]);
+  await settled(target, () => byClass(target, "section", "architecture-result").length === 1, "the architecture result");
+  return target;
+}
+
+// TST-1394001 · level: unit · module: MOD-review-pages
+// guards: EVERY STEP EXPLAINS ITSELF; UC-022
+// given: the ready product, whose LICENSE is MIT; a run whose reviewer leaves one warning that the drafter answers, so that the draft shown after Run holds its rounds
+// input: Run on decision/draft, drafter-a with reviewer-b; the folded explanations of <section class="architecture-result"> are read
+// expect: known positive — the drafting page's folded explanations stand outside the result, the first of them what an architecture is; the result's first folded explanation, a details with the summary What is this?, is the topic architecture-reviewer — "Before you see the draft, a second participant, the reviewing participant," — and stands before the rounds
+test("decision/draft - the draft shown after Run carries a folded explanation of the step it asks of the author", async () => {
+  const target = await draftShown({ reviewerFindings: [[REVIEW_FINDING], []] });
+  assert.match(foldedText(target)[0], /^What is this\? ?An architecture is the fundamental organization of a system/, "known positive: the drafting page explains itself");
+  const result = byClass(target, "section", "architecture-result")[0];
+  const inside = foldedText(result);
+  assert.ok(inside.length > 0, "the shown draft carries a folded explanation of its own");
+  assert.match(inside[0], /^What is this\? ?Before you see the draft, a second participant, the reviewing participant,/);
+  const kids = [...result.childNodes].filter((node) => node.nodeType === 1);
+  assert.ok(kids.findIndex(EXPLAINED) >= 0 && kids.findIndex(EXPLAINED) < kids.findIndex((node) => node.className === "rounds"), "the explanation stands before the rounds");
+});
+
+// TST-1394002 · level: unit · module: MOD-review-pages
+// guards: EVERY STEP EXPLAINS ITSELF; A REUSED LICENCE IS SHOWN AGAINST THE PRODUCT'S; UC-022
+// given: (a) an MIT product whose drafted ARC-900 chooses mit-lib (MIT) against gpl-lib (GPL-3.0); (b) the same product with mit-lib against mit-two, both MIT; (c) a product without LICENSE, with mit-lib against mit-two
+// input: Run on decision/draft for each; the folded explanations of <section class="due-diligence"> are read, and its rows
+// expect: (a) known positive — gpl-lib's row reads not known to be compatible; the section carries the explanation of due diligence ("Before you accept a library, Agent M does a due diligence") and, once, the explanation of what a licence permits ("A licence is the permission …"), naming a permissive and a copyleft licence; (b) counter-proof — every row reads yes: the explanation of due diligence stands, and none of what a licence permits; (c) every row reads not checked: the explanation of what a licence permits stands once
+test("decision/draft - the due-diligence table explains itself, and what a licence permits while a candidate's licence is not known to be compatible", async () => {
+  const sectionOf = (target) => byClass(target, "section", "due-diligence")[0];
+  const compatibility = (target) => find(sectionOf(target), (node) => node.localName === "td" && /^Compatible/.test(node.getAttribute("data-label") ?? "")).map((cell) => cell.textContent.trim());
+  const registry = { [NPM_MIT]: packageData("MIT"), [NPM_GPL]: packageData("GPL-3.0"), [NPM_MIT_TWO]: packageData("MIT") };
+
+  const marked = await draftShown({ draft: architectureDraft({ candidate: "mit-lib", alternative: "gpl-lib" }), registry });
+  assert.deepEqual(compatibility(marked), ["yes", "not known to be compatible"], "known positive: gpl-lib's row says so");
+  const folded = foldedText(sectionOf(marked));
+  assert.equal(folded.filter((each) => DUE_DILIGENCE_TEXT.test(each)).length, 1, `the table carries the explanation of due diligence: ${folded.length} found`);
+  const licence = folded.filter((each) => LICENCE_TEXT.test(each));
+  assert.equal(licence.length, 1, "the explanation of what a licence permits, once");
+  assert.match(licence[0], /permissive/);
+  assert.match(licence[0], /copyleft/);
+
+  const fine = await draftShown({ draft: architectureDraft({ candidate: "mit-lib", alternative: "mit-two" }), registry });
+  assert.deepEqual(compatibility(fine), ["yes", "yes"]);
+  assert.equal(foldedText(sectionOf(fine)).filter((each) => DUE_DILIGENCE_TEXT.test(each)).length, 1, "the explanation of due diligence stands");
+  assert.equal(foldedText(sectionOf(fine)).filter((each) => LICENCE_TEXT.test(each)).length, 0, "counter-proof: no candidate to decide on, no explanation of a licence");
+
+  const unchecked = await draftShown({ product: READY, draft: architectureDraft({ candidate: "mit-lib", alternative: "mit-two" }), registry });
+  assert.deepEqual(compatibility(unchecked), ["not checked", "not checked"]);
+  assert.equal(foldedText(sectionOf(unchecked)).filter((each) => LICENCE_TEXT.test(each)).length, 1, "a licence not checked is decided with the explanation");
 });
 
 // ---------------------------------------------------------------- leaving the draft (ITM-671)
@@ -826,8 +979,7 @@ test("decision/draft - after Check this edit the checked draft is not unsaved", 
 // guards: UC-022; UC-023; DEVELOP AGAINST INTERFACES
 // given: the architecture draft shown after Run (the drafter asked once), the decision's text changed by one added line that breaks no check and that the reviewer finds nothing in
 // input: Check this edit
-// expect: the page begins with the edited draft, as a whole (MOD-runtimes' hook `from`): the first request to the drafter after the check carries the edited sentence (without `from` it is the job's ordinary prompt), the
-//   reviewer checks the draft, and the job has no record: no commit is made
+// expect: the page begins with the edited draft, as a whole (MOD-runtimes' hook `from`): the first request to the drafter after the check carries the edited sentence (without `from` it is the job's ordinary prompt), the reviewer checks the draft, and the job has no record: no commit is made
 test("decision/draft - Check this edit begins with the edited draft and writes no record", async () => {
   const calls = endpointsAndRegistries({ drafts: [architectureDraft({ candidate: "mit-lib", alternative: "missing-lib" })], registry: { [NPM_MIT]: packageData("MIT") } });
   const fake = fakeProduct({ ...READY, LICENSE: "MIT License\n" });

@@ -26,7 +26,6 @@ realises:
   - EVERY USE CASE IS CHECKED AGAINST THE ARCHITECTURE
   - A SUBSYSTEM IS CHECKED AGAINST THE SYSTEM
   - A MODULE IS CHECKED AGAINST ITS SUBSYSTEM
-  - NO MODULE IS CHECKED AGAINST THE USE CASES
   - A REVIEW FINDING IS WEIGHED BEFORE IT IS ACTED ON
   - NO REVIEWER IS THE DRAFTER
   - A REVIEWER'S FINDING IS A WARNING
@@ -63,7 +62,7 @@ after.
 - **Reviewer** — accepts it; may be the author.
 - **Deriving participant** — drafts the change when the author describes it in words (UC-017).
 - **Reviewing participant** — another participant, using another model, that checks the complete change against the
-  entire project (UC-022, step 6).
+  entire project (UC-022, step 6); for a change described in the prompt bar, the prompt bar's own participant.
 - **Product repository** — holds the architecture, the code and the tests.
 
 ## Precondition
@@ -77,7 +76,8 @@ after.
    - **Edit** — the dashboard's editor with live preview, Mermaid included;
    - **Describe the change** — a text field, for example *"Split MOD-sync into a reader and a writer"*
      or *"Replace the charting library; it has had no release in two years"*.
-2. **Describe the change:** the author chooses a deriving and a reviewing participant and presses **Run**. Agent M
+2. **Describe the change:** the author chooses a deriving and a reviewing participant and presses **Run**; in the
+   prompt bar, the bar's participant derives and reviews the change. Agent M
    sends the description with the entire project — the whole SPEC, every use case and the whole architecture — and
    chapters 9 to 12 of the book *Vibe Coding*. The
    participant returns changes under the existing identifiers, and new decisions or modules only where something new

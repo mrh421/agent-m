@@ -32,7 +32,6 @@ beginning directly with `## Fault`.
     { "heading": "## Fault", "required": true },
     { "heading": "## Result", "required": true }
   ],
-  "otherSections": "forbidden",
-  "noHistory": true
+  "otherSections": "forbidden"
 }
 ```

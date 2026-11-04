@@ -1,7 +1,7 @@
 // start.mjs — the script both entry pages load (docs/architecture/MOD-site-frame.md, Parts). It reads the page's setup from the
 // attributes of its own script tag — `data-page` ("main" or "review") and `data-views`, a list of slugs separated by
 // spaces —, loads the view modules the slugs name from `../<slug>/index.mjs`, registers the strategies of each view
-// with MOD-job-runner under its slug and then MOD-prompt-bar's handOverStrategies under the owner MOD-prompt-bar, each set once,
+// with MOD-job-runner under its slug and then MOD-prompt-bar's hand-over strategies (loadHandOverStrategies) under the owner MOD-prompt-bar, each set once,
 // and calls startPage. This is where the entry pages register strategies (ARC-038).
 //
 // Module: MOD-site-frame

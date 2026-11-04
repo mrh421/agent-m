@@ -4,7 +4,7 @@
 // Run: node --test tests/result-records-test-proposals.test.mjs
 //
 // Module: MOD-result-records
-// Guards: UC-026; TEST GENERATION SEES THE EXISTING TESTS; A TEST STATES ITS EXPECTED RESULT BEFORE IT RUNS; A MODEL-DEPENDENT TEST IS MEASURED AS A RATE
+// Guards: UC-026; TEST GENERATION SEES THE EXISTING TESTS; A TEST STATES ITS EXPECTED RESULT BEFORE IT RUNS; A MODEL-DEPENDENT TEST IS MEASURED AS A RATE; EVERY ARTIFACT HAS AN IDENTIFIER
 // Level: unit
 //
 // Where the file leaves a reading open, the tests state the one they take, and the pull request names it:
@@ -15,6 +15,8 @@
 //     Input and expected result are the same when equal after trimming and collapsing white space and ignoring case.
 //   - A case so found that its participant did not class `duplicate` gets an error finding under TEST GENERATION SEES THE EXISTING TESTS, naming the existing test; the finding's `line` is the
 //     case's position in `cases`, from 1, and its `artifact` the case's identifier. A case already classed `duplicate` gets none.
+//   - Each case carries a `TST-` identifier (UC-026 step 5): one of the scheme `TST-<number>` that no existing test of the product declares and no other case of the proposal carries. A case
+//     without one gets an error under EVERY ARTIFACT HAS AN IDENTIFIER, its `artifact` its identifier, or `case <n>` where it has none.
 // Each test states its input and its expected result before it runs (given / input / expect). The counter-proofs are recorded in the pull request.
 
 import test from "node:test";
@@ -104,4 +106,22 @@ test("test-proposals — a clean proposal gives no finding", async () => {
   assert.deepEqual(await check(clean), []);
   assert.equal((await check({ cases: [{ ...CASE, expected: "" }] })).length, 1);
   assert.deepEqual(await check({ cases: [] }), []);
+});
+
+// TST-1425002 · level: unit · module: MOD-result-records
+// guards: EVERY ARTIFACT HAS AN IDENTIFIER; UC-026
+// given: the product of the other tests, whose existing test is TST-901, and a proposal of six otherwise clean cases: TST-960, case-1, one with no identifier, TST-901, and TST-961 twice
+// input: the check test-proposals on the proposal
+// expect: known positive — no finding for TST-960 (line 1); one error under EVERY ARTIFACT HAS AN IDENTIFIER for each other case, by its line: case-1 (line 2) and the case with none (line 3, artifact "case 3"), not of the scheme TST-<number>; TST-901 (line 4), the identifier of the existing test TST-901; each TST-961 (lines 5 and 6), the identifier of another case; each naming its identifier or its case in what
+test("TST-1425002: test-proposals — a case without a TST- identifier, or with one another test or case has, is an error", async () => {
+  const { identifier, ...unnamed } = CASE;
+  const found = await check({ cases: [{ ...CASE, identifier: "TST-960" }, { ...CASE, identifier: "case-1" }, unnamed, { ...CASE, identifier: "TST-901" },
+    { ...CASE, identifier: "TST-961" }, { ...CASE, identifier: "TST-961" }] });
+  const RULE = "EVERY ARTIFACT HAS AN IDENTIFIER";
+  assert.deepEqual(rules(found), [["case-1", 2, "error", RULE], ["case 3", 3, "error", RULE], ["TST-901", 4, "error", RULE], ["TST-961", 5, "error", RULE], ["TST-961", 6, "error", RULE]]);
+  assert.match(found[0].what, /case-1/);
+  assert.match(found[1].what, /case 3/);
+  assert.match(found[2].what, /TST-901/);
+  assert.match(found[3].what, /TST-961/);
+  for (const one of found) assert.notEqual(one.fix, "");
 });

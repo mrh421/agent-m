@@ -26,6 +26,7 @@ import { mailbox, providerLinks, routeFor, signIn } from "../mail-routes/index.m
 import { pagesAddress } from "../identifiers/index.mjs";
 import { participantSchema } from "../participant-list/index.mjs";
 import { explain } from "../site-frame/index.mjs";
+import { heads } from "./routes.mjs";
 
 const SECURITY_OF_PORT = { imap: { 993: "tls" }, smtp: { 587: "starttls", 465: "tls" } };
 const MEMBER_STATES = ["Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czechia", "Czech Republic", "Denmark", "Estonia", "Finland", "France", "Germany",
@@ -43,6 +44,8 @@ function el(name, className, ...children) {
   return node;
 }
 const labelled = (text, ...nodes) => el("p", null, el("label", null, text, " ", ...nodes));
+// A part of the page under its heading: the frame's panel.
+const part = (heading, ...nodes) => el("section", "panel", el("h3", null, heading), ...nodes);
 
 // The Bridges this browser keeps under their names, with how each is reached: { name, entry, settings | null, route, throughJumpHost }.
 function bridgesOf(store) {
@@ -238,9 +241,7 @@ export function mailboxLine(context, { changed = () => {} } = {}) {
 }
 
 export const route = {
-  name: "mailbox",
-  entry: "settings",
-  title: "Mailbox",
+  ...heads.mailbox,
   async render(target, context) {
     const store = context.store;
     const owner = String(context.instance?.repository ?? "").split("/")[0];
@@ -250,6 +251,10 @@ export const route = {
     const imapHost = el("input", "mailbox-imap-host"), imapPort = el("input", "mailbox-imap-port"), imapSecurity = el("select", "mailbox-imap-security");
     const smtpHost = el("input", "mailbox-smtp-host"), smtpPort = el("input", "mailbox-smtp-port"), smtpSecurity = el("select", "mailbox-smtp-security");
     const account = el("input", "mailbox-account");
+    // UC-037 step 4.1: the SMTP server's own account name and the sender, where they differ; left empty, neither is stored.
+    const smtpAccount = el("input", "mailbox-smtp-account");
+    const senderAddress = el("input", "mailbox-sender-address"), senderName = el("input", "mailbox-sender-name");
+    smtpAccount.value = ""; senderAddress.value = ""; senderName.value = "";
     const passwordRead = el("input", "mailbox-password-notice-read");
     const password = el("input", "mailbox-password");
     const bridgeSelect = el("select", "mailbox-bridge");
@@ -285,7 +290,7 @@ export const route = {
     graphPart.hidden = true;
     imapPart.hidden = false;
 
-    for (const input of [address, imapHost, smtpHost, account, password, folders]) { input.autocomplete = "off"; input.spellcheck = false; }
+    for (const input of [address, imapHost, smtpHost, account, smtpAccount, senderAddress, senderName, password, folders]) { input.autocomplete = "off"; input.spellcheck = false; }
     for (const select of [imapSecurity, smtpSecurity]) for (const value of ["tls", "starttls", "none"]) select.append(el("option", null, value));
     for (const checkbox of [passwordRead, jumpRead, placeRead]) checkbox.type = "checkbox";
     password.type = "password";
@@ -433,7 +438,10 @@ export const route = {
         folders: folders.value.split(",").map((name) => name.trim()).filter(Boolean),
         places: ticked.map(placeEntry),
         imap: { bridge: bridge.name, jumpHostNoted: bridge.throughJumpHost, imap: server(imapHost, imapPort, imapSecurity), smtp: server(smtpHost, smtpPort, smtpSecurity),
-          account: account.value.trim() || mail, password: password.value },
+          account: account.value.trim() || mail,
+          ...(smtpAccount.value.trim() ? { smtpAccount: smtpAccount.value.trim() } : {}),
+          ...(senderAddress.value.trim() ? { sender: { name: senderName.value.trim() || null, address: senderAddress.value.trim() } } : {}),
+          password: password.value },
       };
       if (!connection.folders.length) connection.folders = ["INBOX"];
       writeSetting(store, "mailbox", connection);
@@ -487,6 +495,8 @@ export const route = {
         imapHost.value = stored.imap.imap.host; imapPort.value = String(stored.imap.imap.port); imapSecurity.value = stored.imap.imap.security;
         smtpHost.value = stored.imap.smtp.host; smtpPort.value = String(stored.imap.smtp.port); smtpSecurity.value = stored.imap.smtp.security;
         account.value = stored.imap.account ?? ""; accountTouched = true;
+        smtpAccount.value = stored.imap.smtpAccount ?? "";
+        senderAddress.value = stored.imap.sender?.address ?? ""; senderName.value = stored.imap.sender?.name ?? "";
         if (bridges.some((bridge) => bridge.name === stored.imap.bridge)) bridgeSelect.value = stored.imap.bridge;
         showJumpNotice();
       }
@@ -494,40 +504,42 @@ export const route = {
     }
 
     target.replaceChildren(
-      el("h2", null, "Connect a mailbox"),
+      el("section", "head", el("h2", null, "Connect a mailbox")),
       labelled("Mail address", address),
       labelled("Route", routeSelect), reason, explain("mailbox-routes"),
       graphPart, imapPart,
-      el("h3", null, "Folders"),
-      labelled("Folders to read, separated by commas", folders),
-      el("h3", null, "Where the mail may be processed"),
-      placesBox, placesResult, placeNotice, el("p", null, el("label", null, placeRead, " I have read this")), explain("mailbox-processing-places"),
+      part("Folders", labelled("Folders to read, separated by commas", folders)),
+      part("Where the mail may be processed",
+        placesBox, placesResult, placeNotice, el("p", null, el("label", null, placeRead, " I have read this")), explain("mailbox-processing-places")),
       el("p", null, storeTest), result, resultExplanation, setup, parts, line.node,
     );
     imapPart.append(
-      el("h3", null, "Servers"),
-      labelled("IMAP server", imapHost, " port ", imapPort, " encryption ", imapSecurity),
-      labelled("SMTP server", smtpHost, " port ", smtpPort, " encryption ", smtpSecurity),
-      labelled("Account", account), explain("mail-server-settings"),
-      el("h3", null, "Password"),
-      el("p", "notice mailbox-password-notice", `The password is stored in this browser. Every GitHub Pages site under ${owner}.github.io can read it — here: the sites of ${owner}. With it, anyone can read all mail in this mailbox and send mail in its name. It goes to no server except the Bridge this connection names. Recommended: run this instance under a GitHub owner you use for nothing else.`),
-      el("p", null, el("label", null, passwordRead, " I have read this")),
-      labelled("Password", password), explain("gmail-app-password"),
-      el("h3", null, "Bridge"),
-      labelled("Bridge", bridgeSelect), jumpNotice, el("p", null, el("label", null, jumpRead, " I have read this")),
+      part("Servers",
+        labelled("IMAP server", imapHost, " port ", imapPort, " encryption ", imapSecurity),
+        labelled("SMTP server", smtpHost, " port ", smtpPort, " encryption ", smtpSecurity),
+        labelled("Account", account),
+        labelled("SMTP account, where the SMTP server takes another account name (empty: the account above)", smtpAccount),
+        labelled("Sender's address, where the account may send only from another address (empty: the account)", senderAddress),
+        labelled("Sender's display name (optional)", senderName), explain("mail-server-settings")),
+      part("Password",
+        el("p", "notice mailbox-password-notice", `The password is stored in this browser. Every GitHub Pages site under ${owner}.github.io can read it — here: the sites of ${owner}. With it, anyone can read all mail in this mailbox and send mail in its name. It goes to no server except the Bridge this connection names. Recommended: run this instance under a GitHub owner you use for nothing else.`),
+        el("p", null, el("label", null, passwordRead, " I have read this")),
+        labelled("Password", password), explain("gmail-app-password")),
+      part("Bridge",
+        labelled("Bridge", bridgeSelect), jumpNotice, el("p", null, el("label", null, jumpRead, " I have read this"))),
     );
     graphPart.append(
-      el("h3", null, "Register the app"),
+      part("Register the app",
       el("div", "mailbox-app-registration-steps",
         el("p", null, "To sign in with Microsoft, register an app with Microsoft once: ", registrationLink),
         el("p", null, "Enter the name Agent M and choose the kind single-page application. As its return address enter: ", returnShown, " ", copyReturn, copied),
         el("p", null, "Then copy the app's client ID into the field below.")),
       explain("mailbox-app-registration"),
-      labelled("Client ID of the app", clientId),
-      el("h3", null, "Sign in"),
+      labelled("Client ID of the app", clientId)),
+      part("Sign in",
       el("p", "notice mailbox-permissions", "Agent M asks Microsoft for three permissions and nothing else. Mail.ReadWrite: read mail and create drafts; Microsoft offers no narrower permission for drafts, "
         + "and it would also allow changing and deleting mail, which Agent M never does. Mail.Send: send mail, only when you send a reply. offline_access: stay signed in."),
-      el("p", null, signInButton), signInResult, el("p", null, useImap),
+      el("p", null, signInButton), signInResult, el("p", null, useImap)),
     );
   },
 };

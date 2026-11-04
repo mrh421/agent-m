@@ -53,6 +53,8 @@ provides:
   - graphFromText
   - publishGraph
   - storedImpacts
+  - storedGaps
+  - storedReferences
 ---
 # MOD-trace-graph The trace graph and everything derived from it
 
@@ -83,8 +85,9 @@ MATRIX IS DERIVED`): `traceGraph` builds it, and where the repository holds the 
 
 It keeps nothing between calls. A graph lives as long as its caller holds it, or on the branch `trace-cache` of the repository,
 which only grows: the file `<commit>.json.gz` is the text `graphText` gives for the graph of the commit it is named by, gzipped, the
-file `<commit>.impacts.json` holds the impact lists of that commit's decision and module files that are not accepted, and no
-file of these two kinds is changed or deleted. The file `latest.json`, `{ commit }`, names the commit of the graph stored last;
+file `<commit>.impacts.json` holds the impact lists of that commit's decision and module files that are not accepted, the file
+`<commit>.gaps.json` holds `coverageGaps` of that commit's graph, `<commit>.references.json.gz` what names each requirement of it
+and each name its edges lead to that no node is, and no file of these four kinds is changed or deleted. The file `latest.json`, `{ commit }`, names the commit of the graph stored last;
 `publishGraph` writes it again with every commit that adds a graph, and `latestGraph` reads it while the graph of a page's commit
 is not stored yet.
 
@@ -124,7 +127,7 @@ The graph keeps, while it is built, every fact a check across artifacts needs, s
 graph alone and no file is read twice:
 
 - a node keeps from its file what the checks read: a module its `folder` and the interfaces it `provides`, a plan step or
-  backlog item its `level` and its `tests`, a requirement the items of its source as written;
+  backlog item its `level` and its `tests`, a test its `level`, a requirement the items of its source as written;
 - a `uses` edge keeps the interface it names after the module, such as `parseSpec` in `MOD-spec-document.parseSpec`;
 - a group's title is a node of the kind `group`, keyed by its file and line, since a group carries no identifier (`A
   GROUP CARRIES NO IDENTIFIER`);
@@ -203,6 +206,9 @@ identifier, and which register entry an item names is MOD-source-register's to s
   a name in `realises`, `forced_by`, an item's `realises` or a test's `guards` that matches no requirement or use case
   (`A USE CASE REALISES NAMED REQUIREMENTS`, `EVERY ARTIFACT NAMES ITS ORIGIN`); a `uses` edge whose interface the used
   module's node does not provide (`DEVELOP AGAINST INTERFACES`); a cycle among the modules' uses (`MODULES DEPEND ON EACH OTHER WITHOUT A CYCLE`);
+  a test identifier declared at more than one place — the path and line of its node and of its `guards` and `exercises`
+  edges, each the place of the declaration it was read from —, as an error at each place that names the other places by
+  path and line (`THE NAME IS THE ID AND IT SURVIVES`);
   a module designed by no decision or by more than one, or that does not follow the decision that designs it (`A MODULE
   BELONGS TO ONE SUBSYSTEM`); more or fewer than one decision without `refines`, or a decision that does not refine it
   (`ONE DECISION STATES THE WHOLE ARCHITECTURE`); an item that names a module the architecture does not describe (`A
@@ -233,8 +239,9 @@ identifier, and which register entry an item names is MOD-source-register's to s
   no `graphText` or names a commit other than `commit`. Reads nothing.
 - `publishGraph(host: Host, snapshot: Snapshot, changed?: Array<{ path: string, before: { commit: string, text: string }
   | null }>) -> Promise<{ commit: string, written: boolean }>` — builds the graph of the snapshot's commit from its files
-  and adds `<commit>.json.gz`, the graph's text gzipped, to the branch `trace-cache` by `commitFiles`, on the head it read,
-  with `latest.json` naming the commit in the same commit; `written` is `false` when
+  and adds `<commit>.json.gz`, the graph's text gzipped, `<commit>.gaps.json`, its `coverageGaps`, and
+  `<commit>.references.json.gz`, what names each requirement of it, gzipped, to the branch
+  `trace-cache` by `commitFiles`, on the head it read, with `latest.json` naming the commit in the same commit; `written` is `false` when
   the branch holds the file already, which it then leaves as it is, and `latest.json` with it. With `changed`, the decision and module files of the
   commit that are not accepted, each with the text it was last accepted at and that text's commit (`null` for a file never
   accepted), as the caller reads them, it adds `<commit>.impacts.json` in the same commit: for each file, its path, its
@@ -245,6 +252,13 @@ identifier, and which register entry an item names is MOD-source-register's to s
   impact: ArchitectureImpact }> | null>` — the impact lists stored for `commit` by `publishGraph`, keyed by path, read
   with the source's `readOn` in one request; `null` without `readOn`, or when the branch or the file is missing or holds
   another format. A caller uses an entry only while the file's blob is the one stored.
+- `storedGaps(source: TextSource, commit: string) -> Promise<CoverageGaps | null>` — `coverageGaps` of the graph stored for
+  `commit`, as `publishGraph` stored them beside it, read with the source's `readOn` in one request; `null` without `readOn`,
+  or when the branch or the file is missing or holds another format.
+- `storedReferences(source: TextSource, commit: string) -> Promise<Map<string, string[]> | null>` — for each requirement of
+  the graph stored for `commit`, and each name an edge of it leads to that no node is, the identifiers of what names it, as
+  `requirementImpact` gives them, each once; a name without an entry is named by nothing. Read with the source's `readOn` in
+  one request, once for each commit; `null` without `readOn`, or when the branch or the file is missing or holds another format.
 - `systemDecisions(graph: Graph) -> { system: string[], subsystems: string[] }` — the decisions that refine no other,
   and the subsystems' decisions: those that refine one of them and design at least one module; each list by identifier.
 - `moduleOrder(graph: Graph) -> { order: string[] } | { cycle: string[] }` — the modules in an order in which every module
@@ -267,8 +281,8 @@ identifier, and which register entry an item names is MOD-source-register's to s
 ## Files
 
 It reads, through the `TextSource` it is given, the files listed under Data, and the files `<commit>.json.gz`,
-`<commit>.impacts.json` and `latest.json` of the branch `trace-cache`. It writes them on that branch only in `publishGraph`:
-the first two only by adding, `latest.json` again in each commit that adds a graph.
+`<commit>.impacts.json`, `<commit>.gaps.json`, `<commit>.references.json.gz` and `latest.json` of the branch `trace-cache`. It writes
+them on that branch only in `publishGraph`: the first four only by adding, `latest.json` again in each commit that adds a graph.
 
 ## Uses
 

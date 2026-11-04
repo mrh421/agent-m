@@ -12,6 +12,7 @@
 import { parseAddress, connect } from "../repository-hosts/index.mjs";
 import { pagesAddress } from "../identifiers/index.mjs";
 import { explain } from "../site-frame/index.mjs";
+import { heads } from "./routes.mjs";
 
 // The repository that is forked, and the name the fork keeps (GitHub's default).
 const UPSTREAM = "akmaier/agent-m";
@@ -45,9 +46,7 @@ function ownerOpened(params, instanceRepository) {
 }
 
 export const route = {
-  name: "get-your-own",
-  entry: "settings",
-  title: "Get your own Agent M",
+  ...heads.getYourOwn,
   async render(target, context, params = {}) {
     let owner = ownerOpened(params, context.instance.repository).trim();
     let step = STEP_NAMES.includes(params.step) ? params.step : "fork";

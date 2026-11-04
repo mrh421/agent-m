@@ -68,12 +68,12 @@ function branchSource(held, answer) {
 // guards: AN ARCHITECTURE CHANGE IS NOT ACCEPTED WITHOUT AN IMPACT LIST
 // given: a fake host whose branch trace-cache holds no file of the commit; the small repository, whose MOD-doer is changed (accepted before with the interface `gone`, which MOD-user uses) and whose MOD-fresh was never accepted
 // input: publishGraph(host, snapshot, changed) with changed = MOD-doer with its accepted text and commit, and MOD-fresh with null; then storedImpacts of a source over the branch, for the commit
-// expect: { commit, written: true }; one commitFiles whose files are "<commit>.json.gz", "<commit>.impacts.json" and latest.json (TST-1300004); storedImpacts gives, keyed by the two paths in that order, { blob: the blob SHA of the file at the commit, before: the accepted commit or null, impact: architectureImpact of the graph for [{ path, before: the accepted text or null, after: the file's text }] }; MOD-doer's impact marks MOD-user as breaking ("uses an interface that is removed"); the same impact computed without the before-text is another list
+// expect: { commit, written: true }; one commitFiles whose files are "<commit>.json.gz", "<commit>.impacts.json" and latest.json (TST-1302015); storedImpacts gives, keyed by the two paths in that order, { blob: the blob SHA of the file at the commit, before: the accepted commit or null, impact: architectureImpact of the graph for [{ path, before: the accepted text or null, after: the file's text }] }; MOD-doer's impact marks MOD-user as breaking ("uses an interface that is removed"); the same impact computed without the before-text is another list
 test("publishGraph with changed adds the impact lists beside the graph, each the architectureImpact of its file with the text it was accepted at", async () => {
   const { host, state } = fakeHost();
   assert.deepEqual(await trace.publishGraph(host, snapshot, CHANGED), { commit: COMMIT, written: true });
   assert.equal(state.commits.length, 1);
-  assert.deepEqual(state.commits[0].files.map((file) => file.path), [`${COMMIT}.json.gz`, `${COMMIT}.impacts.json`, "latest.json"]);
+  assert.deepEqual(state.commits[0].files.map((file) => file.path), [`${COMMIT}.json.gz`, `${COMMIT}.gaps.json`, `${COMMIT}.references.json.gz`, `${COMMIT}.impacts.json`, "latest.json"]);
   const graph = await trace.traceGraph({ paths: snapshot.paths, read: snapshot.read }, { commit: COMMIT });
   const stored = await trace.storedImpacts(branchSource(state.held).source, COMMIT);
   assert.deepEqual([...stored.keys()], [DOER, FRESH]);

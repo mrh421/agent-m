@@ -4,7 +4,8 @@
 // the recipes use-cases and use-case-with-neighbours and the precondition rests-on-accepted for requirements and use cases
 // (strategies.mjs), its other recipes and preconditions are not built yet; acceptShown, acceptanceBlockers and
 // fallbackAcceptLink (accept.mjs); rejectShown and commitRejection, rejecting what was shown (reject.mjs); lastAcceptedText, the text
-// the most recent record of an identifier names (status.mjs); and statusOf, the status of one reviewed file (status.mjs).
+// the most recent record of an identifier names (status.mjs); statusOf, the status of one reviewed file (status.mjs); and removedFiles,
+// the decisions and module files removed since their acceptance, from the records' names (status.mjs).
 //
 // Module: MOD-approvals
 //
@@ -44,7 +45,7 @@ async function ownFile(url) {
 export const approvalSchema = loadSchema(
   disk ? disk.readFileSync(SCHEMA_FILE, "utf8") : await ownFile(SCHEMA_FILE), OWNER);
 
-export { statuses, statusOf, lastAcceptedText } from "./status.mjs";
+export { statuses, statusOf, removedFiles, lastAcceptedText } from "./status.mjs";
 export { acceptShown, acceptanceBlockers, fallbackAcceptLink } from "./accept.mjs";
 export { rejectShown, commitRejection } from "./reject.mjs";
 export { approvalStrategies } from "./strategies.mjs";

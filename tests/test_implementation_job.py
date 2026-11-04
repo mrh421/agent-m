@@ -68,7 +68,7 @@ def findings(case: dict) -> list[dict]:
 
 
 class TestImplementationJob(unittest.TestCase):
-    # TST-413100 - level: release - module: system
+    # TST-413100 · level: release · module: system
     # guards: AN IMPLEMENTATION JOB BEGINS WITH A FAILING TEST; A REFACTORING JOB BEGINS WITHOUT A FAILING TEST; A REFACTORING JOB CHANGES NO EXPECTED RESULT; AN IMPLEMENTATION JOB CHANGES ONLY ITS MODULES
     # given: the Markdown pull-request fact cases beside this file
     # input: each case checked through MOD-product-process.doneCheck
@@ -78,7 +78,7 @@ class TestImplementationJob(unittest.TestCase):
             with self.subTest(case=loaded["name"]):
                 self.assertEqual(findings(loaded["case"]), loaded["case"]["expected"])
 
-    # TST-413101 - level: release - module: system
+    # TST-413101 · level: release · module: system
     # guards: AN IMPLEMENTATION JOB BEGINS WITH A FAILING TEST; A REFACTORING JOB BEGINS WITHOUT A FAILING TEST; A REFACTORING JOB CHANGES NO EXPECTED RESULT; AN IMPLEMENTATION JOB CHANGES ONLY ITS MODULES
     # given: passing and refusing cases for implementation and refactoring pull requests
     # input: the cases loaded from Markdown

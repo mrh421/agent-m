@@ -20,7 +20,8 @@ What the language cannot say is written where it applies, and `validate.mjs` dec
   exactly one of a time box and a work-in-progress limit.
 
 The measure fits the kind of work — `plan entries per phase` planned work, `remaining items per time box` and `items per
-state over time` pulled work —, as the variants of `measure` say.
+state over time` pulled work —, as the variants of `measure` say. `remaining items per time box` fits only pulled work
+that names a time box, which the language cannot say: `validate.mjs` decides it.
 
 ```json
 {

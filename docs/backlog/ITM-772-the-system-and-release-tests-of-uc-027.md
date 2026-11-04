@@ -26,8 +26,10 @@ origin:
 UC-027 checked as a whole through the page `schedule`, on a fixture GitHub and a fixture GitLab server: the default
 shown, cells changed and refused, runners and secrets named, *Save* opening one pull request, *Merge* once green, the
 GitLab pipeline schedule set, the drift of a hand-edited configuration, and a missed nightly run. Release tests, one or
-more for each requirement UC-027 realises that has no release test yet; `tests/test_ci_schedule.py`, which SPEC.md names
-for four of them, is ITM-476's and is extended here only for what ITM-476 does not cover.
+more for each requirement UC-027 realises that has no release test yet. ITM-476's tests,
+`tests/release-itm-476-own-ci-schedule.test.mjs` and the system test of Agent M's own CI
+`tests/test-schedule-own-ci.test.mjs`, are extended here only for what ITM-476 does not cover. `tests/test_ci_schedule.py`,
+which SPEC.md names as the Check of five requirements (`SPEC.md:1546-1574`), does not exist.
 
 ## Acceptance
 

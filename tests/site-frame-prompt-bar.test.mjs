@@ -26,7 +26,7 @@
 //     the default page holds the product, so the same route on another product is another subject.
 //   - The default subject's `page` is its lines joined by a line feed: the route's title, the menu entry's label (no line for a
 //     route out of the menu), the chosen product's web address or the instance's web address, the route's textContent.
-//   - The bar is drawn as a <section class="prompt-bar" data-page="..."> into the footer once the participants are read.
+//   - The bar is drawn as a <section class="prompt-bar" data-page="..."> into the footer once this browser's endpoints are read.
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -61,7 +61,7 @@ const FILES = {
 };
 const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-// Answers the API of github.com for the two repositories (one commit each, "c-<name>", on the branch main) and the model endpoint ep1
+// Answers the API of github.com for the two repositories (one commit each, "c-<name>", on the branch main) and the model endpoint drafter-a
 // with the draft `{ answer: "ok", edits: [docs/notes.md] }` — an edit, so that the answer is a draft to review. Every request is kept with its Authorization header.
 let requests = [];
 const seen = [];
@@ -98,7 +98,7 @@ const route = (name, entry, over = {}) => ({ name, entry, title: `Title of ${nam
   target.textContent = `${name} ${JSON.stringify(params)}`;
 }, ...over });
 
-// Starts a page on a fresh fixture, a browser that keeps the endpoint ep1, the instance token github_pat_INSTANCE, the product
+// Starts a page on a fresh fixture, a browser that declares the endpoint drafter-a — its place, context and model, as the bar offers it (UC-049 1) —, the instance token github_pat_INSTANCE, the product
 // https://github.com/acme/widget and its token github_pat_WIDGET.
 async function start({ page = "review", fragment = "", views } = {}) {
   rendered.length = 0;
@@ -107,7 +107,7 @@ async function start({ page = "review", fragment = "", views } = {}) {
   Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: fixtureStorage() });
   globalThis.setInterval = () => 1;
   const store = openStore("acme/instance");
-  writeSetting(store, "endpoint:ep1", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture" });
+  writeSetting(store, "endpoint:drafter-a", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture", place: "Anthropic, USA", context: 200000 });
   writeSetting(store, "github-token", { value: "github_pat_INSTANCE", name: "alice", expires: "2030-01-01" });
   writeSetting(store, "products", [WIDGET, "https://github.com/acme/gadget"]);
   writeSetting(store, "github-token:acme/gadget", { value: "github_pat_GADGET", name: "alice", expires: "2030-01-01" });
@@ -135,9 +135,9 @@ const conversationOf = () => readTabValue(openStore("acme/instance"), "prompt-ba
 
 // TST-506001 · level: unit · module: MOD-site-frame
 // guards: UC-049
-// given: a browser that keeps the endpoint ep1 and a register offering the one participant drafter-a; one view with the routes alpha (requirements) and beta (tests)
+// given: a browser that declares the one endpoint drafter-a, and an instance whose participant list lists drafter-a; one view with the routes alpha (requirements) and beta (tests)
 // input: startPage on the main page, then on the review page, each followed by two changes of the fragment; then on the bridge page
-// expect: on the main and on the review page the children of the body are, in this order, header, section, main, the site footer (class site-footer) and the footer of the bar; the last has the class site-frame-prompt-bar and holds one section of class prompt-bar whose data-page is "main", then "review"; the register of the instance (docs/participants.md) was read once, and after the two changes of the fragment the footer holds that same section (the bar was not started again) and the register was still read once; on the bridge page the children of the body are header, section, main, there is no footer and the register was not read
+// expect: on the main and on the review page the children of the body are, in this order, header, section, main, the site footer (class site-footer) and the footer of the bar; the last has the class site-frame-prompt-bar and holds one section of class prompt-bar whose data-page is "main", then "review"; the participant list of the instance (docs/participants.md) was not read for the bar's offer (UC-049 1), and after the two changes of the fragment the footer holds that same section (the bar was not started again) and the list was still not read; on the bridge page the children of the body are header, section, main, there is no footer and the register was not read
 test("TST-506001 the bar is started once in a footer after the route's main on the main and the review pages, and not in the Bridge's window", async () => {
   const views = [route("alpha", "requirements"), route("beta", "tests")];
   for (const name of ["main", "review"]) {
@@ -146,7 +146,7 @@ test("TST-506001 the bar is started once in a footer after the route's main on t
     assert.equal(page.body.children[3].className, "site-footer", `${name}: the site footer stands after the route and before the bar's footer`);
     assert.equal(page.footer.className, "site-frame-prompt-bar", name);
     await drawn(page);
-    assert.equal(participantReads().length, 1, `${name}: the register is read once`);
+    assert.equal(participantReads().length, 0, `${name}: no participant list is read for the offer`);
     const bar = one(page.footer, "prompt-bar");
     assert.equal(bar.getAttribute("data-page"), name);
     changeFragment(page, "#beta");
@@ -154,7 +154,7 @@ test("TST-506001 the bar is started once in a footer after the route's main on t
     changeFragment(page, "#alpha");
     await settleLong();
     assert.deepEqual(byClass(page.footer, "prompt-bar"), [bar], `${name}: still the one bar, not a new one, after two changes of the fragment`);
-    assert.equal(participantReads().length, 1, `${name}: the register is still read once`);
+    assert.equal(participantReads().length, 0, `${name}: the participant list is still not read`);
   }
   const bridge = await start({ page: "bridge", fragment: "#alpha", views });
   await settleLong();
@@ -309,7 +309,7 @@ test("TST-506005 a route out of the menu gives the bar the entry null, whichever
 // guards: UC-049; EVERY STEP EXPLAINS ITSELF
 // given: a browser that keeps the product https://github.com/acme/widget; the route alpha (entry requirements) whose subject names the draft route beta; an endpoint that answers {"answer":"ok"} with an edit
 // input: the review page at #alpha/product=<the widget>: Send "draft it", press "Review the draft"; then the review page at #alpha (the instance): Send "again", press "Review the draft"
-// expect: the bar holds a folded explanation (a details of class explain with the summary "What is this?"); the register was read with the instance's token (Authorization "Bearer github_pat_INSTANCE") and, on the product's page, the product acme/widget was read with its own token ("Bearer github_pat_WIDGET") after Send; the draft kept in the tab is for the subject "alpha"; the fragment becomes #beta/product=<the widget>; on the instance's page no request goes to acme/widget and the fragment becomes #beta
+// expect: the bar holds a folded explanation (a details of class explain with the summary "What is this?"); the instance was read with the instance's token (Authorization "Bearer github_pat_INSTANCE") and, on the product's page, the product acme/widget was read with its own token ("Bearer github_pat_WIDGET") after Send; the draft kept in the tab is for the subject "alpha"; the fragment becomes #beta/product=<the widget>; on the instance's page no request goes to acme/widget and the fragment becomes #beta
 test("TST-506006 the bar is handed the instance as connected, the chosen product, explain and the navigation that keeps the product", async () => {
   const alpha = route("alpha", "requirements", { subject: () => ({ key: "alpha", title: "Alpha", kind: "converse", entry: null,
     paramsFor: () => ({ page: "alpha page" }), draftRoute: "beta", withhold: null, refuses: [] }) });
@@ -319,7 +319,7 @@ test("TST-506006 the bar is handed the instance as connected, the chosen product
   const explanation = one(onProduct.footer, "explain");
   assert.equal(explanation.localName, "details");
   assert.equal(all(explanation, "summary")[0].textContent, "What is this?");
-  assert.equal(participantReads()[0].authorization, "Bearer github_pat_INSTANCE");
+  assert.equal(requests.find((request) => request.url.startsWith("https://api.github.com/repos/acme/instance")).authorization, "Bearer github_pat_INSTANCE");
   await sends(onProduct, "draft it");
   assert.ok(requests.some((request) => request.url.startsWith("https://api.github.com/repos/acme/widget") && request.authorization === "Bearer github_pat_WIDGET"),
     "the product was read with its own token");

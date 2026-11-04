@@ -15,6 +15,10 @@ tests:
   - unit
 origin:
   - akmaier's request of 2026-10-25 "make sure that done items are flagged as done", where ITM-446 was read as not done
+built_by:
+  - a0732a6b4d9765f196bcfcfd2dc64e868542b258
+  - dbf9956a0fc2632cd4a504f8ab099b1c9b1974f6
+  - 6da35df1bc4b5e29453b9f11f8e25dc5dcca9e86
 ---
 # ITM-1205 A Bridge and CI register the due-diligence step of the architecture jobs
 

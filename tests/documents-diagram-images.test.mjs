@@ -11,9 +11,13 @@
 // here; the complete use case is tests/fixtures/use-cases/UC-001-complete.md, and each broken text is a copy of it with one
 // change. Readings, each named: "any image" is read for a schema that names `diagrams` — the key the language says it of —, so
 // a schema without the key is not checked for images; an image is a Markdown image or an HTML <img> whose address names a file
-// of an image type, and one written inside a fenced block is an example, not an image of the document. Whether a Mermaid block
-// is missing where `diagrams` is `required` is not checked yet, and not tested here. Each test states its input and its
-// expected result before it runs; the counter-proofs are recorded in the pull request.
+// of an image type, and one written inside a fenced block is an example, not an image of the document. A Mermaid block is a
+// fenced block whose info string is `mermaid`. A diagram missing where `diagrams` is `required` stands on no line, as a missing
+// key or section does, so its finding names line 1 and DIAGRAMS ARE MERMAID IN MARKDOWN, which documentFindings names for "a
+// diagram missing where `required`, and any image"; a Mermaid block standing where `diagrams` is `none` is named at its opening
+// fence, under the rule of the part of the schema closest to it, the schema's own, since `diagrams` names none (Data, The
+// requirement a finding names). Each test states its input and its expected result before it runs; the counter-proofs are
+// recorded in the pull request.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -69,4 +73,40 @@ test("documentFindings — an image is an error wherever the schema names diagra
   assert.deepEqual(findingsOf("docs/notes/a-note.md", NOTE, noteSchema("allowed")), [image]);
   assert.deepEqual(findingsOf("docs/notes/a-note.md", NOTE, noteSchema("none")), [image]);
   assert.deepEqual(findingsOf("docs/notes/a-note.md", NOTE, noteSchema(undefined)), []);
+});
+
+// The complete use case's Mermaid block, lines 31 to 37.
+const BLOCK = "```mermaid\nsequenceDiagram\n    actor A as Author\n    participant D as Dashboard\n    A->>D: Export\n    D-->>A: file\n```\n";
+const missing = (format) => [1, DIAGRAMS, `the document holds no diagram, which the format ${format} requires as a \`\`\`mermaid block`];
+
+// TST-1385001 · level: unit · module: MOD-documents
+// guards: DIAGRAMS ARE MERMAID IN MARKDOWN; UC-007
+// given: the complete use case, whose ```mermaid block stands on lines 31 to 37; a copy without that block; and a copy whose block is opened ```text in place of ```mermaid
+// input: documentFindings of each, read by the use-case schema, whose diagrams is required
+// expect: known positive — none for the complete use case; for each copy exactly one error, on line 1, under DIAGRAMS ARE MERMAID IN MARKDOWN: "the document holds no diagram, which the format use-case requires as a ```mermaid block"
+test("documentFindings — a use case without a Mermaid block is an error, since its schema requires a diagram", () => {
+  assert.deepEqual(findingsOf(PATH, COMPLETE), [], "known positive: the complete use case holds its diagram");
+  assert.deepEqual(findingsOf(PATH, changed(COMPLETE, `${BLOCK}\n`, "")), [missing("use-case")], "the block removed");
+  assert.deepEqual(findingsOf(PATH, changed(COMPLETE, "```mermaid\n", "```text\n")), [missing("use-case")], "a block that is not Mermaid");
+});
+
+const NOTE_WITH_BLOCK = "---\ntitle: A note\n---\n# A note\n\nThe flow, as it was drawn:\n\n```mermaid\nflowchart LR\n    A --> B\n```\n";
+const NOTE_TEXT = "---\ntitle: A note\n---\n# A note\n\nThe flow, in words: A comes before B.\n";
+
+// TST-1385002 · level: unit · module: MOD-documents
+// guards: DIAGRAMS ARE MERMAID IN MARKDOWN
+// given: a note at docs/notes/a-note.md whose ```mermaid block opens on line 8, and one without a block; each read by a note schema (rule ONE NOTE, ONE FILE) with diagrams required, allowed and none, and without the key diagrams
+// input: documentFindings of each note by each schema
+// expect: the note with the block — none for required, allowed and no key; for none one error on line 8 under ONE NOTE, ONE FILE, "a ```mermaid block stands where the format note holds no diagram"; the note without a block — none for allowed, none and no key; for required one error on line 1 under DIAGRAMS ARE MERMAID IN MARKDOWN, "the document holds no diagram, which the format note requires as a ```mermaid block"
+test("documentFindings — a Mermaid block is an error where the schema names diagrams none, and its absence where it names required", () => {
+  const at = "docs/notes/a-note.md";
+  assert.deepEqual(findingsOf(at, NOTE_WITH_BLOCK, noteSchema("required")), [], "known positive: required, and the block stands");
+  assert.deepEqual(findingsOf(at, NOTE_WITH_BLOCK, noteSchema("allowed")), []);
+  assert.deepEqual(findingsOf(at, NOTE_WITH_BLOCK, noteSchema(undefined)), []);
+  assert.deepEqual(findingsOf(at, NOTE_WITH_BLOCK, noteSchema("none")), [[8, "ONE NOTE, ONE FILE",
+    "a ```mermaid block stands where the format note holds no diagram"]]);
+  assert.deepEqual(findingsOf(at, NOTE_TEXT, noteSchema("none")), [], "known positive: none, and no block stands");
+  assert.deepEqual(findingsOf(at, NOTE_TEXT, noteSchema("allowed")), []);
+  assert.deepEqual(findingsOf(at, NOTE_TEXT, noteSchema(undefined)), []);
+  assert.deepEqual(findingsOf(at, NOTE_TEXT, noteSchema("required")), [missing("note")]);
 });

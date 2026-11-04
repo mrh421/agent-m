@@ -33,6 +33,8 @@ const SELF = "tests/release-uc-037-connect-mailbox.test.mjs";
 const SYSTEM = "tests/system-uc-037-connect-mailbox.test.mjs";
 const lineOf = (p) => textOf(byClass(p.main(), "settings-mailbox")[0]);
 const carries = (request, secret) => JSON.stringify(request).includes(secret);
+// The read-only request repositoryInfo sends with a token for greenToMerge (ITM-1170): a POST to GitHub's GraphQL API whose query asks for refUpdateRule. It writes nothing.
+const greenToMergeQuery = (request) => request.method === "POST" && request.address === "https://api.github.com/graphql" && /refUpdateRule/.test(request.body ?? "");
 const WRITES = /\b(SELECT|STORE|APPEND|EXPUNGE|COPY|MOVE|DELETE|RENAME|CREATE)\b/i;
 
 // The requirements UC-037 realises, as this file states them.
@@ -83,7 +85,7 @@ test("TST-433801: every requirement UC-037 realises has a release case, and the 
 // guards: UC-037; A MAILBOX IS REACHED THROUGH ITS PROVIDER'S WEB API OR THROUGH THE BRIDGE
 // given: the Bridges lab-pc (this computer) and gpu-box (through the jump host), both the composed Bridge; Microsoft's sign-in service knows contoso-uni.example
 // input: three connections stored and tested in turn: reports@contoso-uni.example on the route the page preselects; me@gmail.com on the route the page preselects, through gpu-box, its servers set to the local mail servers; reports@example.org through lab-pc
-// expect: the Microsoft 365 mailbox is on the route graph and is tested through Microsoft Graph with no request to a Bridge; Gmail's is on the route imap with Gmail's servers preset, and its test goes to gpu-box through the jump host and to no request at lab-pc's address; the other mailbox's test goes to lab-pc's address and not to gpu-box
+// expect: the Microsoft 365 mailbox is on the route graph and is tested through Microsoft Graph with no request to a Bridge but the prompt bar's test of the Bridges it keeps (GET /v1/pair, GET /v1/agents); Gmail's is on the route imap with Gmail's servers preset, and its test goes to gpu-box through the jump host and to no request at lab-pc's address; the other mailbox's test goes to lab-pc's address and not to gpu-box
 test("TST-433802: a Microsoft 365 mailbox is reached through Graph, a Gmail and any other mailbox through the Bridge its connection names", async () => {
   const p = await openDashboard();
   try {
@@ -92,7 +94,10 @@ test("TST-433802: a Microsoft 365 mailbox is reached through Graph, a Gmail and 
     assert.equal(one(page, "mailbox-route").value, "graph");
     assert.match(await storeAndTest(p), /through Microsoft Graph/);
     assert.ok(p.graph.requests.length > 0, "known positive: Graph was asked");
-    assert.deepEqual(p.requests.filter((request) => request.origin === p.bridge.address || request.origin === JUMP), [], "no Bridge was asked for the Microsoft 365 mailbox");
+    // The prompt bar tests each Bridge this browser keeps when a page is drawn (testBridge: GET /v1/pair and GET /v1/agents); any other request to a Bridge would be a mailbox request.
+    await waitFor(() => p.requests.some((request) => (request.origin === p.bridge.address || request.origin === JUMP) && /\/v1\/pair$/.test(request.address)), "the prompt bar tested the Bridges");
+    assert.ok(p.requests.some((request) => (request.origin === p.bridge.address || request.origin === JUMP) && /\/v1\/(pair|agents)$/.test(request.address)), "known positive: the prompt bar tested the Bridges this browser keeps");
+    assert.deepEqual(p.requests.filter((request) => (request.origin === p.bridge.address || request.origin === JUMP) && !/\/v1\/(pair|agents)$/.test(request.address)), [], "no Bridge was asked for the Microsoft 365 mailbox but by the prompt bar's test");
     let mark = p.requests.length;
     await put(one(page, "mailbox-address"), "me@gmail.com");
     assert.deepEqual([one(page, "mailbox-route").value, one(page, "mailbox-imap-host").value, one(page, "mailbox-smtp-host").value], ["imap", "imap.gmail.com", "smtp.gmail.com"]);
@@ -481,7 +486,7 @@ test("TST-433817: Disconnect on the web-API route removes the sign-in token from
 // guards: UC-037; NO SECRET IN THE REPOSITORY
 // given: the instance repository alice/agent-m read by the dashboard; connections on both routes, stored and tested, and the places changed
 // input: every request the dashboard made to GitHub
-// expect: the dashboard read the instance repository and wrote nothing to it; no request to GitHub holds the mailbox password, the sign-in token, the refresh token or the Bridge's pairing token
+// expect: the dashboard read the instance repository and wrote nothing to it — every request to GitHub that is not a GET is a POST to /graphql whose query asks for refUpdateRule (greenToMerge, ITM-1170) —; no request to GitHub holds the mailbox password, the sign-in token, the refresh token or the Bridge's pairing token
 test("TST-433818: connecting a mailbox writes no secret to a repository", async () => {
   const p = await openDashboard();
   try {
@@ -496,7 +501,7 @@ test("TST-433818: connecting a mailbox writes no secret to a repository", async 
     await press(one(p.main(), "mailbox-places-save"));
     const github = p.requests.filter((request) => request.origin === "https://api.github.com");
     assert.ok(github.length > 0, "known positive: the instance repository was read");
-    assert.deepEqual(github.filter((request) => request.method !== "GET"), [], "nothing was written to a repository");
+    assert.deepEqual(github.filter((request) => request.method !== "GET" && !greenToMergeQuery(request)), [], "nothing was written to a repository: every request to GitHub that is not a GET is the read-only query for greenToMerge");
     for (const secret of [PASSWORD, GRAPH_TOKEN, REFRESH_TOKEN, p.bridge.token]) assert.ok(!github.some((request) => carries(request, secret)), "no secret goes to GitHub");
   } finally { await p.stop(); }
 });

@@ -119,16 +119,17 @@ names a person.
    up to the retry limit of the job definition.
 7. When the job reaches a gate of the workflow, for example *Security review* before Testing, or a
    *documented unit verification* added by an IEC 62304 process requirement, it stops in the state
-   **waiting at a gate** and Agent M hands the gate to its decider:
+   **waiting at a gate** until the gate's decider has decided:
    - an **automated check** runs in CI; its result is the decision;
-   - an **agent** holding the deciding role receives the artifacts and records its decision with its
-     reasoning;
+   - an **agent** holding the deciding role, in a session of its own, examines the artifacts and records its decision
+     with its reasoning;
    - a **person** sees the gate on the job dashboard (UC-036), with what it checks and the artifacts to
      look at, and presses **Pass gate**: one click.
 
    The deciding role is the one held in the job's role assignment — its team's, in a model with sprints; a holder of it
    in another team does not decide.
-   Agent M commits the gate record — who or what decided, when, on which text — and the job continues.
+   The gate record — who or what decided, when, on which text — is committed, by Agent M for a CI check or a person's
+   click and by the agent for its own decision, and the job continues.
 8. When the product's Definition of Done holds — CI green, no gate left, and whatever the product
    added (UC-002, step 8) — the pull request is merged: by the coding agent, or by a person, as the
    author chose when starting the jobs. It goes into the default branch, or into the sprint's branch

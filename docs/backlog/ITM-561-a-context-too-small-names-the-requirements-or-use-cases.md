@@ -18,6 +18,7 @@ tests:
   - unit
 origin:
   - ITM-514's finding S10 (TST-377011, TST-418121), gate docs/gates/20261016-1655-development-release-testing-70c2.md
+  - TST-579207 of ITM-579 (UC-005 2a), the same finding on the run panel, ruled at its gate in team1's sprint 142 (docs/gates/20261101-1611-development-release-testing-0579.md)
 ---
 # ITM-561 A context too small names the requirements or use cases that do not fit
 
@@ -40,7 +41,8 @@ recipes that give `named-requirements`, `spec-with-queues` and `use-case-with-ne
 
 ## Acceptance
 
-- ITM-514's todo tests TST-377011 and TST-418121 pass, with counter-proofs.
+- ITM-514's todo tests TST-377011 and TST-418121 pass, with counter-proofs; TST-579207 loses its `todo` in a commit by a
+  participant other than the implementer.
 - The first commit holds only the tests, and CI is red on it. No stub is committed.
 
 **The drafts are on `main`**, by developer-sonnet-d, one per module. The item is built once all five are accepted.

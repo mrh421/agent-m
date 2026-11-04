@@ -27,6 +27,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { emptyStorage, scripted } from "./review-pages-harness.mjs";
+import { until } from "./review-pages-wait.mjs";
 
 const { openStore, writeSetting } = await import("../src/browser-store/index.mjs");
 const pages = await import("../src/review-pages/index.mjs").catch((error) => ({ error }));
@@ -83,7 +84,7 @@ function fakeHost({ steps = STEPS, repository = ON_GITHUB, refuse = null, unread
   const snapshotAt = (sha) => {
     const { tree } = commits.get(sha);
     return { repository, ref: sha, commit: sha, paths: [...tree.keys()].sort(),
-      readMany: async (paths) => { calls.push({ fn: "readMany", paths: [...paths] }); }, read: async (path) => (tree.has(path) ? tree.get(path) : null),
+      readMany: async (paths) => { calls.push({ fn: "readMany", paths: [...paths] }); }, read: async (path) => { if (path.startsWith("docs/jobs/")) calls.push({ fn: "read", path }); return tree.has(path) ? tree.get(path) : null; },
       blob: (path) => (tree.has(path) ? blobOf(tree.get(path)) : null) };
   };
   const fake = {
@@ -98,6 +99,10 @@ function fakeHost({ steps = STEPS, repository = ON_GITHUB, refuse = null, unread
         calls.push({ fn: "repositoryInfo" });
         if (unreadable) throw unreadable;
         return { defaultBranch: "main", visibility: "public", canWrite: true, archived: false, description: "" };
+      },
+      async readFileAt(path, shas) {
+        calls.push({ fn: "readFileAt", path, shas });
+        return new Map(shas.map((sha) => [sha, commits.get(sha)?.tree.get(path) ?? null]));
       },
       async readSnapshot(ref) {
         calls.push({ fn: "readSnapshot", ref });
@@ -156,14 +161,6 @@ function find(root, match) {
 const byClass = (root, name, className) => find(root, (node) => node.localName === name && node.className.split(" ").includes(className));
 const click = (node) => node.dispatchEvent(new Event("click"));
 const tick = (box, on = true) => { box.checked = on; box.dispatchEvent(new Event("change")); };
-// Waits for the turns of the event loop in which a handler answers.
-async function until(condition, what) {
-  for (let turn = 0; turn < 400; turn++) {
-    if (condition()) return;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  assert.fail(`waited for ${what}`);
-}
 const rowOf = (target, id) => find(target, (node) => node.localName === "tr" && node.getAttribute("data-id") === id)[0];
 const badgeOf = (row) => byClass(row, "span", "badge")[0]?.textContent;
 const recordTextOf = (id, path, body) => recordOf(id, path, body)[1];
@@ -181,8 +178,8 @@ const type = (target, text) => {
 // TST-472678 · level: unit · module: MOD-review-pages
 // guards: STATUS IS DERIVED FROM THE RECORDS; SEVERAL FILES ARE ACCEPTED IN ONE CLICK; EVERY STEP EXPLAINS ITSELF
 // given: a product whose `main` holds four use cases — UC-041 and UC-044 with no record, UC-042 with a record naming its current text, UC-043 with a record naming an earlier text —, and a token stored in this browser
-// input: the route `use-case` rendered with no id; and again for the instance itself, no product chosen
-// expect: a row for each use case with its id as a link to its page, its title and its status — open, accepted, changed since acceptance —; a tick on each use case that is not accepted, none on UC-042; the folded "What is this?"; for the instance the same rows; nothing written
+// input: the route `use-case` rendered with no id; the pages of UC-041 and UC-043 rendered; the list rendered again; and the list for the instance itself, no product chosen
+// expect: a row for each use case with its id as a link to its page - "#use-case/id=<id>/product=<the product's address, encoded>" -, its title and its status — open, accepted, changed since acceptance —; no tick on any row before a page was shown; then a tick on UC-041 and UC-043, whose pages were shown, none on UC-044, which was not, and none on UC-042, which is accepted; the folded "What is this?"; for the instance the same rows, linked "#use-case/id=<id>" without a product; nothing written
 test("MOD-review-pages use-case — the list: every use case with its status and a tick", async () => {
   assert.ok(route, `the route use-case: ${pages.error?.message}`);
   const fake = fakeHost();
@@ -196,15 +193,19 @@ test("MOD-review-pages use-case — the list: every use case with its status and
   assert.deepEqual(["UC-041", "UC-042", "UC-043", "UC-044"].map((id) => badgeOf(rowOf(target, id))),
     ["open", "accepted", "changed since acceptance", "open"]);
   assert.match(rowOf(target, "UC-043").textContent, /Return a book/, "its title");
-  assert.equal(find(rowOf(target, "UC-043"), (node) => node.localName === "a")[0].getAttribute("href"), "#use-case/id=UC-043", "a link to its page");
-  assert.deepEqual(["UC-041", "UC-042", "UC-043", "UC-044"].filter((id) => byClass(rowOf(target, id), "input", "tick").length),
-    ["UC-041", "UC-043", "UC-044"], "a tick on each use case that is not accepted");
+  assert.equal(find(rowOf(target, "UC-043"), (node) => node.localName === "a")[0].getAttribute("href"), `#use-case/id=UC-043/product=${encodeURIComponent(ON_GITHUB.web)}`, "a link to its page: the file with the product in the address");
+  const ticked = (page) => ["UC-041", "UC-042", "UC-043", "UC-044"].filter((id) => byClass(rowOf(page, id), "input", "tick").length);
+  assert.deepEqual(ticked(target), ["UC-041", "UC-043", "UC-044"], "a tick on each use case not accepted, before any page was shown");
+  await show(fake, { id: "UC-041" });
+  await show(fake, { id: "UC-043" });
+  assert.deepEqual(ticked((await show(fake)).target), ["UC-041", "UC-043", "UC-044"], "still a tick on each use case not accepted, shown or not");
   assert.ok(byClass(target, "details", "explain").length >= 1, "a folded What is this?");
   assert.equal(fake.writes().length, 0, "nothing written");
 
   const instance = document.createElement("div");
   await route.render(instance, { ...context, product: null }, {});
   assert.deepEqual(idsIn(whole(instance)), rows, "the instance itself: the same rows");
+  assert.equal(find(rowOf(instance, "UC-043"), (node) => node.localName === "a")[0].getAttribute("href"), "#use-case/id=UC-043", "the instance's list links without a product");
 });
 
 // ---------------------------------------------------------------- one use case
@@ -247,7 +248,7 @@ test("MOD-review-pages use-case/<id>/edit — Save commits the edited use case a
   const fake = fakeHost();
   const one = (await show(fake, { id: "UC-041" })).target;
   const edit = byClass(one, "a", "edit-link")[0];
-  assert.equal(edit.getAttribute("href"), "#use-case/id=UC-041/edit=1", "one Edit link to the edit route");
+  assert.equal(edit.getAttribute("href"), `#use-case/id=UC-041/edit=1/product=${encodeURIComponent(ON_GITHUB.web)}`, "one Edit link to the edit route");
 
   const read = fake.head();
   const { target, context } = await show(fake, { id: "UC-041", edit: "1" });
@@ -257,14 +258,14 @@ test("MOD-review-pages use-case/<id>/edit — Save commits the edited use case a
   const edited = UC41.replace("borrows a book at the desk.", "borrows a book at the desk, with a receipt.");
   type(target, edited);
   click(saveButton(target));
-  await until(() => fake.writes().length === 1, "the edit commit");
+  await until(target, () => fake.writes().length === 1, "the edit commit");
   const [{ change }] = fake.writes();
   assert.equal(change.branch, "main");
   assert.equal(change.expectedHead, read, "on the head the editor opened");
   assert.deepEqual(change.files, [{ path: P41, text: edited }], "only the use case is written");
   assert.ok(!change.files.some((file) => file.path.startsWith("docs/approvals/")), "no approval record");
   // UC-008 3a: "The use case then has a new SHA and is shown again from step 2" — the page itself, open, with the saved text, no editor, and the commit.
-  await until(() => areaOf(target) === undefined && target.textContent.includes("with a receipt"), "the use case to be shown again");
+  await until(target, () => areaOf(target) === undefined && target.textContent.includes("with a receipt"), "the use case to be shown again");
   assert.equal(badgeOf(target), "open", "shown again, open: its new text is accepted by no record");
   assert.equal(byClass(target, "button", "accept").length, 1, "with its Accept");
   assert.ok(find(target, (node) => node.localName === "a" && (node.getAttribute("href") ?? "").endsWith(`/commit/${fake.head()}`)).length >= 1, "the commit is linked");
@@ -298,9 +299,42 @@ test("MOD-review-pages use-case/<id>/edit — a changed file refuses Save and ke
   type(target, edited);
   fake.land({ [P41]: UC41.replace("borrows a book at the desk.", "borrows one book.") });
   click(saveButton(target));
-  await until(() => byClass(target, "div", "newer").length && byClass(target, "div", "newer")[0].textContent.includes("borrows one book"), "the newer text");
+  await until(target, () => byClass(target, "div", "newer").length && byClass(target, "div", "newer")[0].textContent.includes("borrows one book"), "the newer text");
   assert.equal(areaOf(target).value, edited, "the edit stays");
   assert.equal(fake.writes().length, 0, "no commit attempted");
+});
+
+// TST-1398002 · level: unit · module: MOD-review-pages
+// guards: UC-018; A SAVE IS REFUSED WHEN THE TEXT CHANGED MEANWHILE; A REFUSED SAVE KEEPS THE EDIT
+// given: UC-041 opened in the editor and edited ("at the desk, with a receipt."); another writer changes it on main to "borrows one book."; Save is refused and the newer text shown
+// input: the author merges ("borrows one book, with a receipt."); a third writer changes it on main to "borrows one book at the front desk."; Save; the author merges again ("borrows one book at the front desk, with a receipt."); Save
+// expect: counter-proof: the save after the further change is refused again, nothing written, the newest text beside the edit; then the merged text is written once, on the head it was compared on, as the only file
+test("MOD-review-pages use-case/<id>/edit — after a refused save, the merged text is saved against the newer version", async () => {
+  assert.ok(route, `the route use-case: ${pages.error?.message}`);
+  const fake = fakeHost();
+  const { target } = await show(fake, { id: "UC-041", edit: "1" });
+  const newerShows = (words) => byClass(target, "div", "newer").length > 0 && byClass(target, "div", "newer")[0].textContent.includes(words);
+  type(target, UC41.replace("borrows a book at the desk.", "borrows a book at the desk, with a receipt."));
+  const first = UC41.replace("borrows a book at the desk.", "borrows one book.");
+  fake.land({ [P41]: first });
+  click(saveButton(target));
+  await until(target, () => newerShows("borrows one book."), "the newer text");
+  type(target, first.replace("borrows one book.", "borrows one book, with a receipt."));
+  const second = first.replace("borrows one book.", "borrows one book at the front desk.");
+  fake.land({ [P41]: second });
+  click(saveButton(target));
+  await until(target, () => newerShows("at the front desk."), "the newest text");
+  assert.equal(fake.writes().length, 0, "counter-proof: a further change after the refusal refuses the save again");
+  const merged = second.replace("at the front desk.", "at the front desk, with a receipt.");
+  type(target, merged);
+  const read = fake.head();
+  click(saveButton(target));
+  await until(target, () => fake.writes().length > 0 || newerShows("at the front desk."), "the answer to the save of the merged text");
+  assert.equal(fake.writes().length, 1, "the merged text is written once");
+  const [{ change }] = fake.writes();
+  assert.equal(change.expectedHead, read, "on the head that holds the newer version");
+  assert.deepEqual(change.files, [{ path: P41, text: merged }], "only the use case, as merged");
+  await until(target, () => areaOf(target) === undefined && target.textContent.includes("at the front desk, with a receipt."), "the use case to be shown again");
 });
 
 // TST-358004 · level: unit · module: MOD-review-pages
@@ -318,7 +352,7 @@ test("MOD-review-pages use-case/<id>/edit — without a token on GitHub, Save of
   Object.defineProperty(globalThis, "navigator", { value: { clipboard: { writeText: async (written) => { asked.clipboard.push(written); } } }, configurable: true, writable: true });
   globalThis.open = (url) => { asked.opened.push(url); return null; };
   click(saveButton(target));
-  await until(() => byClass(target, "a", "github-page").length === 1, "GitHub's editor page");
+  await until(target, () => byClass(target, "a", "github-page").length === 1, "GitHub's editor page");
   assert.deepEqual(asked.clipboard, [edited], "the edited text is on the clipboard (UC-008 3b)");
   assert.deepEqual(asked.opened, ["https://github.com/alice/thesis-tool/edit/main/" + P41], "GitHub's editor is opened for the file, with no text in the address");
   const page = new URL(byClass(target, "a", "github-page")[0].getAttribute("href"));
@@ -343,7 +377,7 @@ test("MOD-review-pages use-case/<id>/edit — PermissionMissing offers GitHub's 
   const edited = UC41.replace("borrows a book at the desk.", "borrows a book at the desk, with a receipt.");
   type(target, edited);
   click(saveButton(target));
-  await until(() => byClass(target, "a", "github-page").length === 1, "GitHub's editor page");
+  await until(target, () => byClass(target, "a", "github-page").length === 1, "GitHub's editor page");
   assert.match(byClass(target, "p", "result")[0].textContent, /lacks Contents/, "the refusal is shown");
   const page = new URL(byClass(target, "a", "github-page")[0].getAttribute("href"));
   assert.equal(page.origin + page.pathname, "https://github.com/alice/thesis-tool/edit/main/" + P41);
@@ -377,14 +411,14 @@ test("MOD-review-pages use-case/<id> — Accept writes one record naming the blo
   const read = fake.head();
   const { target } = await show(fake, { id: "UC-041" });
   click(byClass(target, "button", "accept")[0]);
-  await until(() => fake.writes().length === 1, "the commit");
+  await until(target, () => fake.writes().length === 1, "the commit");
   const [{ change }] = fake.writes();
   const [recordPath, recordText] = recordOf("UC-041", P41, UC41);
   assert.equal(change.branch, "main");
   assert.equal(change.expectedHead, read, "on the head that was read");
   assert.deepEqual(change.files, [{ path: recordPath, text: recordText }], "one record, naming the blob shown");
   assert.match(change.message, new RegExp(`Accepted by ${TOKEN.name}`), "the commit names the accepting person");
-  await until(() => badgeOf(target) === "accepted", "the page to show it accepted");
+  await until(target, () => badgeOf(target) === "accepted", "the page to show it accepted");
   assert.equal(byClass(target, "button", "accept").length, 0, "no Accept any more");
   assert.match(target.textContent, new RegExp(fake.head().slice(0, 7)), "the commit is named");
 });
@@ -393,12 +427,13 @@ test("MOD-review-pages use-case/<id> — Accept writes one record naming the blo
 
 // TST-472681 · level: unit · module: MOD-review-pages
 // guards: SEVERAL FILES ARE ACCEPTED IN ONE CLICK; AN APPROVAL NAMES THE EXACT TEXT
-// given: the list shown with a token; UC-041, UC-043 and UC-044 ticked, and UC-043 unticked again; then another writer's commit changed UC-044 on `main`
+// given: the pages of UC-041, UC-043 and UC-044 shown, then the list with a token; UC-041, UC-043 and UC-044 ticked, and UC-043 unticked again; then another writer's commit changed UC-044 on `main`
 // input: a click on Accept ticked
 // expect: the number ticked 2, then one commit holding one record, UC-041's — not UC-043's —, naming the blob that was shown; UC-044 left out and named with the reason that it changed since it was shown, and still open; UC-041 accepted
 test("MOD-review-pages use-case — two ticked use cases are accepted in one commit, the one changed after it was shown is left out and named", async () => {
   assert.ok(route, `the route use-case: ${pages.error?.message}`);
   const fake = fakeHost();
+  for (const id of ["UC-041", "UC-043", "UC-044"]) await show(fake, { id });
   const { target } = await show(fake);
   const bar = byClass(target, "button", "accept-ticked")[0];
   assert.equal(bar.disabled, true, "nothing ticked: Accept ticked is not pressable");
@@ -413,10 +448,10 @@ test("MOD-review-pages use-case — two ticked use cases are accepted in one com
   assert.match(byClass(target, "button", "accept-ticked")[0].textContent, /\(2\)/, "the number ticked");
   fake.land({ [P44]: UC44_EDITED });
   click(byClass(target, "button", "accept-ticked")[0]);
-  await until(() => fake.writes().length === 1, "the commit");
+  await until(target, () => fake.writes().length === 1, "the commit");
   assert.deepEqual(fake.writes()[0].change.files, [{ path: recordOf("UC-041", P41, UC41)[0], text: recordOf("UC-041", P41, UC41)[1] }],
     "one record, UC-041's, naming the blob shown");
-  await until(() => badgeOf(rowOf(target, "UC-041")) === "accepted", "the list to show UC-041 accepted");
+  await until(target, () => badgeOf(rowOf(target, "UC-041")) === "accepted", "the list to show UC-041 accepted");
   assert.match(target.textContent, /UC-044[^]*changed since shown|changed since shown[^]*UC-044/, "UC-044 is named with the reason");
   assert.equal(badgeOf(rowOf(target, "UC-044")), "open", "UC-044 is still open");
 });
@@ -534,7 +569,7 @@ test("MOD-review-pages use-case/<id> — PermissionMissing: the GitHub path is o
   const before = fake.head();
   const { target } = await show(fake, { id: "UC-041" });
   click(byClass(target, "button", "accept")[0]);
-  await until(() => byClass(target, "a", "github-page").length === 1, "the GitHub path");
+  await until(target, () => byClass(target, "a", "github-page").length === 1, "the GitHub path");
   assert.match(byClass(target, "p", "result")[0].textContent, /lacks Contents/, "the refusal in the host's words");
   const page = new URL(byClass(target, "a", "github-page")[0].getAttribute("href"));
   assert.equal(page.origin + page.pathname, "https://github.com/alice/thesis-tool/new/main");
@@ -547,16 +582,16 @@ test("MOD-review-pages use-case/<id> — PermissionMissing: the GitHub path is o
 
 // TST-472687 · level: unit · module: MOD-review-pages
 // guards: THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
-// given: a token stored; the list, an open use case and a changed one rendered, and the ticks changed
+// given: a token stored; the page of UC-041 shown, then the list, an open use case and a changed one rendered, and the ticks changed
 // input: rendering, ticking and unticking — no click on Accept or on Accept ticked
 // expect: no commit attempted
 test("MOD-review-pages use-case — nothing is written without the person's click", async () => {
   assert.ok(route, `the route use-case: ${pages.error?.message}`);
   const fake = fakeHost();
+  await show(fake, { id: "UC-041" });
   const list = (await show(fake)).target;
   tick(byClass(rowOf(list, "UC-041"), "input", "tick")[0]);
   tick(byClass(rowOf(list, "UC-041"), "input", "tick")[0], false);
-  await show(fake, { id: "UC-041" });
   await show(fake, { id: "UC-043" });
   assert.ok(byClass(list, "button", "accept-ticked").length === 1, "known positive: the button that would write stands on the page");
   assert.equal(fake.writes().length, 0, "no commit attempted");
@@ -568,8 +603,8 @@ test("MOD-review-pages use-case — nothing is written without the person's clic
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: a product whose `main` holds the four use cases and three job records under docs/jobs/, a token stored
 // input: the page of UC-041, which is open, rendered; and the page of UC-042, which is accepted
-// expect: the job records, which the notes of the job that wrote the use case are read from, are asked for in one batch (Snapshot.readMany) with every path of them; an accepted use case's page asks for none
-test("MOD-review-pages use-case/<id> — the job records an open file's notes are read from are read in one batch", async () => {
+// expect: the job records, which the notes of the job that wrote the use case are read from, are asked for newest first in batches of at most 100: with three records and none listing the use case, one batch (Snapshot.readMany) names all three, and each is then read, the newest first (known positive: the newest is read); an accepted use case's page asks for none
+test("MOD-review-pages use-case/<id> — the job records an open file's notes are read from are read in one batch, newest first", async () => {
   assert.ok(route, `the route use-case: ${pages.error?.message}`);
   const jobs = ["JOB-20261001-1000-aaaa", "JOB-20261001-1100-bbbb", "JOB-20261001-1200-cccc"].map((name) => `docs/jobs/${name}.md`);
   const steps = [...STEPS, Object.fromEntries(jobs.map((path) => [path, "not a job record\n"]))];
@@ -578,6 +613,9 @@ test("MOD-review-pages use-case/<id> — the job records an open file's notes ar
   const batches = fake.calls().filter((call) => call.fn === "readMany");
   assert.equal(batches.length, 1, "one batch");
   assert.deepEqual([...batches[0].paths].sort(), jobs, "every job record, and nothing else");
+  const reads = fake.calls().filter((call) => call.fn === "read").map((call) => call.path);
+  assert.ok(reads.includes(jobs[2]), "known positive: the newest job record is read");
+  assert.deepEqual(reads, [jobs[2], jobs[1], jobs[0]], "no record lists UC-041, so each is read, the newest first");
   const accepted = fakeHost({ steps });
   await show(accepted, { id: "UC-042" });
   assert.equal(accepted.calls().filter((call) => call.fn === "readMany").length, 0, "an accepted use case reads no job record");
@@ -603,17 +641,18 @@ test("MOD-review-pages use-case/<id> — counter-proof: a click a script makes o
   assert.equal(fake.writes().length, 0, "no commit attempted");
   assert.equal(badgeOf(target), "open", "still open");
   click(accept);
-  await until(() => fake.writes().length === 1, "the commit of the person's click");
+  await until(target, () => fake.writes().length === 1, "the commit of the person's click");
 });
 
 // TST-680202 · level: unit · module: MOD-review-pages
 // guards: THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; SEVERAL FILES ARE ACCEPTED IN ONE CLICK
-// given: the list shown with a token; UC-041 and UC-044 ticked
+// given: the pages of UC-041 and UC-044 shown, then the list with a token; UC-041 and UC-044 ticked
 // input: a click a script makes on Accept ticked; then the person's click
 // expect: after the script's click no commit is attempted; after the person's click one commit
 test("MOD-review-pages use-case — counter-proof: a click a script makes on Accept ticked writes nothing", async () => {
   assert.ok(route, `the route use-case: ${pages.error?.message}`);
   const fake = fakeHost();
+  for (const id of ["UC-041", "UC-044"]) await show(fake, { id });
   const { target } = await show(fake);
   for (const id of ["UC-041", "UC-044"]) tick(byClass(rowOf(target, id), "input", "tick")[0]);
   const bar = byClass(target, "button", "accept-ticked")[0];
@@ -621,7 +660,7 @@ test("MOD-review-pages use-case — counter-proof: a click a script makes on Acc
   await settled();
   assert.equal(fake.writes().length, 0, "no commit attempted");
   click(bar);
-  await until(() => fake.writes().length === 1, "the commit of the person's click");
+  await until(target, () => fake.writes().length === 1, "the commit of the person's click");
 });
 
 // TST-680203 · level: unit · module: MOD-review-pages
@@ -638,5 +677,5 @@ test("MOD-review-pages use-case/<id>/edit — counter-proof: a click a script ma
   await settled();
   assert.equal(fake.writes().length, 0, "no commit attempted");
   click(saveButton(target));
-  await until(() => fake.writes().length === 1, "the commit of the person's click");
+  await until(target, () => fake.writes().length === 1, "the commit of the person's click");
 });

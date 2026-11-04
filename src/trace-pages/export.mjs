@@ -17,7 +17,7 @@ export function exportControls(el, { audit, release, host, head, canWrite }) {
   const said = el("p", "audit-export-said");
   const text = () => auditDocument(audit, release);
 
-  const save = el("button", "audit-export", "Export");
+  const save = el("button", "audit-export btn", "Export");
   save.setAttribute("type", "button");
   save.addEventListener("click", () => {
     const blob = new Blob([text()], { type: "text/markdown" });
@@ -31,7 +31,7 @@ export function exportControls(el, { audit, release, host, head, canWrite }) {
 
   const buttons = [save];
   if (canWrite) {
-    const commit = el("button", "audit-commit-export", "Commit export");
+    const commit = el("button", "audit-commit-export btn", "Commit export");
     commit.setAttribute("type", "button");
     commit.addEventListener("click", async (event) => {
       if (event?.isTrusted === false) return;

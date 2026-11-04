@@ -1,6 +1,6 @@
 // MOD-review-pages' routes for editing a requirement (ITM-359), as the accepted text of docs/architecture/MOD-review-pages.md states them: "`requirement/<name>/edit`
 // and `requirements/new` for a requirement — the editor with live preview and the descriptor's marks; for a requirement, its SPEC section, a *Why* field and its
-// impact list, saved as an entry of the person's open queue of the day (`A SPEC EDIT IS SAVED AS A PROPOSAL`); `requirements/new` with the four fields empty, for the
+// impact list, saved as an entry of its section's queue (`A SPEC EDIT IS SAVED AS A PROPOSAL`); `requirements/new` with the four fields empty, for the
 // SPEC section the specification browser hands it (UC-018 3d) … every save only on the blob the file or section was opened on", and the item's Outcome: the editor opens
 // on the requirement's SPEC section, its blob noted; the marks of requirementFindings without blocking, a Why field, the impact list; for a changed name the page says
 // that the name is the identifier, and the impact list shows what names the old one; Save goes through proposeSection, links the commit and opens the new entry in
@@ -9,7 +9,7 @@
 // Run: node --test tests/review-pages-edit-requirement.test.mjs
 //
 // Module: MOD-review-pages
-// Guards: UC-018; A SPEC EDIT IS SAVED AS A PROPOSAL; A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE; A REQUIREMENT IS NOT CHANGED WITHOUT AN IMPACT LIST; A RENAMED REQUIREMENT IS WITHDRAWN AND ADDED; A REQUIREMENT HAS FOUR FIELDS; THE NAME IS THE ID AND IT SURVIVES; A SAVE IS REFUSED WHEN THE TEXT CHANGED MEANWHILE; A REFUSED SAVE KEEPS THE EDIT; NO PROPOSAL WITHOUT THE CURRENT TEXT BESIDE IT; WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; A GITLAB PRODUCT IS WRITTEN WITH A TOKEN; ONE CLICK PER DECISION; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
+// Guards: UC-018; A SPEC EDIT IS SAVED AS A PROPOSAL; A REQUIREMENT IS NOT CHANGED WITHOUT AN IMPACT LIST; A RENAMED REQUIREMENT IS WITHDRAWN AND ADDED; A REQUIREMENT HAS FOUR FIELDS; THE NAME IS THE ID AND IT SURVIVES; A SAVE IS REFUSED WHEN THE TEXT CHANGED MEANWHILE; A REFUSED SAVE KEEPS THE EDIT; NO PROPOSAL WITHOUT THE CURRENT TEXT BESIDE IT; WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK; A GITLAB PRODUCT IS WRITTEN WITH A TOKEN; ONE CLICK PER DECISION; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // Level: unit
 //
 // This imports the browser harness of tests/review-pages-harness.mjs unchanged. The product is a fixture behind a Host of the tests' own, which keeps to
@@ -33,6 +33,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { withStoredGraph } from "./stored-graph-fake.mjs";
+import { until as settled } from "./review-pages-wait.mjs";
 
 // Every commit the fakes of this file make is its own: MOD-trace-graph's storedGraph keeps a commit's graph for the page.
 let commitsMade = 0;
@@ -174,10 +175,10 @@ test("requirement/<name> — the impact list shows the requirement the edit chan
 });
 
 // TST-472628 · level: unit · module: MOD-review-pages
-// guards: UC-018; A SPEC EDIT IS SAVED AS A PROPOSAL; A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE; ONE CLICK PER DECISION
+// guards: UC-018; A SPEC EDIT IS SAVED AS A PROPOSAL; ONE CLICK PER DECISION
 // given: the editor with the rule edited and a Why
 // input: a click on Save
-// expect: one commit holding a new queue's index, the proposal — the section as edited, byte for byte — and its rationale; SPEC.md untouched; the page links the commit and the new entry, #spec-entry/id=spec-<queue>-01
+// expect: one commit holding the index of the section's queue docs/spec-freigaben/lending, the proposal — the section as edited, byte for byte — and its rationale; SPEC.md untouched; the page links the commit and the new entry, #spec-entry/id=spec-<queue>-01
 test("requirement/<name> — Save writes the edited section as an entry and links the commit and the entry", async () => {
   const fake = fakeHost();
   const target = await showEdit(fake, NAME(LOAN));
@@ -195,8 +196,8 @@ test("requirement/<name> — Save writes the edited section as an entry and link
   const entry = byClass(target, "p", "entry")[0];
   const hrefs = find(entry, (node) => node.localName === "a").map((node) => node.getAttribute("href"));
   assert.ok(hrefs.includes(`https://github.com/alice/thesis-tool/commit/${fake.head()}`), `the commit: ${hrefs}`);
-  assert.ok(change.files.find((file) => file.path.endsWith("/index.md")).text.includes(TOKEN.name), "the queue is the person's");
-  assert.ok(hrefs.some((href) => /^#spec-entry\/id=spec-[^/]+-01$/.test(href)), `the entry: ${hrefs}`);
+  assert.equal(change.files.find((file) => file.path.endsWith("/index.md")).path, "docs/spec-freigaben/lending/index.md", "the queue is the section's");
+  assert.ok(hrefs.some((href) => /^#spec-entry\/id=spec-[^/]+-01\/product=/.test(href)), `the entry: ${hrefs}`);
 });
 
 // TST-472629 · level: unit · module: MOD-review-pages
@@ -263,10 +264,10 @@ test("requirement/<name> — a changed name is shown as the old one withdrawn an
 // ---------------------------------------------------------------- another proposal
 
 // TST-472632 · level: unit · module: MOD-review-pages
-// guards: UC-018; NO PROPOSAL WITHOUT THE CURRENT TEXT BESIDE IT; A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE
+// guards: UC-018; NO PROPOSAL WITHOUT THE CURRENT TEXT BESIDE IT; A SPEC EDIT IS SAVED AS A PROPOSAL
 // given: an open entry of another queue that proposes the same section "1. Lending"
 // input: the page of the requirement; then Save
-// expect: the page names that entry among the other open proposals on the section, with a link to it; after Save the entry it replaces in another queue is named
+// expect: the page names that entry among the other open proposals on the section, with a link to it; after Save the open entry that replaces the same section is named
 test("requirement/<name> — another open proposal on the same section is named", async () => {
   const OTHER = "docs/spec-freigaben/2026-03-01_sample";
   const proposed = LENDING.replace("returned.", "returned in a week.");
@@ -280,7 +281,7 @@ test("requirement/<name> — another open proposal on the same section is named"
   const target = await showEdit(fake, NAME(LOAN));
   const others = byClass(target, "ul", "others")[0];
   assert.match(others.textContent, /spec-2026-03-01_sample-01/);
-  assert.equal(find(others, (node) => node.localName === "a")[0].getAttribute("href"), "#spec-entry/id=spec-2026-03-01_sample-01");
+  assert.equal(find(others, (node) => node.localName === "a")[0].getAttribute("href"), `#spec-entry/id=spec-2026-03-01_sample-01/product=${encodeURIComponent(GITHUB.web)}`);
   assert.doesNotMatch(others.textContent, /sample-02/, "another section is not the same");
   assert.doesNotMatch(others.textContent, /sample-03/, "an entry in the SPEC is no proposal");
   type(target, LENDING.replace("returned.", "returned, or renewed."));
@@ -310,6 +311,33 @@ test("requirement/<name> — a save the text changed under is refused, and the e
   assert.equal(fake.writes().length, 0, "nothing written");
   assert.equal(areaOf(target).value, edited, "the edit stays");
   assert.match(byClass(target, "div", "newer")[0].textContent, /returned, or renewed\./);
+});
+
+// TST-1398001 · level: unit · module: MOD-review-pages
+// guards: UC-018; A SAVE IS REFUSED WHEN THE TEXT CHANGED MEANWHILE; A REFUSED SAVE KEEPS THE EDIT
+// given: the editor with an edit ("returned, or renewed.") and a Why; another writer changes the rule on the default branch to "returned on time."; Save is refused and the newer section shown
+// input: the author merges ("returned on time, or renewed."); a third writer changes the rule to "returned on time, at the desk."; Save; the author merges again ("returned on time, at the desk, or renewed."); Save
+// expect: counter-proof: the save after the further change is refused again, nothing written, the newest section beside the edit; then the merged section is written once, as the proposal of one entry
+test("requirement/<name> — after a refused save, the merged section is saved against the newer version", async () => {
+  const fake = fakeHost();
+  const target = await showEdit(fake, NAME(LOAN));
+  const newerShows = (words) => byClass(target, "div", "newer").length > 0 && byClass(target, "div", "newer")[0].textContent.includes(words);
+  type(target, LENDING.replace("returned.", "returned, or renewed."));
+  withWhy(target);
+  fake.land({ "SPEC.md": HEAD + LENDING.replace("returned.", "returned on time.") + READING });
+  click(saveOf(target));
+  await settled(target, () => newerShows("returned on time."), "the newer section");
+  type(target, LENDING.replace("returned.", "returned on time, or renewed."));
+  fake.land({ "SPEC.md": HEAD + LENDING.replace("returned.", "returned on time, at the desk.") + READING });
+  click(saveOf(target));
+  await settled(target, () => newerShows("returned on time, at the desk."), "the newest section");
+  assert.equal(fake.writes().length, 0, "counter-proof: a further change after the refusal refuses the save again");
+  const merged = LENDING.replace("returned.", "returned on time, at the desk, or renewed.");
+  type(target, merged);
+  click(saveOf(target));
+  await settled(target, () => byClass(target, "p", "entry").length === 1 || newerShows("returned on time, at the desk."), "the answer to the save of the merged section");
+  assert.equal(fake.writes().length, 1, "the merged section is written once");
+  assert.deepEqual(proposals(fake).map((file) => file.text), [merged], "the proposal is the merged section");
 });
 
 // ---------------------------------------------------------------- without a token

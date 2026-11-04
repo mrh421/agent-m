@@ -1,11 +1,11 @@
 // MOD-product-process — a product's process: its declaration, workflow, gates and Definition of Done
 // (docs/architecture/MOD-product-process.md): its interface. Of it are built: Workflow; declarationSchema, the schema of a
 // product's docs/process.md, and declarationFindings (declaration.mjs); roleAssignmentSchema, the schema of a product's
-// docs/role-assignments/<name>.md, roleAssignmentFindings and holdsRole (assignments.mjs); workflowOf and productWorkflow (workflow.mjs); and
+// docs/role-assignments/<name>.md, roleAssignmentFindings and holdsRole (assignments.mjs); workflowOf, branchesOf and productWorkflow (workflow.mjs); and
 // mayDecide, gateStates and recordGateDecision (gates.mjs); doneCheck (done.mjs); and gateSchema, the schema of a gate record docs/gates/<…>.md. A declaration names roles and never a participant; its role assignments fill the roles, and
 // roleAssignmentFindings names a holder lacking a capability its role needs, and warns of a holder at a processing place a
 // linked source does not permit: both through MOD-participant-list's eligible, over the participants its participantsOf
-// gives. processStrategies is not built yet. workflowOf adds a practice's additions only from its explicit model tables: a shipped practice states its
+// gives. workflowOf adds a practice's additions only from its explicit model tables: a shipped practice states its
 // `## Adds` in words only.
 //
 // Module: MOD-product-process
@@ -25,7 +25,7 @@ import { loadSchema } from "../documents/index.mjs";
 
 export { declarationFindings } from "./declaration.mjs";
 export { roleAssignmentFindings, holdsRole } from "./assignments.mjs";
-export { productWorkflow, workflowOf } from "./workflow.mjs";
+export { branchesOf, productWorkflow, workflowOf } from "./workflow.mjs";
 export { mayDecide, gateStates, recordGateDecision } from "./gates.mjs";
 export { doneCheck } from "./done.mjs";
 

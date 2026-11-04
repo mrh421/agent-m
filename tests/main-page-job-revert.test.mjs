@@ -8,7 +8,7 @@
 // Level: unit
 //
 // The real MOD-job-ledger, MOD-runtimes, MOD-repository-hosts, MOD-browser-store and MOD-site-frame run as they are; only `fetch` is faked: by tests/main-page-home-harness.mjs (the fake GitHub) and, over it, by this file, which answers
-// GitHub's lists and reads for alice/product as the REST and GraphQL APIs document them: the commits of the branch named after the job and the files of each, the texts of files at commits (one GraphQL request), the branch's reference,
+// GitHub's lists and reads for alice/product as the REST and GraphQL APIs document them: the commits of the branch named after the job and the files of each, the texts of files at commits (one GraphQL request; the harness answers the query of named files), the branch's reference,
 // and the writes of one commit (the tree, the commit and the move of the ref), keeping what it was given. The product's token is stored. No request leaves the fixtures; nothing sleeps.
 //
 // Readings the module file leaves open, which the tests state (the pull request names them):
@@ -63,7 +63,7 @@ function world({ state = "cancelled", commits = COMMITS, moved = false } = {}) {
     if (url.host === "api.github.com" && detail) return json({ files: FILES[detail[1]] ?? [] });
     if (url.host === "api.github.com" && url.pathname === `${repo}/pulls`) return json([]);
     if (url.host === "api.github.com" && url.pathname === `${repo}/actions/runs`) return json({ workflow_runs: [] });
-    if (url.href === "https://api.github.com/graphql" && method === "POST") {
+    if (url.href === "https://api.github.com/graphql" && method === "POST" && /\bf\d+:object\(expression:/.test(JSON.parse(init.body).query)) {
       const query = JSON.parse(init.body).query;
       const data = {};
       for (const [, key, expression] of query.matchAll(/(f\d+):object\(expression:("(?:[^"\\]|\\.)*")\)/g)) {

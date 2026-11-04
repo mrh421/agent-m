@@ -42,9 +42,7 @@ const button = (node, pattern) => byTag(node, "button").find((candidate) => patt
 // guards: UC-014
 // given: a fresh browser on the original dashboard (no owner known); known positive — the page has all four steps
 // input: render the route `get-your-own`; read the field and the text around it
-// expect: UC-014 step 1 "A guided page opens; it asks for the person's GitHub name (or the organisation to fork into — one used for nothing else is recommended, with the reason folded underneath)":
-//   a text field is on the page, labelled with "GitHub name" and "organisation"; the field is empty; beside it a folded explanation (not open) with a body of more than forty characters; the four
-//   steps stand in the order Step 1 to Step 4
+// expect: UC-014 step 1 "A guided page opens; it asks for the person's GitHub name (or the organisation to fork into — one used for nothing else is recommended, with the reason folded underneath)": a text field is on the page, labelled with "GitHub name" and "organisation"; the field is empty; beside it a folded explanation (not open) with a body of more than forty characters; the four steps stand in the order Step 1 to Step 4
 test("release · UC-014 1: the guided page asks for the GitHub name or the organisation, with the recommendation folded underneath", async () => {
   const { target } = await open();
   assert.deepEqual(byTag(target, "h3").map((heading) => heading.textContent).filter((text) => TITLES.includes(text)), TITLES, "known positive: the four steps stand in order");
@@ -65,8 +63,7 @@ test("release · UC-014 1: the guided page asks for the GitHub name or the organ
 // guards: UC-014
 // given: a fresh browser on the original dashboard
 // input: read Step 1 · Fork
-// expect: UC-014 step 2 "A button opens GitHub's fork page for akmaier/agent-m; the person presses Create fork": Step 1 holds a link to github.com/akmaier/agent-m/fork, available before any name is
-//   entered, and its words name "Create fork"
+// expect: UC-014 step 2 "A button opens GitHub's fork page for akmaier/agent-m; the person presses Create fork": Step 1 holds a link to github.com/akmaier/agent-m/fork, available before any name is entered, and its words name "Create fork"
 test("release · UC-014 2: Step 1 · Fork opens GitHub's fork page for akmaier/agent-m", async () => {
   const { target } = await open();
   const step = stepTitled(target, TITLES[0]);
@@ -80,8 +77,7 @@ test("release · UC-014 2: Step 1 · Fork opens GitHub's fork page for akmaier/a
 // guards: UC-014
 // given: a fresh browser on the original dashboard; the person types the name alice, then the organisation my-org
 // input: read Step 2 · Turn on the dashboard before any name, after alice and after my-org
-// expect: UC-014 step 3 "Now that the owner is known, a button opens exactly github.com/<owner>/agent-m/settings/pages": before a name the step holds no link; with alice exactly one link,
-//   https://github.com/alice/agent-m/settings/pages; with my-org exactly https://github.com/my-org/agent-m/settings/pages
+// expect: UC-014 step 3 "Now that the owner is known, a button opens exactly github.com/<owner>/agent-m/settings/pages": before a name the step holds no link; with alice exactly one link, https://github.com/alice/agent-m/settings/pages; with my-org exactly https://github.com/my-org/agent-m/settings/pages
 test("release · UC-014 3: Step 2 opens exactly the Pages settings of <owner>/agent-m once the owner is known", async () => {
   const { target } = await open();
   assert.deepEqual(linksIn(stepTitled(target, TITLES[1])), [], "no link while the owner is unknown");
@@ -96,8 +92,7 @@ test("release · UC-014 3: Step 2 opens exactly the Pages settings of <owner>/ag
 // guards: UC-014
 // given: the page with the name alice entered
 // input: read the text of Step 2 · Turn on the dashboard outside its folded explanation
-// expect: UC-014 step 3 "the page says what to choose there — Deploy from a branch, main, / (root), Save. GitHub lets no one but the owner switch this on": the text contains "Deploy from a branch",
-//   "main", "/ (root)", "Save" and "no one but the owner"
+// expect: UC-014 step 3 "the page says what to choose there — Deploy from a branch, main, / (root), Save. GitHub lets no one but the owner switch this on": the text contains "Deploy from a branch", "main", "/ (root)", "Save" and "no one but the owner"
 test("release · UC-014 3: Step 2 says what to choose on the Pages settings", async () => {
   const { target } = await open("alice");
   const text = withoutFolded(stepTitled(target, TITLES[1]));
@@ -108,10 +103,7 @@ test("release · UC-014 3: Step 2 says what to choose on the Pages settings", as
 // guards: UC-014
 // given: the page with the name alice entered
 // input: read Step 3 · Turn on the workflows — optional now outside its folded explanation
-// expect: UC-014 step 4 "needed only to fetch EU legal texts (UC-004) and to write an accepted change of the instance's own SPEC without a token; the page says so and offers Later. When a feature first
-//   needs them, the dashboard shows this step again. A button opens github.com/<owner>/agent-m/actions; the person presses I understand my workflows, go ahead and enable them. GitHub disables
-//   workflows on every fork until its owner does": the text names "EU legal texts" and "without a token", says the step is shown again when a feature first needs the workflows, contains "I understand my
-//   workflows, go ahead and enable them" and says GitHub disables workflows on every fork until the owner enables them; a button "Later" stands in the step; exactly one link, https://github.com/alice/agent-m/actions
+// expect: UC-014 step 4 "needed only to fetch EU legal texts (UC-004) and to write an accepted change of the instance's own SPEC without a token; the page says so and offers Later. When a feature first needs them, the dashboard shows this step again. A button opens github.com/<owner>/agent-m/actions; the person presses I understand my workflows, go ahead and enable them. GitHub disables workflows on every fork until its owner does": the text names "EU legal texts" and "without a token", says the step is shown again when a feature first needs the workflows, contains "I understand my workflows, go ahead and enable them" and says GitHub disables workflows on every fork until the owner enables them; a button "Later" stands in the step; exactly one link, https://github.com/alice/agent-m/actions
 test("release · UC-014 4: Step 3 says the workflows are optional now, offers Later and opens the Actions page of <owner>/agent-m", async () => {
   const { target } = await open("alice");
   const step = stepTitled(target, TITLES[2]);
@@ -146,9 +138,7 @@ test("release · UC-014 4: pressing Later leaves Step 4 on the page and stores a
 // guards: UC-014; THE PAGES ROOT IS THE REPOSITORY ROOT
 // given: the page with the name alice entered, then my-org
 // input: read Step 4 · Open your dashboard
-// expect: UC-014 step 5 "A button opens https://<owner>.github.io/agent-m/": exactly one link, https://alice.github.io/agent-m/, then https://my-org.github.io/agent-m/; before any name the step holds no link;
-//   "with a folded note that GitHub needs about a minute after Step 2 before the address answers": among the step's details a folded one (not open) says "about a minute after" Step 2 (or the Pages step, which is Step 2)
-//   "before the address answers"
+// expect: UC-014 step 5 "A button opens https://<owner>.github.io/agent-m/": exactly one link, https://alice.github.io/agent-m/, then https://my-org.github.io/agent-m/; before any name the step holds no link; "with a folded note that GitHub needs about a minute after Step 2 before the address answers": among the step's details a folded one (not open) says "about a minute after" Step 2 (or the Pages step, which is Step 2) "before the address answers"
 test("release · UC-014 5: Step 4 opens https://<owner>.github.io/agent-m/ with a folded note that GitHub needs about a minute", async () => {
   const { target } = await open();
   assert.deepEqual(linksIn(stepTitled(target, TITLES[3])), [], "no link while the owner is unknown");
@@ -168,8 +158,7 @@ test("release · UC-014 5: Step 4 opens https://<owner>.github.io/agent-m/ with 
 // guards: UC-014
 // given: a fresh browser; a fake of fetch that would answer 404 to every address (Pages is not turned on)
 // input: render the route, enter the name alice, press Later
-// expect: UC-014 3a "The address answers 404; nothing else is affected": the page does not look at the dashboard's address — no request at all is sent; all four steps stay on the page with the links of
-//   Steps 2 to 4; nothing is stored
+// expect: UC-014 3a "The address answers 404; nothing else is affected": the page does not look at the dashboard's address — no request at all is sent; all four steps stay on the page with the links of Steps 2 to 4; nothing is stored
 test("release · UC-014 3a: the page never asks the dashboard's address, so a 404 there affects nothing else", async () => {
   const store = freshStore();
   const target = attachedTarget();
@@ -188,8 +177,7 @@ test("release · UC-014 3a: the page never asks the dashboard's address, so a 40
 // guards: EVERY STEP EXPLAINS ITSELF; UC-014
 // given: the page with the name alice entered
 // input: read the folded explanations in each of the four steps
-// expect: EVERY STEP EXPLAINS ITSELF "Every step that asks something of the person carries an explanation that can be expanded, written for someone new to GitHub": each of Step 1 to Step 4 holds a
-//   details element, not open, with a summary and a body of more than forty characters beyond it
+// expect: EVERY STEP EXPLAINS ITSELF "Every step that asks something of the person carries an explanation that can be expanded, written for someone new to GitHub": each of Step 1 to Step 4 holds a details element, not open, with a summary and a body of more than forty characters beyond it
 test("release · EVERY STEP EXPLAINS ITSELF: each of the four steps carries a folded explanation", async () => {
   const { target } = await open("alice");
   for (const title of TITLES) {
@@ -205,8 +193,7 @@ test("release · EVERY STEP EXPLAINS ITSELF: each of the four steps carries a fo
 // guards: UC-014; AGENT M IS MIT-LICENSED; EVERY STEP EXPLAINS ITSELF
 // given: a fresh browser
 // input: read the page for the licence
-// expect: UC-014 "Agent M's MIT licence, shown with a folded explanation, is what allows the fork and leaves the licence of every product to the person": a section outside the four steps names "MIT",
-//   says that the licence of every product stays with the person, and holds a folded explanation (not open) with a body of more than forty characters
+// expect: UC-014 "Agent M's MIT licence, shown with a folded explanation, is what allows the fork and leaves the licence of every product to the person": a section outside the four steps names "MIT", says that the licence of every product stays with the person, and holds a folded explanation (not open) with a body of more than forty characters
 test("release · UC-014: the MIT licence is shown with a folded explanation", async () => {
   const { target } = await open();
   const section = byTag(target, "section").find((candidate) => /MIT/.test(candidate.textContent) && !TITLES.includes(byTag(candidate, "h3")[0]?.textContent));

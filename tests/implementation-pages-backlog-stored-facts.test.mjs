@@ -1,7 +1,6 @@
 // MOD-implementation-pages' route `backlog` takes its facts from MOD-progress-measures' productFacts (ITM-1149), as the accepted text of docs/architecture/MOD-implementation-pages.md states it:
-// "MOD-progress-measures.productFacts, … — the product's facts and its progress", and as MOD-progress-measures states productFacts: where the default branch's snapshot has `readOn`, the facts stored for its
-// commit are read first and "none of the files they come from" is read; "`model` and `workflow` are "unknown" when that commit cannot be read, and `modelUnread` then names the commit and the error"
-// (A PAGE LOAD READS THE REPOSITORY IN BATCHES). The page names an unreadable model version and does not fall back to the catalogue as it stands now (UC-031 step 6a).
+// "MOD-progress-measures.productFacts, … — the product's facts and its progress", and as MOD-progress-measures states productFacts: it reads the product's files — no commit's facts file is stored —, and
+// "`model` and `workflow` are "unknown" when that commit cannot be read, and `modelUnread` then names the commit and the error" (A PAGE LOAD READS THE REPOSITORY IN BATCHES). The page names an unreadable model version and does not fall back to the catalogue as it stands now (UC-031 step 6a).
 // Run: node --test tests/implementation-pages-backlog-stored-facts.test.mjs
 //
 // Module: MOD-implementation-pages
@@ -9,9 +8,10 @@
 // Level: unit
 //
 // The product is a small Scrum-with-limit fixture with two teams, held in memory behind a host of this file's own. Its snapshot offers `readMany` and `readOn`; every call of `read`, `readMany` and `readOn`
-// is kept. The branch `overview-cache` holds `<commit>.facts.json` (MOD-progress-measures' format 1, written here from the fixture's files) where the test says so. Nothing reaches the network.
+// is kept. Where the test says so, a facts file is planted on the branch `overview-cache` as `<commit>.facts.json` (the old format 1, written here from the fixture's files): the counter-proof that the page
+// takes nothing from it. Nothing reaches the network.
 // Readings the texts leave open, which the tests state (the pull request names them): the facts are asked with the scope `work`, because the scope `all` reads the test files and the CI-independent results the
-// page has no use for; the SPEC's requirements and the module files, which Facts does not carry, come from the stored facts' own lists (`storedFacts`) where they are stored, and from the files otherwise.
+// page has no use for; the SPEC's requirements and the module files, which Facts does not carry, come from the files.
 // Each test states its input and its expected result before it runs (given / input / expect). The counter-proofs are recorded in the pull request.
 
 import test, { afterEach } from "node:test";
@@ -73,7 +73,7 @@ function productFiles() {
 }
 const FILES_STORED_FROM = (path) => path === "SPEC.md" || path === "docs/process.md" || /^docs\/(backlog|role-assignments|architecture)\//.test(path);
 
-// The facts file of the commit as MOD-progress-measures' format 1 has it, written from the files; the model is left out, so that the page reads it again.
+// A facts file of the commit in the old format 1, written from the files, to be planted; the model is left out.
 function factsFile(files) {
   const of = (re) => Object.keys(files).filter((path) => re.test(path)).sort().map((path) => ({ path, text: files[path] }));
   return `${JSON.stringify({ format: 1, commit: COMMIT, declaration: { path: "docs/process.md", text: files["docs/process.md"] }, order: null, items: of(/^docs\/backlog\/ITM-[^/]+\.md$/),
@@ -85,7 +85,7 @@ const PRS = [{ number: 2, title: "ITM-002: the work of ITM-002", branch: "team/I
   opened: "2026-09-15T12:00:00Z", merged: null, closed: null }];
 
 const named = (name, message) => Object.assign(new Error(message), { name });
-// The product's host; `stored` is the text of the facts file on overview-cache, or null for a branch that holds none. `calls` keeps every read.
+// The product's host; `stored` is the text of a facts file planted on overview-cache, or null for a branch that holds none. `calls` keeps every read.
 function hostOf(files, calls, stored, { unreadable = null } = {}) {
   const snapshot = (own) => ({ repository: { server: "github", path: "acme/product", web: ADDRESS }, ref: "main", commit: COMMIT, paths: Object.keys(own), blob: (path) => (Object.hasOwn(own, path) ? blobOf(own[path]) : null),
     read: async (path) => { calls.push({ fn: "read", path }); return Object.hasOwn(own, path) ? own[path] : null; },
@@ -114,41 +114,31 @@ async function render(stored, options = {}) {
 const readPaths = (calls) => calls.filter((call) => call.fn === "read").map((call) => call.path);
 const batched = (calls) => calls.filter((call) => call.fn === "readMany").flatMap((call) => call.paths);
 
-// TST-1149001 · level: unit · module: MOD-implementation-pages
-// guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
-// given: the fixture product with two teams, and overview-cache holding the facts of its commit (declaration, items, sprints, role assignments, module files, requirements)
-// input: the route backlog's render
-// expect: no file the facts come from is read, by `read` or in a batch — not the declaration, an item, a sprint, a role assignment, a module file nor the SPEC; `readOn` is asked for overview-cache / <commit>.facts.json; the page lists the three items and both teams
-test("the backlog page reads none of the files the stored facts come from", async () => {
-  const { html, calls } = await render((files) => factsFile(files));
-  const files = Object.keys(productFiles()).filter(FILES_STORED_FROM);
-  assert.deepEqual(readPaths(calls).filter((path) => files.includes(path)), [], "no file the facts come from is read");
-  assert.deepEqual(batched(calls).filter((path) => files.includes(path)), [], "none is asked for in a batch either");
-  assert.ok(calls.some((call) => call.fn === "readOn" && call.branch === "overview-cache" && call.path === `${COMMIT}.facts.json`), "the stored facts are asked for");
-  assert.deepEqual([...html.slice(html.indexOf('data-part="backlog"')).matchAll(/<tr data-item="(ITM-\d{3})"/g)].map((match) => match[1]), ["ITM-001", "ITM-002", "ITM-003"]);
-  assert.ok(html.includes('data-team="team1"') && html.includes('data-team="team2"'));
-});
-
 // TST-1149002 · level: unit · module: MOD-implementation-pages
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
-// given: the same product, with and without the facts stored for its commit
+// given: the fixture product with two teams, with a facts file of its commit planted on overview-cache (declaration, items, sprints, role assignments, module files, requirements) and without one
 // input: the route backlog's render, both ways
-// expect: the page is the same HTML; without them every file the facts come from is told to `readMany` (the declaration, the three items, the two sprints, the two role assignments, the two module files) and the SPEC is read (the counter-proof of TST-1149001)
-test("the backlog page shows the same page from the files, which it reads in batches", async () => {
-  const stored = await render((files) => factsFile(files));
+// expect: the page is the same HTML, listing the three items and both teams; both ways every file the facts come from is told to `readMany` (the declaration, the three items, the two sprints, the two role assignments, the two module files) and the SPEC is read; `readOn` is asked for no `.facts.json` either way
+test("the backlog page reads its facts from the files, in batches, and asks for no facts file", async () => {
+  const planted = await render((files) => factsFile(files));
   const files = await render(undefined);
-  assert.equal(files.html, stored.html, "the same page");
+  assert.equal(planted.html, files.html, "the same page");
+  assert.deepEqual([...planted.html.slice(planted.html.indexOf('data-part="backlog"')).matchAll(/<tr data-item="(ITM-\d{3})"/g)].map((match) => match[1]), ["ITM-001", "ITM-002", "ITM-003"]);
+  assert.ok(planted.html.includes('data-team="team1"') && planted.html.includes('data-team="team2"'));
   const wanted = Object.keys(productFiles()).filter((path) => path !== "SPEC.md" && FILES_STORED_FROM(path));
-  for (const path of wanted) assert.ok(batched(files.calls).includes(path), `${path} is told to readMany`);
-  assert.ok(readPaths(files.calls).includes("SPEC.md"), "the SPEC is read where nothing is stored");
+  for (const [what, { calls }] of [["planted", planted], ["files", files]]) {
+    for (const path of wanted) assert.ok(batched(calls).includes(path), `${what}: ${path} is told to readMany`);
+    assert.ok(readPaths(calls).includes("SPEC.md"), `${what}: the SPEC is read`);
+    assert.deepEqual(calls.filter((call) => call.fn === "readOn" && call.path.endsWith(".facts.json")), [], `${what}: no facts file is asked for`);
+  }
 });
 
 // TST-1149003 · level: unit · module: MOD-implementation-pages
 // guards: PROGRESS AND JOB STATE ARE DERIVED, NOT STORED
-// given: the same product whose instance cannot read the commit its declaration's model_version names (NotFound), with the facts stored and without them
+// given: the same product whose instance cannot read the commit its declaration's model_version names (NotFound), with a facts file planted and without one
 // input: the route backlog's render
 // expect: the page names the commit and the error (NotFound) in a warning; it shows no model-derived part (no "items in progress" line, no burn-down chart) — the catalogue as it stands now is not used instead; the items are still listed
-for (const [label, stored] of [["stored facts", (files) => factsFile(files)], ["files", undefined]]) {
+for (const [label, stored] of [["a facts file planted", (files) => factsFile(files)], ["files", undefined]]) {
   test(`the backlog page names a model version it cannot read and does not fall back to today's catalogue (${label})`, async () => {
     const { html } = await render(stored, { unreadable: named("NotFound", "no such commit") });
     assert.match(html, /<p class="warn">[^<]*<code>a{40}<\/code>[^<]*NotFound/);

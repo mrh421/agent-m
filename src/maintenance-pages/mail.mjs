@@ -27,6 +27,7 @@ import { checkersFor, personHits, pseudonymisationOf, settingsSchemas } from "..
 import { connect, parseAddress } from "../repository-hosts/index.mjs";
 import { queueJob, runOnTab } from "../runtimes/index.mjs";
 import { runPanel } from "../site-frame/index.mjs";
+import { heads } from "./routes.mjs";
 
 const REGISTER = "docs/participants.md";
 const SETTINGS = "docs/settings.md";
@@ -52,7 +53,7 @@ export const link = (href, className, text) => { const anchor = el("a", classNam
 export const issueRoute = (number, product) => `#issue/number=${encodeURIComponent(number)}${product ? `/product=${encodeURIComponent(product)}` : ""}`;
 // A listener that answers only a click the browser marks as a person's (THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK).
 export function button(className, text, listener) {
-  const node = el("button", className, text);
+  const node = el("button", `${className} btn`, text);
   node.setAttribute("type", "button");
   node.addEventListener("click", (event) => { if (event?.isTrusted === true && !node.disabled) listener(event); });
   return node;
@@ -430,4 +431,4 @@ export function mailSubject({ key, title, entries, store }) {
 
 const subject = (params, context) => mailSubject({ key: "mail", title: "Mail", entries: () => listed, store: context.store });
 
-export const route = { name: "mail", entry: "maintenance", title: "Mail", render, subject };
+export const route = { ...heads.mail, render, subject };

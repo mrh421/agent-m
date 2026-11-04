@@ -51,7 +51,9 @@ uses:
   - MOD-work-plans.planSchemas
   - MOD-product-process.declarationSchema
   - MOD-product-process.branchesOf
+  - MOD-product-process.gateSchema
   - MOD-documents.readDocument
+  - MOD-documents.artifactSchemas
   - MOD-bridge-client.Bridge
   - MOD-bridge-client.ask
   - MOD-bridge-client.handOver
@@ -76,6 +78,7 @@ provides:
   - bridgeDriver
   - resumeJob
   - liveState
+  - liveStates
   - jobLog
   - cancelJob
   - retryJob
@@ -108,6 +111,8 @@ it in a browser; its writer and its workflow files are used in Node as well.
 - `ci.mjs` — the CI route: queueing, live state, log and cancel through the repository host.
 - `bridge.mjs` — the Bridge route through the Bridge client, and the driver of an agent or an endpoint on a Bridge.
 - `workflow/github.yml`, `workflow/gitlab.yml` — the templates of the job workflow.
+- `workflow/github-main-changed.yml`, `workflow/gitlab-main-changed.yml` — the templates of the file beside it that runs
+  `onMainChanged`.
 - `pull-request.mjs` — the writer `branch-and-pull-request`.
 - `hand-over.mjs` — a conversation's work handed over.
 - `retry.mjs` — a job started again: `retryJob`.
@@ -204,8 +209,21 @@ stands on github.com, is cloned without a token on every machine, since the pers
 
 The file is not the product's test configuration, which starts no run for job records
 (`A JOB RECORD STARTS NO CI RUN`), and it does not check the Definition of Done: the test configuration MOD-test-schedule
-generates does, through `onDoneCheck`. Moving a product to a newer commit of the instance is writing the file again, on
-a person's decision. A job queued on the CI route records, as the Agent M commit it runs at, the commit the product's file
+generates does, through `onDoneCheck`.
+
+**Beside it, the file that stores what the pages read.** On GitHub, `.github/workflows/agent-m-main-changed.yml`; on
+GitLab, `.gitlab/agent-m-main-changed.yml`, which the product's `.gitlab-ci.yml` includes as it includes the job workflow.
+It names the same instance repository and commit as the job workflow, and has one job, on the server's runners: on every
+push to the default branch, on the server's schedule and on a start from the server's own page, it checks out the
+product and the instance at that commit, makes the branches `trace-cache` and `overview-cache` once, as orphan commits,
+where the product has none, and runs MOD-workflow-entries' `onMainChanged`, as the instance's own
+`.github/workflows/main-changed.yml` does. It runs no agent, calls no model and reads no key. It writes with the
+workflow's own token on GitHub (`permissions: contents: write`), whose pushes start no run, and on GitLab, whose job
+token may not push unless the project allows it, with the person's token, the job being of the environment
+`agent-m-write`, as the job that writes is. Until a product's files are written again at a commit that holds this file,
+the product has none, and its pages read what its branches hold, or derive it where they hold nothing.
+
+Moving a product to a newer commit of the instance is writing the files again, on a person's decision. A job queued on the CI route records, as the Agent M commit it runs at, the commit the product's file
 pins — the commit the run's checkout of the instance is at —, not the commit the page that queued it was served from.
 
 ## Interfaces
@@ -234,8 +252,8 @@ pins — the commit the run's checkout of the instance is at —, not the commit
   string }>` — commits the job's start record, on the head that was read, as the person's commit; on the tab's route the
   start and its taking are one commit, the taking by `tab <browser>`, `<browser>` this browser's identifier, or
   this tab's own (Data). For a job of a run (`start.run`), the same commit appends a `Job started` part
-  to the run's record, through MOD-job-ledger's `appendToRecord`: two drivers that computed the same action cannot both
-  start it, since the second commit is refused on a head that moved, and its driver computes the run's actions again. The push starts the job workflow on the CI route; a Bridge takes the job when it
+  to the run's record, through MOD-job-ledger's `appendToRecord`: two starts of the same job cannot both
+  land, since the second commit is refused on a head that moved. The push starts the job workflow on the CI route; a Bridge takes the job when it
   next reads the repository, or at once when `bridge` is given and the job is handed over to it. Crosses the network
   through the host, and to the Bridge; fails with what the host names — the branch moved, a refused token, a used-up rate
   limit —, with what the Bridge client names, and with `WorkflowMissing` for the CI route of a product without the job
@@ -269,7 +287,10 @@ pins — the commit the run's checkout of the instance is at —, not the commit
 - `resumeJob(record: JobRecord, gateRecord: string, route: Route, host: Host, head: string, bridge?: Bridge) ->
   Promise<void>` — appends the resumption, naming the gate record, on the head read, and hands the job back to its route:
   in the tab it goes on from the result this module kept for it, its end appended as a job of the tab ends; on a Bridge it is handed over again when `bridge` is given, and otherwise taken up when the
-  Bridge next reads the repository; on CI the push itself starts the job workflow, which goes on.
+  Bridge next reads the repository; on CI the push itself starts the job workflow, which goes on. Where the gate record
+  is a rejection (`decision: rejected`), it appends instead the job's End, `failed`, with the reason `the gate <gate> was
+  rejected by <gate record>`, followed by `: <the record's reason>` where the record gives one, and nothing goes on: the
+  tab drops the result it kept, a Bridge is not asked, CI starts nothing.
 - `liveState(record: JobRecord, product: { host: Host }, bridges: Record<string, Bridge>) -> Promise<LiveState>` — asks the
   runtime that holds a job that has not ended: the CI service's runs of the job workflow for the job, through the host;
   the list of jobs of the Bridge its record names, among `bridges`; this tab.
@@ -280,6 +301,9 @@ pins — the commit the run's checkout of the instance is at —, not the commit
   `reachable: false` with the reason that its live state and log exist only in that browser's tab (UC-036 1b); one this
   browser took and this tab does not hold gives `known: false`, so that it is *ended without record* (1c); which
   browser is this one, and how a bare `tab` is read, says Data.
+- `liveStates(records: JobRecord[], product: { host: Host }, bridges: Record<string, Bridge>) -> Promise<Map<string,
+  LiveState>>` — `liveState` for each of the records of one repository that have not ended, keyed by job identifier, the
+  runs of the job workflow listed once for all of them; the same states `liveState` gives one by one.
 - `jobLog(record: JobRecord, product: { host: Host }, bridges: Record<string, Bridge>) -> Promise<{ stream:
   AsyncIterable<string> } | { address: string } | { gone: true }>` — the log, streamed from a Bridge or this tab while the
   job runs, the CI run's log by its address, or that the runtime keeps it no longer.
@@ -311,11 +335,13 @@ pins — the commit the run's checkout of the instance is at —, not the commit
   for no key and one for each of `secrets.keys` in their order, and the job that writes — on GitHub the agent's job of a
   key naming the secret of that key alone and the job that writes naming `secrets.token` and every key; on GitLab the
   agent's job of a key of the environment `agent-m-key-<its name>`, the job that writes of `agent-m-write`, reading the
-  token by the name `secrets.token`, and the plan and the agent's job 0 of none. On GitLab, `gitlabCi` is the product's
+  token by the name `secrets.token`, and the plan and the agent's job 0 of none; and, beside them, the file that runs
+  `onMainChanged`, at the same commit. On GitLab, `gitlabCi` is the product's
   `.gitlab-ci.yml` at the head the caller read, `null` where it has none. The returned `.gitlab-ci.yml` is that text with
   three additions, each made only where it is missing:
   - the inputs `job`, `task` and `endpoint` under its `spec:` header, with the header where the file has none;
-  - the entry `- local: .gitlab/agent-m-jobs.yml` under its `include:`, with the key where the file has none;
+  - the entries `- local: .gitlab/agent-m-jobs.yml` and `- local: .gitlab/agent-m-main-changed.yml` under its
+    `include:`, with the key where the file has none;
   - the inputs that entry passes on.
   Every other line stays as it is. Where the product has no `.gitlab-ci.yml`, the returned one is the whole file.
 - `gitlabVariableScopes(secrets: { token: string, keys: string[] }) -> { name: string, scopes: string[] }[]` — on GitLab,
@@ -383,6 +409,10 @@ through MOD-browser-store, it reads `browser`, and writes it where it is not set
   `MOD-work-plans.planSchemas`, `MOD-product-process.declarationSchema`, `MOD-product-process.branchesOf`,
   `MOD-documents.readDocument` — the branch a pull request the writer opens goes into, from the sprint records, the
   plan's order and the declared branches;
+  `MOD-documents.artifactSchemas` — the item schema, by which the writer reads the `origin` of the items a pull request
+  names, for the issues they come from;
+  `MOD-product-process.gateSchema`, with `MOD-documents.readDocument` — the decision of the gate record `resumeJob` is
+  given;
   `MOD-repository-hosts.startWorkflow` — the start of a handed-over job, with its task.
 - `MOD-participant-list.reachedThrough` — a subagent's route through the participant that starts it.
 - `MOD-bridge-client.Bridge`, `MOD-bridge-client.ask`, `MOD-bridge-client.handOver`, `MOD-bridge-client.bridgeJobs`,

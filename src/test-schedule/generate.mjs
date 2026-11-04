@@ -261,12 +261,123 @@ function triggersOf(text) {
   return body.filter((line) => indent(line) === base).map((line) => /^\s*(?:-\s+)?([\w-]+)/.exec(line)?.[1]).filter(Boolean);
 }
 
-// The occasion each event of a workflow stands for.
-const EVENT_OCCASION = { push: "every commit", pull_request: "pull request", pull_request_target: "pull request", schedule: "nightly", workflow_dispatch: "on demand" };
+// The occasion each event of a workflow, and each pipeline source of a GitLab file, stands for.
+const EVENT_OCCASION = { push: "every commit", pull_request: "pull request", pull_request_target: "pull request", schedule: "nightly", workflow_dispatch: "on demand",
+  merge_request_event: "pull request", web: "on demand" };
+
+// The pipeline source each keyword of a GitLab job's `only` and `except` stands for; a ref name or `branches` or `tags` is a push.
+const GITLAB_KEYWORD = { pushes: "push", merge_requests: "merge_request_event", schedules: "schedule", web: "web", api: "api", triggers: "trigger",
+  pipelines: "pipeline", chat: "chat", external: "external", external_pull_requests: "external_pull_request_event" };
+// The top-level keys of a `.gitlab-ci.yml` that are no job.
+const GITLAB_GLOBAL = new Set(["stages", "include", "variables", "default", "workflow", "image", "services", "cache", "before_script", "after_script", "spec"]);
+
+const indentOf = (line) => line.length - line.trimStart().length;
+const quiet = (line) => /^\s*(#.*)?$/.test(line);
+
+// The top-level keys of a YAML text that carry a block, each with the lines of its block.
+function blocksOf(text) {
+  const blocks = new Map();
+  let body = null;
+  for (const line of text.split("\n")) {
+    if (quiet(line)) continue;
+    if (/^\s/.test(line)) {
+      body?.push(line);
+      continue;
+    }
+    const key = /^([^\s:#"'-][^:]*?)\s*:\s*(?:#.*)?$/.exec(line)?.[1];
+    body = key ? [] : null;
+    if (key) blocks.set(key, body);
+  }
+  return blocks;
+}
+
+// The key `name` that stands at the first level of a block, as { inline, lines }: what follows it on its line, and the lines below it.
+function childOf(body, name) {
+  const base = Math.min(...body.map(indentOf));
+  const at = body.findIndex((line) => indentOf(line) === base && new RegExp(`^${name}\\s*:`).test(line.trim()));
+  if (at < 0) return null;
+  const below = [];
+  for (const line of body.slice(at + 1)) {
+    if (indentOf(line) <= base) break;
+    below.push(line);
+  }
+  return { inline: body[at].trim().replace(new RegExp(`^${name}\\s*:\\s*`), "").replace(/\s+#.*$/, ""), lines: below };
+}
+
+// The items of a list, each as its own text: the lines below a `-` at the list's first level, up to the next such `-`.
+function itemsOf(lines) {
+  const base = Math.min(...lines.map(indentOf));
+  const items = [];
+  for (const line of lines) {
+    if (indentOf(line) === base && line.trim().startsWith("-")) items.push(line);
+    else if (items.length) items[items.length - 1] += `\n${line}`;
+  }
+  return items;
+}
+
+// The pipeline sources a condition names: `$CI_PIPELINE_SOURCE == "push"`, or `=~ /^(push|schedule)$/`, joined by `||` or not.
+function sourcesIn(text) {
+  const named = [];
+  for (const [, quoted, single, pattern] of text.matchAll(/\$CI_PIPELINE_SOURCE\s*(?:==|=~)\s*(?:"([^"]*)"|'([^']*)'|\/([^/]*)\/)/g)) {
+    named.push(...(quoted ?? single ?? pattern).match(/[a-z_]+/g));
+  }
+  return named;
+}
+
+// What `rules` say: the sources of the rules that run the job, whether one of them names none, and the sources a rule excludes with `when: never`.
+function rulesOf(rules) {
+  const reading = { named: [], unnamed: false, denied: [] };
+  for (const item of itemsOf(rules?.lines ?? [])) {
+    const named = sourcesIn(item);
+    if (/\bwhen:\s*["']?never\b/.test(item)) reading.denied.push(...named);
+    else if (named.length) reading.named.push(...named);
+    else reading.unnamed = true;
+  }
+  return reading;
+}
+
+// The words of a job's `only` or `except`: an inline list or word, a list, or the list below `refs:`.
+function wordsOf(key) {
+  if (!key) return null;
+  const words = [...key.inline.matchAll(/[\w*/.^$()|-]+/g)].map((m) => m[0]);
+  let listed = true;
+  for (const line of key.lines) {
+    const text = line.trim();
+    if (text.startsWith("-")) {
+      if (listed) words.push(text.replace(/^-\s*/, "").replace(/\s+#.*$/, "").replace(/^["']|["']$/g, ""));
+    } else listed = /^refs\s*:/.test(text);
+  }
+  return words;
+}
+const sourceOfWord = (word) => GITLAB_KEYWORD[word] ?? "push";
+
+// The pipeline sources that start the jobs of a `.gitlab-ci.yml`, in the order the file names them, or null where it holds no job.
+function gitlabTriggersOf(text) {
+  const blocks = blocksOf(text);
+  const workflow = rulesOf(blocks.has("workflow") && blocks.get("workflow").length ? childOf(blocks.get("workflow"), "rules") : null);
+  const allowed = workflow.named.length && !workflow.unnamed ? workflow.named : null;
+  const jobs = [...blocks].filter(([key, body]) => body.length && !GITLAB_GLOBAL.has(key) && !key.startsWith("."));
+  if (!jobs.length) return null;
+  const triggers = [];
+  for (const [, body] of jobs) {
+    const rules = childOf(body, "rules");
+    const only = wordsOf(childOf(body, "only"));
+    const except = (wordsOf(childOf(body, "except")) ?? []).filter((word) => word in GITLAB_KEYWORD).map(sourceOfWord);
+    let own = allowed ?? ["push"];
+    if (rules) {
+      const { named, unnamed } = rulesOf(rules);
+      own = [...named, ...(unnamed ? ["push"] : [])];
+    } else if (only) own = only.map(sourceOfWord);
+    for (const source of own) {
+      if (!workflow.denied.includes(source) && !except.includes(source) && (!allowed || allowed.includes(source))) triggers.push(source);
+    }
+  }
+  return triggers;
+}
 
 // What is said of a configuration Agent M did not generate: its triggers, and the rows the schedule ticks for the occasions they stand for.
-function foreignReading(text, schedule) {
-  const triggers = [...new Set(triggersOf(text))];
+function foreignReading(triggerNames, schedule) {
+  const triggers = [...new Set(triggerNames)];
   const occasions = [...new Set(triggers.flatMap((trigger) => EVENT_OCCASION[trigger] ?? []))];
   const rows = rowsOf(schedule).map(({ cells }) => cells.Row).filter((row) => occasions.some((o) => occasionsOf(row, schedule).includes(o)));
   return `not generated by Agent M; triggers: ${triggers.join(", ") || "none that could be read"}; the schedule runs`
@@ -277,7 +388,7 @@ function foreignReading(text, schedule) {
  * configurationDrift(files, schedule, target, resources, participants) -> Array<{ path, difference }> — where the committed
  * configuration differs from the one `ciConfiguration` generates from the same schedule, target, resources and participants: for
  * each generated file, each run of lines that differs (or the file, where it is missing), with the number of its first line and
- * the lines found and generated; on GitLab also the product's `.gitlab-ci.yml` where it lacks the include entry; and, for each
+ * the lines found and generated; on GitLab also the product's `.gitlab-ci.yml` where it lacks the include entry, with the triggers of its jobs and the rows they run; and, for each
  * GitHub workflow Agent M did not generate, its triggers and the rows they run. Empty where the configuration agrees. Throws
  * `InvalidSchedule`, as `ciConfiguration` does. Nothing of the committed files is used to generate the text they are compared with.
  */
@@ -297,12 +408,14 @@ export function configurationDrift(files, schedule, target, resources, participa
     const { file, entry } = generated.include;
     if (files[file] === undefined) found.push({ path: file, difference: `the file is missing; it must include ${entry}` });
     else if (!files[file].split("\n").some((line) => plainEntry(line) === plainEntry(entry))) {
-      found.push({ path: file, difference: `no line holds the include entry ${entry}` });
+      // Agent M's file is then added beside the product's own configuration (UC-027 1a), whose triggers are read besides the missing entry.
+      const triggers = gitlabTriggersOf(files[file]);
+      found.push({ path: file, difference: `no line holds the include entry ${entry}${triggers ? `; ${foreignReading(triggers, schedule)}` : ""}` });
     }
   }
   if (target.server === "github") {
     for (const path of Object.keys(files)) {
-      if (/^\.github\/workflows\/(?!agent-m-)[^/]+\.ya?ml$/.test(path)) found.push({ path, difference: foreignReading(files[path], schedule) });
+      if (/^\.github\/workflows\/(?!agent-m-)[^/]+\.ya?ml$/.test(path)) found.push({ path, difference: foreignReading(triggersOf(files[path]), schedule) });
     }
   }
   return found;

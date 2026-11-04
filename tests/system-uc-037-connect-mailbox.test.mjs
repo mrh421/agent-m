@@ -27,7 +27,13 @@ import {
 const lineOf = (p) => textOf(byClass(p.main(), "settings-mailbox")[0]);
 const partsOf = (p) => one(p.main(), "mailbox-parts").children.filter((item) => typeof item !== "string").map((item) => textOf(item));
 const carries = (request, secret) => JSON.stringify(request).includes(secret);
+// The read-only request repositoryInfo sends with a token for greenToMerge (ITM-1170): a POST to GitHub's GraphQL API whose query asks for refUpdateRule. It writes nothing.
+const greenToMergeQuery = (request) => request.method === "POST" && request.address === "https://api.github.com/graphql" && /refUpdateRule/.test(request.body ?? "");
 const WRITES = /\b(SELECT|STORE|APPEND|EXPUNGE|COPY|MOVE|DELETE|RENAME|CREATE)\b/i;
+// The prompt bar tests each Bridge this browser keeps when a page is drawn (MOD-prompt-bar: testBridge, GET /v1/pair and GET /v1/agents); a request to a Bridge that is no such test is a mailbox request.
+const isBridgeTest = (request) => /\/v1\/(pair|agents)$/.test(request.address);
+const toBridges = (p, origins) => p.requests.filter((request) => origins.includes(request.origin) && !isBridgeTest(request));
+const testsOfBridges = (p, origins) => p.requests.filter((request) => origins.includes(request.origin) && isBridgeTest(request));
 
 // TST-433701 · level: system · module: MOD-settings-pages · MOD-browser-store · MOD-bridge-client · MOD-mail-protocols · MOD-mail-routes
 // guards: UC-037; A MAILBOX IS REACHED THROUGH ITS PROVIDER'S WEB API OR THROUGH THE BRIDGE; THE MAILBOX PASSWORD IS STORED ONLY AFTER ITS OWN DISCLOSURE; READING THE MAILBOX CHANGES NOTHING IN IT; CONFIGURATION IS STORED IN LOCALSTORAGE, NOT IN A COOKIE
@@ -95,7 +101,7 @@ test("main flow on the IMAP route: Settings → Connect a mailbox, the servers, 
 // guards: UC-037; AN API MAILBOX IS OPENED BY THE PROVIDER'S SIGN-IN; A MAILBOX IS REACHED THROUGH ITS PROVIDER'S WEB API OR THROUGH THE BRIDGE; READING THE MAILBOX CHANGES NOTHING IN IT
 // given: the instance at https://alice.github.io/agent-m/; Microsoft's sign-in service knows the domain contoso-uni.example; Microsoft Graph holds 7 mails in the inbox and 2 in Receipts, Drafts and Sent Items
 // input: Connect a mailbox; reports@contoso-uni.example typed; the return address copied; the client identifier entered; Sign in with Microsoft; folders "INBOX, Receipts"; Store and test
-// expect: the web-API route is preselected, naming Microsoft 365; Microsoft's page for a new app registration is linked, with the name Agent M, the kind single-page application and the return address https://alice.github.io/agent-m/, which Copy puts on the clipboard; a folded explanation names the administrators; before Microsoft's window opens the page names Mail.ReadWrite, Mail.Send and offline_access, and the window is asked for exactly these; "✓ Stored and tested through Microsoft Graph" with INBOX: 7 mails, Receipts: 2 mails, Drafts and Sent found and sending works; the connection stores the route graph, the client identifier and the account and no password; every request to Graph is a GET; no request went to a Bridge; the mailbox is shown connected on the web API (flow: UC-037 main flow, steps 1, 2, 3, 5, 7 and 8, on the web-API route)
+// expect: the web-API route is preselected, naming Microsoft 365; Microsoft's page for a new app registration is linked, with the name Agent M, the kind single-page application and the return address https://alice.github.io/agent-m/, which Copy puts on the clipboard; a folded explanation names the administrators; before Microsoft's window opens the page names Mail.ReadWrite, Mail.Send and offline_access, and the window is asked for exactly these; "✓ Stored and tested through Microsoft Graph" with INBOX: 7 mails, Receipts: 2 mails, Drafts and Sent found and sending works; the connection stores the route graph, the client identifier and the account and no password; every request to Graph is a GET; no mailbox request went to a Bridge, the prompt bar having tested the Bridges this browser keeps with testBridge's two requests; the mailbox is shown connected on the web API (flow: UC-037 main flow, steps 1, 2, 3, 5, 7 and 8, on the web-API route)
 test("main flow on the web-API route: the app registration's steps, the permissions named before Microsoft's window, Store and test through Microsoft Graph", async () => {
   const p = await openDashboard();
   try {
@@ -123,7 +129,9 @@ test("main flow on the web-API route: the app registration's steps, the permissi
     assert.deepEqual(storedMailbox(p), { address: MS_ADDRESS, route: "graph", folders: ["INBOX", "Receipts"], places: [], graph: { clientId: CLIENT, account: MS_ADDRESS } });
     assert.ok(p.graph.requests.length >= 4, "known positive: Graph was asked");
     assert.deepEqual(p.graph.requests.filter((request) => request.method !== "GET"), [], "Graph is only read");
-    assert.deepEqual(p.requests.filter((request) => request.origin === p.bridge.address || request.origin === JUMP), [], "no request went to a Bridge");
+    await waitFor(() => testsOfBridges(p, [p.bridge.address, JUMP]).length > 0, "the prompt bar tested the Bridges");
+    assert.deepEqual(toBridges(p, [p.bridge.address, JUMP]), [], "no mailbox request went to a Bridge");
+    assert.ok(testsOfBridges(p, [p.bridge.address, JUMP]).length > 0, "known positive: the prompt bar tested the Bridges this browser keeps, which is not a mailbox request");
     assert.match(lineOf(p), /reports@contoso-uni\.example · Microsoft 365 \(web API\) · folders INBOX, Receipts/);
   } finally { await p.stop(); }
 });
@@ -206,7 +214,7 @@ test("alternative 3b: an expired sign-in is asked again in Microsoft's window at
 // guards: UC-037; THE MAILBOX PASSWORD IS STORED ONLY AFTER ITS OWN DISCLOSURE
 // given: the IMAP route on the page Connect a mailbox, every other field filled in
 // input: the notice not ticked; Store and test
-// expect: the notice names alice.github.io, the sites of alice, reading all mail and sending in its name, the Bridge as the only server, and an owner used for nothing else; the password field stays disabled; Store and test says to read the notice and that nothing was stored; localStorage holds no mailbox and no password; no request reached the Bridge or a mail server (flow: UC-037 alternative 4a)
+// expect: the notice names alice.github.io, the sites of alice, reading all mail and sending in its name, the Bridge as the only server, and an owner used for nothing else; the password field stays disabled; Store and test says to read the notice and that nothing was stored; localStorage holds no mailbox and no password; no request but the prompt bar's test of the Bridge (GET /v1/pair, GET /v1/agents) reached the Bridge, and none a mail server (flow: UC-037 alternative 4a)
 test("alternative 4a: without the notice ticked the password field stays disabled and nothing is stored", async () => {
   const p = await openDashboard();
   try {
@@ -218,7 +226,9 @@ test("alternative 4a: without the notice ticked the password field stays disable
     assert.match(await storeAndTest(p), /Read the notice.*Nothing was stored/);
     assert.equal(storedMailbox(p), null);
     assert.ok(!storageText(p).includes(PASSWORD));
-    assert.deepEqual(p.requests.filter((request) => request.origin === p.bridge.address), [], "nothing reached the Bridge");
+    await waitFor(() => testsOfBridges(p, [p.bridge.address]).length > 0, "the prompt bar tested the Bridges");
+    assert.deepEqual(toBridges(p, [p.bridge.address]), [], "nothing but the prompt bar's test of the Bridge reached it");
+    assert.ok(testsOfBridges(p, [p.bridge.address]).length > 0, "known positive: the prompt bar tested the Bridge");
     assert.equal(p.imap.logs.commands.length + p.smtp.logs.commands.length, 0, "nothing reached a mail server");
   } finally { await p.stop(); }
 });
@@ -227,7 +237,7 @@ test("alternative 4a: without the notice ticked the password field stays disable
 // guards: UC-037; A MAILBOX THROUGH THE JUMP HOST IS NAMED AS READABLE THERE; A MAILBOX IS REACHED THROUGH ITS PROVIDER'S WEB API OR THROUGH THE BRIDGE
 // given: the IMAP route filled in; the Bridges lab-pc (loopback) and gpu-box (through the jump host https://jump.example.test)
 // input: gpu-box chosen and its notice not ticked, Store and test; lab-pc chosen, Store and test; gpu-box chosen again, its notice ticked, Store and test
-// expect: for gpu-box the page states that the password and the mails pass the jump host and that whoever administers it can read them; unticked, nothing is stored and nothing reaches a Bridge; with lab-pc no such notice is shown and the connection is stored with jumpHostNoted false; with gpu-box ticked the connection is stored naming gpu-box with jumpHostNoted true, and its test went to the jump host's address of gpu-box and to no other Bridge (flow: UC-037 alternative 4b and main flow step 4.4)
+// expect: for gpu-box the page states that the password and the mails pass the jump host and that whoever administers it can read them; unticked, nothing is stored and nothing but the prompt bar's test of the Bridges (GET /v1/pair, GET /v1/agents) reaches a Bridge; with lab-pc no such notice is shown and the connection is stored with jumpHostNoted false; with gpu-box ticked the connection is stored naming gpu-box with jumpHostNoted true, and its test went to the jump host's address of gpu-box and to no other Bridge (flow: UC-037 alternative 4b and main flow step 4.4)
 test("alternative 4b: without the jump host's notice ticked nothing is stored, and another Bridge may be chosen", async () => {
   const p = await openDashboard();
   try {
@@ -237,7 +247,9 @@ test("alternative 4b: without the jump host's notice ticked nothing is stored, a
     assert.match(textOf(one(p.main(), "mailbox-jump-notice")), /pass the jump host.*administers the jump host can read them/);
     assert.match(await storeAndTest(p), /jump host.*Nothing was stored/);
     assert.equal(storedMailbox(p), null);
-    assert.deepEqual(p.requests.filter((request) => request.origin === JUMP || request.origin === p.bridge.address), [], "nothing reached a Bridge");
+    await waitFor(() => testsOfBridges(p, [JUMP, p.bridge.address]).length > 0, "the prompt bar tested the Bridges");
+    assert.deepEqual(toBridges(p, [JUMP, p.bridge.address]), [], "nothing but the prompt bar's test of the Bridges reached one");
+    assert.ok(testsOfBridges(p, [JUMP, p.bridge.address]).length > 0, "known positive: the prompt bar tested the Bridges");
     await put(one(p.main(), "mailbox-bridge"), "lab-pc");
     assert.equal(one(p.main(), "mailbox-jump-notice").hidden, true, "no notice for this computer's Bridge");
     assert.match(await storeAndTest(p), /✓ Stored and tested through lab-pc/);
@@ -429,7 +441,7 @@ test("alternative 7d: the dashboard says where a reply would be sent that sendin
 // guards: UC-037; A CLEAR IS A REAL CLEAR
 // given: a connection on the IMAP route stored and tested; then, in a browser of its own, a connection on the web-API route stored and tested, whose sign-in wrote the library's cache keys
 // input: Disconnect, confirmed once, on each
-// expect: one confirmation is asked, naming the password or the sign-in token; afterwards localStorage holds no mailbox entry, no record of its test, no password, and on the web-API route no sign-in token, refresh token or cache key of the client; the page says nothing is stored and that issues and their mail identifiers are not touched; on the web-API route it links Microsoft's page where the app's access is withdrawn; nothing was written to a repository (flow: UC-037 alternative 8a)
+// expect: one confirmation is asked, naming the password or the sign-in token; afterwards localStorage holds no mailbox entry, no record of its test, no password, and on the web-API route no sign-in token, refresh token or cache key of the client; the page says nothing is stored and that issues and their mail identifiers are not touched; on the web-API route it links Microsoft's page where the app's access is withdrawn; nothing was written to a repository — every request to GitHub that is not a GET is a POST to /graphql whose query asks for refUpdateRule (greenToMerge, ITM-1170) (flow: UC-037 alternative 8a)
 test("alternative 8a: Disconnect asks once and removes the connection with its password or sign-in token from localStorage", async () => {
   for (const route of ["imap", "graph"]) {
     const p = await openDashboard();
@@ -448,7 +460,7 @@ test("alternative 8a: Disconnect asks once and removes the connection with its p
       assert.match(said, /Nothing is stored/);
       assert.match(said, /Issues and their mail identifiers are not touched/);
       if (route === "graph") assert.equal(one(p.main(), "mailbox-withdrawal-link").getAttribute("href"), "https://myapps.microsoft.com");
-      assert.deepEqual(p.requests.filter((request) => request.origin === "https://api.github.com" && request.method !== "GET"), [], "nothing was written to a repository");
+      assert.deepEqual(p.requests.filter((request) => request.origin === "https://api.github.com" && request.method !== "GET" && !greenToMergeQuery(request)), [], "nothing was written to a repository: every request to GitHub that is not a GET is the read-only query for greenToMerge");
     } finally { await p.stop(); }
   }
 });

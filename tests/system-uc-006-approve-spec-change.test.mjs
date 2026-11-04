@@ -444,7 +444,7 @@ test("TST-371002: UC-006 3a saves different wording in the entry's own queue", a
 // TST-371003 · level: system · module: MOD-review-pages; MOD-spec-changes
 // guards: UC-006; A QUEUE IS ACCEPTED IN ITS ORDER; SEVERAL FILES ARE ACCEPTED IN ONE CLICK; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // given: a queue whose entry 05 creates heading "## 1a. Added" and entry 06 changes it
-// input: first tick only 06 and click Accept ticked, then in a fresh repository tick 05 and 06 and click Accept ticked once
+// input: first open the page of entry 06, then the list, tick only 06 and click Accept ticked; then in a fresh repository open the pages of entries 05 and 06, then the list, tick 05 and 06 and click Accept ticked once
 // expect: 06 alone is refused and names 05; with both entries one commit writes 05 before 06; doing nothing on an entry page writes nothing and leaves it open
 test("TST-371003: UC-006 4d accepts ticked queue entries in queue order and names a missing creator", async () => {
   const rejectPath = memoryHost();
@@ -454,6 +454,7 @@ test("TST-371003: UC-006 4d accepts ticked queue entries in queue order and name
   assert.match(oneEntry.textContent, /open/, "the entry stays open until another commit removes it");
 
   const refusedHost = memoryHost();
+  await showProduct(refusedHost, { id: entryId(E06) });
   const refused = await showProduct(refusedHost);
   tick(boxOf(refused, entryId(E06)));
   click(buttonOf(refused, "Accept ticked (1)"));
@@ -462,6 +463,8 @@ test("TST-371003: UC-006 4d accepts ticked queue entries in queue order and name
   assert.equal(refusedHost.writes().length, 0);
 
   const acceptedHost = memoryHost();
+  await showProduct(acceptedHost, { id: entryId(E05) });
+  await showProduct(acceptedHost, { id: entryId(E06) });
   const accepted = await showProduct(acceptedHost);
   tick(boxOf(accepted, entryId(E05)));
   tick(boxOf(accepted, entryId(E06)));

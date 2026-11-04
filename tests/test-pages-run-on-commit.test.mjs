@@ -94,7 +94,7 @@ const RESOURCES = `# Resources of this product\n\n**REGISTER**\n\nThe resources.
 const SCHEDULE = "---\nnightly: 02:00\n---\n## Levels\n\n| Row | every commit | pull request | nightly | release candidate | on demand | runs on |\n|---|---|---|---|---|---|---|\n"
   + "| unit | ✓ | ✓ | ✓ | ✓ | ✓ | |\n| component | ✓ | ✓ | ✓ | ✓ | ✓ | |\n| system | ✓ | ✓ | ✓ | ✓ | ✓ | |\n| paid | | | ✓ | ✓ | ✓ | |\n| release | | | | ✓ | ✓ | |\n| user | | | | ✓ | ✓ | |\n";
 
-const snapshotOf = (commit, files, extra = {}) => ({ commit, paths: Object.keys(files), blob: () => "b".repeat(40), read: async (path) => files[path] ?? null,
+const snapshotOf = (commit, files, extra = {}) => ({ commit, paths: Object.keys(files), blob: () => "b".repeat(40), read: async (path) => files[path] ?? null, readMany: async () => {},
   repository: { server: "github", origin: "https://github.com", path: "org/product", web: PRODUCT }, ...extra });
 
 // The branch trace-cache holds the graph of the product's SPEC and tests as the commit's, as the workflow "main changed" stores it (tests/stored-graph-fake.mjs);

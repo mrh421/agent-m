@@ -175,8 +175,7 @@ const closeRecords = (w) => closesIn(w).map((path) => ({ path, text: w.originTex
 // guards: A SPRINT CLOSED BY AN AGENT STARTS BY ITSELF; CLOSING A SPRINT CAN BE ASSIGNED TO A PARTICIPANT; A JOB IS RECORDED IN ITS PRODUCT REPOSITORY
 // given: a served product whose sprint team1/01 ended on 2026-10-12 and whose closer is `drafter`, a participant whose route names this Bridge and opencode, which it offers with a working folder
 // input: startWatching with an interval of 100 ms; wait for the job to end; three more intervals
-// expect: one record of a job of the kind close-sprint, for `drafter`, on the route `bridge lab-pc agent opencode`, working on ITM-0001 with the parameter sprint team1/01, queued by the Bridge, taken by `lab-pc` and ended `done`; the writer's file shows the sprint
-//         it closed and the agent's working folder; the agent was started once, and no second close is queued
+// expect: one record of a job of the kind close-sprint, for `drafter`, on the route `bridge lab-pc agent opencode`, working on ITM-0001 with the parameter sprint team1/01, queued by the Bridge, taken by `lab-pc` and ended `done`; the writer's file shows the sprint it closed and the agent's working folder; the agent was started once, and no second close is queued
 // Planted fault: not looking at the records of the sprint's closes queues a close at every interval; not running sprintsToClose runs none.
 test("a sprint whose time box ended and whose closer is an agent of this Bridge is closed by that agent, once", async () => {
   await world(async (w) => {

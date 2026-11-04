@@ -1,12 +1,13 @@
 // MOD-prompt-bar, bar.mjs — the bar (docs/architecture/MOD-prompt-bar.md: Parts, Interfaces: startPromptBar, latestDraft, dropDraft, currentJob): the
 // selector, the input, *Send* and *Stop*, the conversation, the answer, and the hand-over a participant proposes: shown with its kind, what it
-// works on, its task, the participant and its route, checked with the product's start rules (hand-over.mjs), queued by *Hand over* and followed
+// works on, its task, the participant and its route (hand-over.mjs), queued as the participant's own job and followed
 // until it has ended (follow.mjs), with *Stop* cancelling it.
 //
 // Module: MOD-prompt-bar
 //
-// THE PAGE NAMES WHERE IT SENDS; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; ONE CLICK PER DECISION. Nothing is read from a participant's
-// route, written or sent while the bar is drawn: *Send* is the one click that sends a message, and the one that, with recording on, writes
+// THE PAGE NAMES WHERE IT SENDS; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; ONE CLICK PER DECISION. Nothing is written or sent to a participant
+// while the bar is drawn — drawing it asks each Bridge this browser keeps only testBridge's two requests, for the CLI sessions it offers (offer.mjs
+// sessionsOffered) —: *Send* is the one click that sends a message, and the one that, with recording on, writes
 // the conversation record first, and the request of whatever its answer hands on; only a click the browser marks as a person's (`isTrusted`)
 // does. The conversation lives in the tab's values (MOD-browser-store): `prompt-bar:conversation`, a list of Messages; `prompt-bar:draft`, the
 // latest ConversationDraft; `prompt-bar:records`, the record each repository's part of the conversation is appended to; and `prompt-bar:job`,
@@ -16,11 +17,24 @@ import { readTabValue, writeTabValue } from "../browser-store/index.mjs";
 import { renderArtifact } from "../markdown-render/index.mjs";
 import { eligible } from "../participant-list/index.mjs";
 import { kindOf } from "../job-catalogue/index.mjs";
-import { endpointsOffered, offeredAmong, placeOf, readParticipants, throughActions } from "./offer.mjs";
-import { followJob } from "./follow.mjs";
-import { assess, queue, spawnEndpointJob, worksOnOf } from "./hand-over.mjs";
-import { appendToConversation, conversationPath, recordingOf } from "./record.mjs";
-import { BAR_KIND, defaultSnapshot, personOf, prepareHandOver, prepareMessage, runMessage, shown, whyNot } from "./send.mjs";
+import { BAR_KIND, endpointsOffered, placeOf, sessionsOffered, throughActions } from "./offer.mjs";
+import { SWITCH, appendToConversation, conversationPath, recordingOf } from "./record.mjs";
+
+// The bar's parts for acting — preparing and sending (send.mjs), handing over (hand-over.mjs) — imported when the person first acts, so that
+// drawing the bar loads none of their modules. Every action prepares through send.mjs first, so that `sending` is held where it is read.
+let sending = null, handing = null;
+const sendPart = async () => (sending ??= await import("./send.mjs"));
+const handPart = async () => (handing ??= await import("./hand-over.mjs"));
+
+/**
+ * followJob(options) -> { stop: () => void, cancel: () => Promise<void> } — follow.mjs' followJob, imported when the bar first follows a job: the
+ * follower at once, whose stop and cancel are passed on once it is imported.
+ */
+export function followJob(options) {
+  let follower = null, stopped = false;
+  const ready = import("./follow.mjs").then(({ followJob: follow }) => { if (!stopped) follower = follow(options); });
+  return { stop: () => { stopped = true; follower?.stop(); }, cancel: async () => { await ready; await follower?.cancel(); } };
+}
 
 const CONVERSATION = "prompt-bar:conversation";
 const DRAFT = "prompt-bar:draft";
@@ -100,9 +114,10 @@ const said = (failure) => `${failure.name ?? "Error"}: ${failure.message}`;
 /**
  * startPromptBar(target: Element, setup: { page: "main" | "review", store: Store, instance: { repository: string, host: Host },
  * product: () -> { address: string, host: Host } | null, subject: () -> Subject, explain: (topic: string) -> Element,
- * go: (route: string, params?: Record<string, string>) -> void }) -> { stop: () -> void } — draws the bar into `target` once the
- * instance's participants are read, and keeps it for the life of the page. With no participant offered it draws nothing and says nothing
- * (UC-049 1a). It crosses the network through the hosts and the participant's route; a failure of either is shown in the bar by name, and
+ * go: (route: string, params?: Record<string, string>) -> void }) -> { stop: () -> void } — draws the bar into `target` once this
+ * browser's endpoints and the CLI sessions its Bridges offer are read, and keeps it for the life of the page; no participant list is read for the
+ * offer. With none offered it draws nothing and says nothing (UC-049 1a). It crosses the network through the hosts, the Bridges this browser keeps
+ * and the participant's route; a failure of either is shown in the bar by name, and
  * nothing is thrown to the caller. `stop` removes the bar and aborts a message that is running.
  */
 export function startPromptBar(target, setup) {
@@ -196,7 +211,8 @@ export function startPromptBar(target, setup) {
     refreshStop();
   }
 
-  // The hand-over the participant proposed: whether the product's start rules let it start and the route it would take; *Hand over* queues it, on a person's click, and the bar follows it.
+  // The hand-over the participant proposed: the route it would take; it is queued as the participant's own job — no start rule of the product's process applies, its kind's own
+  // preconditions refuse it where they find something —, and the bar follows it.
   async function proposeHandOver(section, handOver, participant, subject) {
     const outcome = el("div", "outcome", el("p", "checking", "Checking whether it can start…"));
     section.append(el("p", "proposed", `Participant: ${participant.name} — ${placeOf(participant)}`), outcome);
@@ -207,7 +223,6 @@ export function startPromptBar(target, setup) {
         set.addEventListener("click", () => setup.go("settings"));
         parts.push(set);
       }
-      if (assessment.reasons.length) parts.push(el("ul", "start-reasons", ...assessment.reasons.map((each) => el("li", "reason", each))));
       outcome.replaceChildren(...parts);
     };
     // Queued at once where nothing keeps the work from starting: the person's Send, whose answer proposed it, is the request (UC-049 4a.2).
@@ -219,7 +234,7 @@ export function startPromptBar(target, setup) {
         const source = subject.paramsFor(participant).source;
         const fresh = assessment;
         const conversation = (await recordingOf(fresh.instanceSnapshot)) ? (readTabValue(store, RECORDS) ?? {})[page.address]?.path ?? null : null;
-        const queued = await queue({ handOver, participant, assessment: fresh, store, instance, page, ofProduct: setup.product() !== null, conversation, source });
+        const queued = await (await handPart()).queue({ handOver, participant, assessment: fresh, store, instance, page, ofProduct: setup.product() !== null, conversation, source });
         outcome.append(el("p", "queued", `Queued as ${queued.id}.`));
         keepJob({ id: queued.id, address: page.address });
         follow({ id: queued.id, address: page.address });
@@ -233,13 +248,13 @@ export function startPromptBar(target, setup) {
       } catch (failure) {
         const findings = failure?.name === "NotStartable" && Array.isArray(failure.findings) ? failure.findings : [];
         outcome.append(problem(findings.length > 0 ? "Nothing was queued." : `Nothing was queued. ${said(failure)}`),
-          ...(findings.length > 0 ? [el("ul", "reasons", ...findings.map((each) => el("li", "reason", shown(each))))] : []));
+          ...(findings.length > 0 ? [el("ul", "reasons", ...findings.map((each) => el("li", "reason", sending.shown(each))))] : []));
       }
     }
     try {
-      const assessment = await assess({ handOver, participant, instance, page: pageOf() });
+      const assessment = await (await handPart()).assess({ handOver, participant, instance, page: pageOf() });
       render(assessment);
-      if (assessment.reasons.length === 0 && assessment.route !== null) await queueNow(assessment);
+      if (assessment.route !== null) await queueNow(assessment);
     } catch (failure) {
       outcome.replaceChildren(problem(`It could not be checked whether this can start. ${said(failure)}`));
     }
@@ -255,7 +270,7 @@ export function startPromptBar(target, setup) {
     const text = typeof draft.answer === "string" ? draft.answer : "";
     const left = [...result.remaining, ...result.forPerson];
     const parts = [el("p", "rounds", `Rounds: ${result.rounds.length}`)];
-    if (left.length) parts.push(el("ul", "left", ...left.map((each) => el("li", "finding", shown(each)))));
+    if (left.length) parts.push(el("ul", "left", ...left.map((each) => el("li", "finding", sending.shown(each)))));
     // The edits the participant proposed are a draft, which the review pages show against the current text.
     if (Array.isArray(draft.edits) && draft.edits.length > 0) parts.push(reviewButton(subject, ready.prepared.kind.name, participant, ready.prepared.params, result));
     status.append(...parts);
@@ -275,8 +290,9 @@ export function startPromptBar(target, setup) {
   }
 
   // A hand-over the participant proposed, carried out without a further click (UC-049 4a): in this tab where its kind's result waits for the person and the participant can do the
-  // kind — prepared as a message is, its draft kept for *Review the draft* —, else queued where the start rules let it start (proposeHandOver).
+  // kind — prepared as a message is, its draft kept for *Review the draft* —, else queued as the participant's own job (proposeHandOver).
   async function handOn(handOver, participant, subject, conversation, signal) {
+    const { worksOnOf } = await handPart();
     const section = el("section", "hand-over", el("h3", null, "The participant hands this on"),
       el("p", "kind", `Kind: ${handOver.kind}`), el("p", "works-on", `Works on: ${worksOnOf(handOver).join(", ")}`), el("p", "task", `Task: ${handOver.task}`));
     status.append(section);
@@ -294,25 +310,25 @@ export function startPromptBar(target, setup) {
     }
     let ready;
     try {
-      ready = await prepareHandOver({ handOver, subject, participant, conversation, store, instance, product: setup.product() });
+      ready = await (await sendPart()).prepareHandOver({ handOver, subject, participant, conversation, store, instance, product: setup.product() });
     } catch (failure) {
       section.append(problem(`Nothing was run. ${said(failure)}`));
       return;
     }
-    const reasons = whyNot(ready.prepared, offered);
+    const reasons = sending.whyNot(ready.prepared, offered);
     if (reasons.length) {
       section.append(problem("Nothing was run."), el("ul", "reasons", ...reasons.map((reason) => el("li", "reason", reason))));
       return;
     }
     section.append(el("p", "running", `Running ${handOver.kind} in this tab…`));
     running = { kind: handOver.kind, participant: participant.name, started: new Date() };
-    const result = await runMessage(ready, { signal });
+    const result = await sending.runMessage(ready, { signal });
     if (result.stoppedBecause === "unusable" || !result.draft) {
       section.append(problem("The answer could not be read. Nothing was changed."), el("details", "raw", el("summary", null, "The answer as received"), el("pre", null, result.raw ?? "")));
       return;
     }
     const left = [...result.remaining, ...result.forPerson];
-    section.append(el("p", "rounds", `Rounds: ${result.rounds.length}`), ...(left.length ? [el("ul", "left", ...left.map((each) => el("li", "finding", shown(each))))] : []),
+    section.append(el("p", "rounds", `Rounds: ${result.rounds.length}`), ...(left.length ? [el("ul", "left", ...left.map((each) => el("li", "finding", sending.shown(each))))] : []),
       reviewButton(subject, handOver.kind, participant, ready.prepared.params, result));
   }
 
@@ -333,13 +349,13 @@ export function startPromptBar(target, setup) {
       const earlier = conversationOf(store);
       let ready;
       try {
-        ready = await prepareMessage({ subject, participant, instruction, conversation: earlier, store, instance, product: setup.product() });
+        ready = await (await sendPart()).prepareMessage({ subject, participant, instruction, conversation: earlier, store, instance, product: setup.product() });
       } catch (failure) {
         show(problem(`Nothing was sent. ${said(failure)}`));
         return;
       }
       showRecording(ready.recording);
-      const reasons = whyNot(ready.prepared, offered);
+      const reasons = sending.whyNot(ready.prepared, offered);
       if (reasons.length) {
         show(problem("Nothing was sent."), el("ul", "reasons", ...reasons.map((reason) => el("li", "reason", reason))));
         return;
@@ -364,7 +380,7 @@ export function startPromptBar(target, setup) {
       input.value = "";
       running = { kind: BAR_KIND, participant: participant.name, started: new Date() };
       stop.disabled = false;
-      const result = await runMessage(ready, { signal: controller.signal });
+      const result = await sending.runMessage(ready, { signal: controller.signal });
       const answered = showAnswer(result, ready, subject, participant);
       if (answered !== null) {
         keep([...conversationOf(store), { at: new Date(), from: "participant", who: participant.name, text: answered, subject: subject.key }]);
@@ -400,15 +416,15 @@ export function startPromptBar(target, setup) {
     try {
       const subject = setup.subject();
       const page = pageOf();
-      const instanceSnapshot = await defaultSnapshot(instance.host);
+      const instanceSnapshot = await (await sendPart()).defaultSnapshot(instance.host);
       const recordingOn = await recordingOf(instanceSnapshot);
       showRecording(recordingOn);
       let source;
       try { source = subject.paramsFor(participant).source; } catch (failure) { show(problem(`Nothing was spawned. ${said(failure)}`)); return; }
-      const who = personOf(store, instanceSnapshot, false) ?? "person";
+      const who = sending.personOf(store, instanceSnapshot, false) ?? "person";
       if (recordingOn) await record(page, who, { at: new Date(), who, page: subject.title, text: instruction, withheld: subject.withhold?.(instruction) ?? undefined });
       const conversationPath = recordingOn ? (readTabValue(store, RECORDS) ?? {})[page.address]?.path ?? null : null;
-      const spawned = await spawnEndpointJob({ kind: BAR_KIND, task: instruction, participant, store, instance, page, ofProduct: setup.product() !== null,
+      const spawned = await (await handPart()).spawnEndpointJob({ kind: BAR_KIND, task: instruction, participant, store, instance, page, ofProduct: setup.product() !== null,
         conversation: conversationPath, source, instanceSnapshot });
       if (spawned.refused) {
         const parts = [problem(`Nothing was spawned: ${spawned.refused}.`)];
@@ -429,7 +445,7 @@ export function startPromptBar(target, setup) {
     } catch (failure) {
       const findings = failure?.name === "NotStartable" && Array.isArray(failure.findings) ? failure.findings : [];
       show(problem(findings.length > 0 ? "Nothing was spawned." : `Nothing was spawned. ${said(failure)}`),
-        ...(findings.length > 0 ? [el("ul", "reasons", ...findings.map((each) => el("li", "reason", shown(each))))] : []));
+        ...(findings.length > 0 ? [el("ul", "reasons", ...findings.map((each) => el("li", "reason", sending.shown(each))))] : []));
     } finally {
       state.spawning = false;
       send.disabled = false;
@@ -445,7 +461,7 @@ export function startPromptBar(target, setup) {
   // The participants reached that can do the kind of the subject now (UC-019 2): `eligible` judges them against the `needs` of the kind's
   // definition. The subject is a getter, so the offer is drawn from it whenever the bar is used: when the bar is drawn, when its input or its
   // selector takes focus, and on *Send*. Where some are reached and none can, the bar says so, names what the kind needs and links the route
-  // `participants` (UC-019 3a).
+  // `endpoints` (UC-019 3a).
   async function judge() {
     const kind = await kindOf(BAR_KIND);
     if (state.stopped) return;
@@ -458,9 +474,9 @@ export function startPromptBar(target, setup) {
     if (offered.length === 0) {
       selector = null;
       offeredNames = null;
-      const link = button("participants-link", "Set up participants");
-      link.addEventListener("click", () => setup.go("participants"));
-      chooser.replaceChildren(el("p", "none-able", `No participant of this instance can do ${kind.name}: it needs ${kind.needs.join(", ")}.`), link);
+      const link = button("endpoints-link", "Set up endpoints");
+      link.addEventListener("click", () => setup.go("endpoints"));
+      chooser.replaceChildren(el("p", "none-able", `No endpoint or CLI session of this browser can do ${kind.name}: it needs ${kind.needs.join(", ")}.`), link);
       return;
     }
     const named = (each) => `${each.name} — ${placeOf(each)}`;
@@ -495,14 +511,12 @@ export function startPromptBar(target, setup) {
   }
 
   async function draw() {
-    // The instance's default branch as the page's own load read it, where the page hands it (setup.instanceSnapshot), else read here.
-    const snapshot = (await setup.instanceSnapshot?.()) ?? await defaultSnapshot(instance.host);
+    // The instance's default branch as the page's own load read it, where the page hands it (setup.instanceSnapshot), else read here, narrowed to the one
+    // file the bar reads as it is drawn: whether conversations are recorded.
+    const snapshot = (await setup.instanceSnapshot?.()) ?? await instance.host.readSnapshot((await instance.host.repositoryInfo()).defaultBranch, { folders: [SWITCH] });
     instanceWeb = snapshot.repository.web;
-    // This browser's endpoints first (UC-049 1); then the participants of the instance's list this browser reaches, other than an endpoint offered already.
-    const own = endpointsOffered(store);
-    const ownNames = new Set(own.map((each) => each.name));
-    reached = [...own, ...offeredAmong(await readParticipants(snapshot), store)
-      .filter((each) => !ownNames.has(each.name) && !ownNames.has(/^endpoint\s+(\S+)/.exec(each.route ?? "")?.[1]))];
+    // This browser's configuration (UC-049 1): its endpoints, then the CLI sessions its Bridges offer; no participant list is read for the offer.
+    reached = [...endpointsOffered(store), ...await sessionsOffered(store)];
     if (reached.length === 0 || state.stopped) return;
     await judge();
     if (state.stopped) return;
@@ -565,7 +579,7 @@ export function startPromptBar(target, setup) {
   }
 
   draw().catch((failure) => {
-    if (!state.stopped) target.replaceChildren(problem(`The prompt bar could not read the participants. ${said(failure)}`));
+    if (!state.stopped) target.replaceChildren(problem(`The prompt bar could not be drawn. ${said(failure)}`));
   });
 
   return {

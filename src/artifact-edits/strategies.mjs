@@ -16,8 +16,8 @@
 //     path. A new module keeps the identifier it declares, which MOD-identifiers' nextIdentifier refuses with IdentifierTaken when the
 //     history holds it. Every mention of an identifier that a write replaces is replaced in every drafted text of the write.
 //   - The identifiers the history holds are those in the paths of every change of the repository's history, and of the head.
-//   - A requirement a use case may realise is one the head's SPEC holds. The notes read `<id> realised "<name>", which matches no
-//     requirement; removed` and `<id> realises no requirement`.
+//   - A requirement a use case may realise is one the head's SPEC holds. The notes read `<id> realised "<name>" which matches no
+//     requirement; removed` and `<id> realises no requirement`; a note holds no comma.
 //   - DueDiligenceMissing carries `decisions`, each `{ path, registry }`, the registry the mark's `what` names.
 
 import { artifactSchemaOf, readDocument } from "../documents/index.mjs";
@@ -148,7 +148,8 @@ async function openFiles(result, context) {
     if (kind === "UC") {
       const { text: cleaned, removed, left } = withoutUnknownNames(body, known);
       body = cleaned;
-      for (const name of removed) notes.push(`${id} realised "${name}", which matches no requirement; removed`);
+      // A note is one item of the End's `results`, in which a comma separates items: it holds none, a comma of the name shown as a semicolon.
+      for (const name of removed) notes.push(`${id} realised "${name.replaceAll(",", ";")}" which matches no requirement; removed`);
       if (left === 0) notes.push(`${id} realises no requirement`);
     }
     if ((await head.read(path)) !== body) written.set(path, body);

@@ -3,6 +3,8 @@
 //
 // Module: MOD-trace-pages
 
-import { route } from "./flow.mjs";
+import { heads, routes } from "./routes.mjs";
 
-export const view = { routes: [route], strategies: [] };
+export { heads };
+
+export const view = { routes, strategies: [] };

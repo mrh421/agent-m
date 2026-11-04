@@ -10,7 +10,7 @@
 // proposeSection hands back an edit. Host and Snapshot are MOD-repository-hosts' types.
 
 import { fallbackEditLinks } from "../artifact-edits/index.mjs";
-import { lastAcceptedText, statuses } from "./status.mjs";
+import { lastAcceptedText, statuses, EMPTY_BLOB } from "./status.mjs";
 
 // The kinds of reviewed file a rejection takes back: those of the proposals the review pages offer (a release test report is decided by its release).
 const REJECTABLE = new Set(["use-case", "architecture-decision", "module"]);
@@ -60,7 +60,7 @@ export async function commitRejection(host, head, { id, files }, person, reason)
  * rejectShown(host: Host, shown: { path: string, blob: string }, person: string, reason: string) -> Promise<{ commit: string } | { fallback: Array<{
  * url: string, path: string, text: string | null, differs: boolean }> }> — rejects the reviewed file that was shown: in one commit on the default
  * branch, on the head it read, under the person's account, with the reason in its message, the file's text becomes the one the most recent approval
- * record of its identifier names, or the file is deleted when no record names one. No record is written. Without a token, nothing is written and GitHub's
+ * record of its identifier names, or the file is deleted when no record names one, or when that text is the empty text of an accepted removal. No record is written. Without a token, nothing is written and GitHub's
  * pages for the same change come back: the editor of the file with the accepted text, or the page that deletes it. Throws, before anything is written: a
  * TypeError for a reason that is missing or blank, and for a path that is no use case, decision or module file; ChangedSinceShown { path } when the head
  * no longer holds the blob shown; NothingToReject { path } when the blob shown is the accepted text. Crosses the network, through the host; fails with
@@ -80,6 +80,7 @@ export async function rejectShown(host, shown, person, reason) {
   if (!file || !REJECTABLE.has(file.kind)) throw new TypeError(`rejectShown: ${shown.path} is no use case, architecture decision or module file`);
   const last = await lastAcceptedText(file.id, host);
   if (last?.blob === shown.blob) throw failure("NothingToReject", `${file.id} is accepted as shown: there is nothing to reject`, { path: shown.path });
-  const files = last ? [{ path: shown.path, text: last.text }] : [{ path: shown.path, delete: true }];
+  // The empty text of an accepted removal is no file on the default branch: the file is deleted, as where no record names one.
+  const files = last && last.blob !== EMPTY_BLOB ? [{ path: shown.path, text: last.text }] : [{ path: shown.path, delete: true }];
   return commitRejection(host, head, { id: file.id, files }, person, reason);
 }

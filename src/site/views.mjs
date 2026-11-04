@@ -29,9 +29,7 @@ export const DASHBOARD = [
   // UC-032 and UC-033 are rendered by MOD-implementation-pages through dashboard-app's public route dispatch; they have no dashboard view file.
   { view: "backlog", builtIn: true, useCases: ["UC-032", "UC-033"] },
   { view: "progress", file: "progress-view.mjs", useCases: ["UC-035"] },
-  { view: "sprint-close", file: "sprint-close-view.mjs", useCases: ["UC-041"] },
   { view: "jobs", file: "jobs-view.mjs", useCases: ["UC-036"] },
-  { view: "run", file: "run-view.mjs", useCases: ["UC-043", "UC-034", "UC-024"] },
   // UC-028, UC-027, UC-026 and UC-013 are rendered by MOD-test-pages through dashboard-app's public route dispatch; they have no dashboard view file.
   { view: "runs", builtIn: true, useCases: ["UC-028"] },
   { view: "schedule", builtIn: true, useCases: ["UC-027"] },

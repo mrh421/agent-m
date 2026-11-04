@@ -94,7 +94,7 @@ def rewritten_or_deleted(history: list[dict]) -> dict:
 
 
 class TestResultRecords(unittest.TestCase):
-    # TST-773201 - level: release - module: MOD-result-records
+    # TST-773201 · level: release · module: MOD-result-records
     # guards: EVERY TEST RUN LEAVES A RESULT RECORD
     # given: the cases of the group runs beside this file: a product whose branch test-results holds the records of earlier runs, and runs that add theirs
     # input: appendResult for each run's record, then resultsAt over the branch for the commit
@@ -108,7 +108,7 @@ class TestResultRecords(unittest.TestCase):
                 self.assertEqual(result["named"], case["expected"]["named"])
                 self.assertEqual(result["outcomes"], case["expected"]["outcomes"])
 
-    # TST-773202 - level: release - module: MOD-result-records
+    # TST-773202 · level: release · module: MOD-result-records
     # guards: TEST RESULTS ARE KEPT IN THE REPOSITORY
     # given: the cases of the groups runs and refused beside this file
     # input: appendResult for each run's record
@@ -126,7 +126,7 @@ class TestResultRecords(unittest.TestCase):
                         self.assertNotIn(path, seen, "a commit of the branch changes a record that stands")
                         seen.add(path)
 
-    # TST-773203 - level: release - module: MOD-result-records
+    # TST-773203 · level: release · module: MOD-result-records
     # guards: A RESULT RECORD IS NEVER REWRITTEN
     # given: the case of the group refused beside this file: a record already stands at a path, and a run tries to add another there with other outcomes
     # input: appendResult for it
@@ -139,7 +139,7 @@ class TestResultRecords(unittest.TestCase):
                 self.assertEqual(result["commits"], [])
                 self.assertEqual(result["outcomes"], case["expected"]["outcomes"])
 
-    # TST-773204 - level: release - module: MOD-result-records
+    # TST-773204 · level: release · module: MOD-result-records
     # guards: A RESULT RECORD IS NEVER REWRITTEN
     # given: the histories of the group history beside this file: one that only adds records, and the fixture that amends one record and deletes another
     # input: the check of the rule over each history

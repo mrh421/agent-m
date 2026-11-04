@@ -1,6 +1,8 @@
 // spec-entries.mjs — the service the descriptor of the SPEC change entries names (MOD-review-pages, Parts): what the one review flow in flow.mjs
 // asks of a kind whose files are the entries of a change queue — their groups and states, one entry with its sections, and the acceptance through
-// MOD-spec-changes' acceptEntries, and the rejection of one entry through its rejectEntry. It draws no page of its own; flow.mjs does.
+// MOD-spec-changes' acceptEntries, and the rejection of one entry through its rejectEntry. It draws no page of its own; flow.mjs does. One entry's page reads the entry's own queue
+// (MOD-spec-changes' queueAt, the folder from the entry's identifier) and the other proposals on its section from MOD-progress-measures' waitingQueues; the list and Review all,
+// which show every queue, read them all (queues).
 //
 // Module: MOD-review-pages
 //
@@ -8,10 +10,11 @@
 // MOD-spec-changes' queues and entryView; nothing is written here but by acceptEntries and rejectEntry. An entry is addressed as spec-<queue folder>-<NN>, the form of
 // its approval record.
 
-import { queues, entryView, acceptEntries, rejectEntry } from "../spec-changes/index.mjs";
+import { queues, queueAt, entryView, acceptEntries, rejectEntry } from "../spec-changes/index.mjs";
+import { waitingQueues } from "../progress-measures/index.mjs";
 import { sectionText } from "../spec-document/index.mjs";
 import { blobSha } from "../text-tools/index.mjs";
-import { sourceSchemas } from "../source-register/index.mjs";
+import { registerPaths, sourceSchemas } from "../source-register/index.mjs";
 import { approvalSchema } from "../approvals/index.mjs";
 import { readDocument, writeDocument } from "../documents/index.mjs";
 import { entrySections } from "./sections.mjs";
@@ -23,6 +26,21 @@ const shortOf = (folder) => folder.slice(folder.lastIndexOf("/") + 1);
 // The identifier of an entry by the folder of its queue and its number, the form of its approval record.
 export const entryId = (folder, number) => `${ENTRY_PREFIX}${shortOf(folder)}-${pad2(number)}`;
 const idOf = (queue, number) => entryId(queue.folder, number);
+// An entry's identifier, spec-<queue folder>-<NN>, as entryId writes it.
+const ENTRY_ID = /^spec-(.+)-(\d{2})$/;
+
+/**
+ * entryAt(snapshot, id) -> Promise<{ queue, item } | null> — the entry `id` and its queue, read from that queue alone (queueAt, the folder from the identifier); null where no queue
+ * of the snapshot holds it.
+ */
+export async function entryAt(snapshot, id) {
+  const parts = ENTRY_ID.exec(String(id ?? ""));
+  const queue = parts ? await queueAt(snapshot, `docs/spec-freigaben/${parts[1]}`) : null;
+  const item = queue?.entries.find((each) => each.number === Number(parts[2]));
+  return item ? { queue, item } : null;
+}
+// The entry that creates an entry's anchor, { queue, entry }, as the page of an entry of `queue` names it: its number in the same queue, else its identifier.
+const creatorName = (queue, by) => (by.queue === queue.folder ? pad2(by.entry) : entryId(by.queue, by.entry));
 // An entry a person may accept: one that no record or decision decides.
 const acceptable = (item) => item.state === "open" || item.state === "stale";
 // An entry a person may tick: also one that waits for its anchor, which goes with the entry that creates it.
@@ -46,8 +64,7 @@ const tickOf = async (queue, item, readOnce) => {
 
 // The files the entry page reads from `snapshot` for its sources: the product's links file and, on a page that shows the instance itself, the register beside it.
 const LINKS = "docs/sources.md";
-const isRegisterEntry = (path) => /^docs\/sources\/[^/]+\.md$/.test(path);
-const sourcePaths = (snapshot, context) => [LINKS, ...(context.product ? [] : snapshot.paths.filter(isRegisterEntry))];
+const sourcePaths = (snapshot, context) => [LINKS, ...(context.product ? [] : registerPaths(snapshot.paths))];
 
 // The product's links and the instance's register, which acceptEntries checks every requirement's source against. A caller that holds the instance's snapshot already
 // passes it as `instanceSnapshot`, and it is not built again; every other caller builds it here.
@@ -62,27 +79,28 @@ export async function sourcesOf({ snapshot, context, instanceSnapshot }) {
     }
   }
   const links = readDocument(linksSchema, LINKS, (await snapshot.read(LINKS)) ?? "");
-  const registerPaths = holder.paths.filter(isRegisterEntry);
+  const entryPaths = registerPaths(holder.paths);
   // A product's register stands in the instance's snapshot, which no read of this page has asked for yet: its files in one batch (on the instance's own page the entry page's batch holds them).
-  if (context.product && registerPaths.length) await holder.readMany?.(registerPaths);
-  const register = await Promise.all(registerPaths
+  if (context.product && entryPaths.length) await holder.readMany?.(entryPaths);
+  const register = await Promise.all(entryPaths
     .map(async (path) => readDocument(entrySchema, path, (await holder.read(path)) ?? "")));
   return { links, register };
 }
 
-// One entry as its page draws it: its sections beside the other proposals on the same section and its queue's order, what holds it back or what a click accepts.
-async function described(all, queue, item, snapshot, context, hrefOf) {
+// One entry as its page draws it: its sections beside the other proposals on the same section — those of the queues `around`, of the earlier commit `asOf` or of the snapshot's
+// own (null) — and its queue's order, what holds it back or what a click accepts.
+async function described({ around, asOf }, queue, item, snapshot, context, hrefOf) {
   const id = idOf(queue, item.number);
   const view = await entryView(queue.folder, item.number, snapshot);
-  const others = all.flatMap((other) => other.entries.filter((each) => idOf(other, each.number) !== id && each.anchor === item.anchor && each.state !== "in SPEC")
+  const others = around.flatMap((other) => other.entries.filter((each) => idOf(other, each.number) !== id && each.anchor === item.anchor && each.state !== "in SPEC")
     .map((each) => ({ id: idOf(other, each.number), state: each.state })));
   const order = queue.entries.map((each) => ({ number: each.number, anchor: each.anchor, state: each.state }));
   const result = { title: `${shortOf(queue.folder)} · entry ${pad2(item.number)}`, status: view.state.replaceAll(" ", "-"), label: view.state,
-    nodes: entrySections(view, others, order, hrefOf), hold: null, shown: null, record: null, edit: view.state === "open" };
+    nodes: entrySections(view, others, order, hrefOf, asOf), hold: null, shown: null, record: null, edit: view.state === "open" };
   if (view.state === "waiting for its anchor") {
     result.shown = [shownOf(queue, item, view)];
     result.hold = el("p", "waits", view.createdBy === null ? "Its heading is in no entry of the queue: it cannot be accepted."
-      : `It goes only with or after entry ${pad2(view.createdBy)}, which creates its heading: accept them together.`);
+      : `It goes only with or after entry ${creatorName(queue, view.createdBy)}, which creates its heading: accept them together.`);
     return result;
   }
   if (!acceptable(item)) return result;
@@ -105,7 +123,7 @@ export const queueService = {
   tokenNote: "A product's SPEC is written with the product's own token. ",
   reviewAll: true,
 
-  // The queues, newest first, each as a group of its entries.
+  // The queues, in the order of their folders' names, each as a group of its entries.
   async groups({ snapshot, token }) {
     const groups = [], texts = new Map();
     const readOnce = (path) => { if (!texts.has(path)) texts.set(path, snapshot.read(path)); return texts.get(path); };
@@ -114,33 +132,34 @@ export const queueService = {
       for (const item of queue.entries) {
         let tick = null;
         if (token && tickable(item)) tick = await tickOf(queue, item, readOnce);
-        entries.push({ after: item.createdBy === null || item.createdBy === undefined ? null : idOf(queue, item.createdBy), id: idOf(queue, item.number), name: pad2(item.number), title: item.anchor, status: item.state.replaceAll(" ", "-"), label: item.state, tick });
+        entries.push({ after: item.createdBy ? entryId(item.createdBy.queue, item.createdBy.entry) : null, id: idOf(queue, item.number), name: pad2(item.number), title: item.anchor, status: item.state.replaceAll(" ", "-"), label: item.state, tick });
       }
       groups.push({ key: shortOf(queue.folder), title: queue.title || shortOf(queue.folder), entries });
     }
     return groups;
   },
 
-  // One entry: null where no queue holds it; else its state, its sections, what holds it back, what a click accepts, and the record without a token.
+  // One entry: null where no queue holds it; else its state, its sections, what holds it back, what a click accepts, and the record without a token. Its own queue is read alone,
+  // the other proposals on its section come from the waiting queues.
   async view({ snapshot, context }, id, hrefOf) {
-    const all = await queues(snapshot);
-    const queue = all.find((candidate) => candidate.entries.some((item) => idOf(candidate, item.number) === id));
-    const item = queue?.entries.find((each) => idOf(queue, each.number) === id);
-    if (!item) return null;
+    const found = await entryAt(snapshot, id);
+    if (!found) return null;
+    const { queue, item } = found;
     // The files the entry's page and its subject read, asked for in one batch: the target, the proposal, the rationale, and the sources the subject needs.
     await snapshot.readMany?.([item.file, item.proposal.path, item.rationale, ...sourcePaths(snapshot, context)].filter(Boolean));
-    return described(all, queue, item, snapshot, context, hrefOf);
+    const { queues: around, asOf } = await waitingQueues(snapshot);
+    return described({ around, asOf }, queue, item, snapshot, context, hrefOf);
   },
 
   // Review all: every entry a click may accept (open, or stale) or that waits for an entry of the sequence, each as view gives it, in the order of the entries' identifiers; the files of all of them are asked for in one batch.
   async all({ snapshot, context }, hrefOf) {
     const all = await queues(snapshot);
     const rows = all.flatMap((queue) => queue.entries.map((item) => ({ queue, item, id: idOf(queue, item.number), state: item.state,
-      after: item.createdBy === null ? null : idOf(queue, item.createdBy) })));
+      after: item.createdBy ? entryId(item.createdBy.queue, item.createdBy.entry) : null })));
     const reviewable = sequenceOf(rows).sort((a, b) => a.id.localeCompare(b.id));
     await snapshot.readMany?.([...new Set(reviewable.flatMap(({ item }) => [item.file, item.proposal.path, item.rationale]).concat(sourcePaths(snapshot, context)).filter(Boolean))]);
     const entries = [];
-    for (const { queue, item, id, after } of reviewable) entries.push({ id, after, ...(await described(all, queue, item, snapshot, context, hrefOf)) });
+    for (const { queue, item, id, after } of reviewable) entries.push({ id, after, ...(await described({ around: all, asOf: null }, queue, item, snapshot, context, hrefOf)) });
     return entries;
   },
 

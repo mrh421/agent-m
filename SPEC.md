@@ -6,8 +6,8 @@ This is the single binding document of Agent M. A sentence belongs here when its
 be a defect. Everything else — how something is built, what was measured, what is planned —
 belongs in `PLAN.md`, in `docs/measurements/`, or in the code, and does not bind.
 
-**No section of this file is written by hand.** Each change is proposed in
-`docs/spec-freigaben/<date>_<name>/`, shown on the review dashboard beside the text it would replace,
+**No section of this file is written by hand.** Each change is proposed in the queue of its section,
+`docs/spec-freigaben/<section>/`, shown on the review dashboard beside the text it would replace,
 and written only when the Product Owner accepts it there (`ACCEPTANCE IS A COMMIT BY THE ACCEPTING
 PERSON`).
 
@@ -690,6 +690,12 @@ again, and an acceptance reads the head it commits on once.
 and an acceptance of three files reads its head once; counter-proof: a load that reads each file by itself exceeds
 that count.
 
+**EVERY PAGE LOADS IN UNDER THREE SECONDS** *(PO A. Maier)*
+Every page of Agent M on the instance's live GitHub Pages site completes loading in less than three seconds, every request
+the page sends to read what it shows included.
+*Check:* `tests/live-page-load.py` — over night, a browser with a window opens every page of the live site and fails for a page
+whose last request ends three seconds or more after its navigation began.
+
 **A PRODUCT'S SETTINGS LIVE IN ITS REPOSITORY** *(PO A. Maier)*
 Settings that govern how a product is developed — its process model, Definition of Done, test
 schedule, pseudonymisation and collaborators — are kept in files of the product's repository, never only
@@ -1083,13 +1089,13 @@ under `products/`, which git ignores except for `products/README.md`.
 `products/` is ignored by git.
 
 **SEVERAL FILES ARE ACCEPTED IN ONE CLICK** *(PO A. Maier)*
-A reviewer who has been shown several reviewed files — opened one by one, or together on one review page
-— may accept all of them with one click, in one commit that holds one approval record per file, each
-naming the text shown.
-*Check:* `tests/review-core.test.mjs` — a batch writes one record per file shown, and none for a file that
-was not shown; counter-proof: a file changed after it was shown is left out and named, and a file the
-review page could not show — one whose named requirements are not all accepted — gets no record and is
-named.
+A reviewer may accept several reviewed files with one click — ticked on their list, or shown together on
+one review page — in one commit that holds one approval record per file, each naming the text the page
+read of that file.
+*Check:* `tests/review-core.test.mjs` — a batch writes one record per file ticked or shown, each naming the
+text the page read, and none for a file not ticked; counter-proof: a file changed after the page read it is
+left out and named, and a file the review page could not show — one whose named requirements are not all
+accepted — gets no record and is named.
 
 **A QUEUE IS ACCEPTED IN ITS ORDER** *(PO A. Maier)*
 Entries of one queue accepted together are written in the order of the queue's index, in one commit,
@@ -1097,11 +1103,6 @@ and an entry whose anchor another entry creates is offered only together with or
 *Check:* `tests/review-core.test.mjs` — accepting 05 and 06 together yields one commit with both
 sections; counter-proof: 06 alone is not offered while its anchor is missing, and the dashboard names
 05.
-
-**A PERSON'S EDITS COLLECT IN ONE OPEN QUEUE** *(PO A. Maier)*
-A SPEC edit saved on the dashboard is added to the person's newest queue of the same day that has no
-accepted entry yet, and opens a new queue only if there is none.
-*Check:* `tests/review-core.test.mjs`
 
 **EVERY STEP EXPLAINS ITSELF** *(PO A. Maier)*
 Every step that asks something of the person carries an explanation that can be expanded, written
@@ -1407,14 +1408,12 @@ A reviewing participant checks every module against its subsystem, by whether it
 responsibility and interface that the subsystem's decision gives it.
 *Check:* no automatic check; at review.
 
-**NO MODULE IS CHECKED AGAINST THE USE CASES** *(PO A. Maier)*
-No module is checked against the use cases.
-*Check:* no automatic check; at review.
-
 **NO REVIEWER IS THE DRAFTER** *(PO A. Maier)*
-The reviewing participant of an architecture draft is not the participant that drafted it and does not use its model.
+The reviewing participant of an architecture draft, other than one of a change described in the prompt bar, is not the
+participant that drafted it and does not use its model.
 *Check:* `tests/test_architecture_review.py` — a reviewer that is the drafter, or uses its model, is refused before
-anything is sent; counter-proof: another participant with another model is accepted.
+anything is sent; counter-proof: another participant with another model is accepted, and so is the drafter of a change
+described in the prompt bar.
 
 **A REVIEWER'S FINDING IS A WARNING** *(PO A. Maier)*
 A finding of the reviewing participant of an architecture draft is a warning.
@@ -1476,9 +1475,8 @@ A refactoring job changes the expected result of no test.
 value fails; counter-proof: one that only moves a test passes.
 
 **AN IMPLEMENTATION JOB CHANGES ONLY ITS MODULES** *(Vibe Coding, ch. 12 §6, ch. 10 §3; PO A. Maier)*
-The pull request of an implementation job changes only code files in the folders of the modules the job was
-given, tests that name one of those modules, and the files outside every module that one of those modules' files names
-as taken over.
+The pull request of an implementation job changes only tests, test helpers, code files in the folders of the modules the
+job was given, and the files outside every module that one of those modules' files names as taken over.
 *Check:* `tests/test_implementation_job.py`
 
 **EVERY CODE FILE BELONGS TO A MODULE** *(PO A. Maier)*
@@ -1680,6 +1678,14 @@ Every backlog item names at least one requirement or use case that it realises.
 Every backlog item names the modules of the architecture that its implementation changes.
 *Check:* `tests/test_backlog_item_fields.py` — an item that names no module, or a module the architecture does not
 describe, is reported; counter-proof: an item naming modules the architecture describes passes.
+
+**ACCEPTING A USE CASE PUTS THE MODULES IT CHANGES INTO THE BACKLOG** *(PO A. Maier)*
+In a model that pulls its work from a backlog, accepting a use case adds one backlog item for each module whose
+implementation its accepted text changes, unless an item not yet done names that module.
+*Check:* `tests/test_backlog_from_acceptance.py` — accepts a fixture use case in a Scrum fixture whose checking fixture
+participant names two modules its text changes. It checks that two items, each naming the use case and one of the modules,
+are committed under the accepting person's account; counter-proof: a module that an item not yet done names gets no item,
+and accepting the same use case in a V-model fixture adds none.
 
 **NOTHING IS IMPLEMENTED BEFORE IT IS ACCEPTED** *(PO A. Maier)*
 An implementation job starts for a backlog item only when every requirement and use case the item

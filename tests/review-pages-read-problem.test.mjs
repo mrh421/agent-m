@@ -77,9 +77,11 @@ const SITES = [
 const GRAPH_NOT_STORED = (commit) => `the trace graph of ${commit.slice(0, 12)} is not stored yet — the workflow "main changed" builds it on every push to the default branch; ` +
   "reload once its run has finished";
 const GRAPH_SITES = [
-  { site: "flow.mjs", route: "spec-entry", params: { id: ENTRY_ID }, product: { graphMissing: true }, requests: 11 },
+  // The entry's own queue is read alone (queueAt) for the page and for its subject; with no overview stored, the other proposals come from every queue (waitingQueues), which
+  // reads the one queue of the fixture a third time on this Host, whose read keeps no text (a snapshot of MOD-repository-hosts answers it from the texts it holds).
+  { site: "flow.mjs", route: "spec-entry", params: { id: ENTRY_ID }, product: { graphMissing: true }, requests: 17 },
   { site: "edit.mjs", route: "requirement", params: { name: LOAN }, product: { graphMissing: true }, requests: 8 },
-  { site: "entry-edit.mjs", route: "spec-entry", params: { id: ENTRY_ID, edit: "1" }, product: { graphMissing: true }, requests: 20 },
+  { site: "entry-edit.mjs", route: "spec-entry", params: { id: ENTRY_ID, edit: "1" }, product: { graphMissing: true }, requests: 23 },
   { site: "jobs.mjs showDraft", route: "use-case", params: { id: "draft" }, product: { graphMissing: true }, requests: 2 },
   // The drafting of the architecture is no such route: while the head's graph is not stored it lists the requirements of the head's SPEC.md (MOD-review-pages, Uses).
 ];
@@ -150,10 +152,7 @@ for (const site of GRAPH_SITES) {
   // guards: UC-008; UC-020
   // given: the review pages over a product whose branch trace-cache holds no graph of the commit shown, with no token stored, and with the product's token stored
   // input: the route and parameters of the table
-  // expect: the page holds one <p class="problem"> whose text is exactly "This page could not be drawn: " and the message of GraphNotStored, "the trace graph of <commit12> is not
-  //   stored yet — …"; no link to store a token, with a token or without; the paragraph is the one readProblem gives for that error. MOD-site-frame's readProblem: "for an error
-  //   that is no host's failure, a fault of the page itself: that this page could not be drawn, with the error's message, and no link to a token" — GraphNotStored is
-  //   MOD-trace-graph's error, not a host's failure.
+  // expect: the page holds one <p class="problem"> whose text is exactly "This page could not be drawn: " and the message of GraphNotStored, "the trace graph of <commit12> is not stored yet — …"; no link to store a token, with a token or without; the paragraph is the one readProblem gives for that error. MOD-site-frame's readProblem: "for an error that is no host's failure, a fault of the page itself: that this page could not be drawn, with the error's message, and no link to a token" — GraphNotStored is MOD-trace-graph's error, not a host's failure.
   test(`${site.site} — a graph that is not stored is named by readProblem: this page could not be drawn, with the message and no link`, async () => {
     for (const token of [false, true]) {
       const { problems, links, commit } = await drawSite(site, token);
@@ -183,8 +182,7 @@ for (const site of GRAPH_SITES) {
 // guards: UC-008; A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the review pages over a product whose branch trace-cache holds no graph of the commit shown, with a token stored
 // input: the route decision/draft
-// expect: no problem paragraph — the page is drawn; its list of what the derivation covers holds the requirement A LOAN… of the head's SPEC.md (li.requirement), and no line of an earlier graph
-//         (p.graph-as-of) — the page shows none. Counter-proof: before this change the same route drew "This page could not be drawn: the trace graph of … is not stored yet" (TST-601015's row for it)
+// expect: no problem paragraph — the page is drawn; its list of what the derivation covers holds the requirement A LOAN… of the head's SPEC.md (li.requirement), and no line of an earlier graph (p.graph-as-of) — the page shows none. Counter-proof: before this change the same route drew "This page could not be drawn: the trace graph of … is not stored yet" (TST-601015's row for it)
 test("jobs.mjs showArchitectureDraft — while the head's graph is not stored, the page lists the head SPEC's requirements and draws", async () => {
   emptyStorage();
   const fake = fakeProduct();

@@ -61,9 +61,7 @@ class ArtifactProvenance(unittest.TestCase):
     # guards: AN ARTIFACT RECORDS THE VERSION THAT PRODUCED IT
     # given: the fixture CI agent ci-drafter (model ci-model-7) at Agent M 2026.10.0, commit abc123def456, job JOB-20261016-0900-a1b2
     # input: its change-use-case job run unattended; the message of the commit the writer open-files made
-    # expect: the message ends with the six lines Agent-M-Version: 2026.10.0, commit abc123def456 / Agent-M-Job: JOB-20261016-0900-a1b2 /
-    #         Agent-M-Kind: change-use-case / Agent-M-Participant: ci-drafter / Agent-M-Model: ci-model-7 / Agent-M-Rounds: 1;
-    #         the detector names the version, the commit, the job, the participant, the model and a trailer line in that message
+    # expect: the message ends with the six lines Agent-M-Version: 2026.10.0, commit abc123def456 / Agent-M-Job: JOB-20261016-0900-a1b2 / Agent-M-Kind: change-use-case / Agent-M-Participant: ci-drafter / Agent-M-Model: ci-model-7 / Agent-M-Rounds: 1; the detector names the version, the commit, the job, the participant, the model and a trailer line in that message
     def test_the_commit_of_a_written_use_case_names_the_version_the_participant_and_the_model(self):
         message = self.use_case["commits"][0]["message"]
         self.assertEqual(message.split("\n")[-6:], trailer("change-use-case"))
@@ -73,8 +71,7 @@ class ArtifactProvenance(unittest.TestCase):
     # guards: AN ARTIFACT RECORDS THE VERSION THAT PRODUCED IT
     # given: the same fixture CI agent
     # input: its change-requirements job run unattended; the message of the commit the writer queue-entries made
-    # expect: the message ends with the six lines Agent-M-Version: 2026.10.0, commit abc123def456 / Agent-M-Job: JOB-20261016-0900-a1b2 /
-    #         Agent-M-Kind: change-requirements / Agent-M-Participant: ci-drafter / Agent-M-Model: ci-model-7 / Agent-M-Rounds: 1
+    # expect: the message ends with the six lines Agent-M-Version: 2026.10.0, commit abc123def456 / Agent-M-Job: JOB-20261016-0900-a1b2 / Agent-M-Kind: change-requirements / Agent-M-Participant: ci-drafter / Agent-M-Model: ci-model-7 / Agent-M-Rounds: 1
     def test_the_commit_of_a_written_queue_entry_names_the_version_the_participant_and_the_model(self):
         message = self.requirement["commits"][0]["message"]
         self.assertEqual(message.split("\n")[-6:], trailer("change-requirements"))
@@ -84,8 +81,7 @@ class ArtifactProvenance(unittest.TestCase):
     # guards: AN ARTIFACT RECORDS THE VERSION THAT PRODUCED IT
     # given: the commit the writer open-files made for the CI agent's use case UC-002
     # input: the detector over the text of every file of that commit
-    # expect: the commit writes docs/use-cases/UC-002-extend-a-loan.md alone, and the detector finds nothing in its text,
-    #         which is the text the driver returned, byte for byte
+    # expect: the commit writes docs/use-cases/UC-002-extend-a-loan.md alone, and the detector finds nothing in its text, which is the text the driver returned, byte for byte
     def test_the_text_of_a_written_use_case_names_none_of_them(self):
         files = self.use_case["commits"][0]["files"]
         self.assertEqual([f["path"] for f in files], [UC2_PATH])

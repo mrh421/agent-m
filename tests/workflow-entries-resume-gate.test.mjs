@@ -166,3 +166,89 @@ test("onRecordsChanged — a job waiting at a gate stays waiting while no decisi
     assert.equal(headOf(w), w.head);
   });
 });
+
+// ---------------------------------------------------------------- a gate that is rejected (ITM-1412)
+//
+// UC-034 7a / UC-024 10a: "The gate record states the rejection and its reason. The job ends, and the item returns to *ready* with the reason attached" (the job's end is MOD-job-ledger's
+// `## End`, whose state `failed` the item states derive from). MOD-product-process: a waiting job "is resumed by its route once the record is on the branch" — the route notices a rejected
+// record too, and where a passed one resumes the job, a rejected one ends it. Readings taken, which the pull request names:
+//   - The record that ends the job is the one `gateStates` calls `rejected` for the gate the job last reached — a record of the gate's deciding role, the newest — and it ends the job it names
+//     in `job:`; a rejection that names another job, or none, ends none, so that a job which reaches the gate later is not ended by an earlier job's rejection.
+//   - The end is `failed`, with no results, and its reason names the gate, the gate record's path and the record's `## Reason`, on one line.
+//   - Like a passed record, a rejected one decided by the job's own participant does not count (`A GATE IS NOT DECIDED BY THE PARTICIPANT WHOSE WORK IT CHECKS`).
+
+const REJECTED_FILE = "docs/gates/20261008-0855-development-sprint-review-c3d4.md";
+const REASON = "The review found no test.";
+const rejectedRecord = (decider, job = JOB) => text("---", `gate: ${GATE}`, `job: ${job}`, `decider: ${decider}`, "role: Product Owner", "decision: rejected", "on:",
+  "  - 0123456789abcdef0123456789abcdef01234567", "date: 2026-10-08 08:55 UTC", "---", "# Gate record", "", "**REGISTER**", "", "## Reason", "", REASON);
+
+// TST-1412001 · level: unit · module: MOD-workflow-entries
+// guards: A JOB STOPS AT EVERY GATE; THE GATE IS RECORDED; UC-034; UC-024
+// given: the product of TST-479151 with its job waiting at the gate `Development → Sprint Review` and another of the route `ci runner:lab` waiting at it, and a gate record on main by `alice`, the Product Owner, who is not the job's participant, naming the job, `decision: rejected`, reason "The review found no test."
+// input: onRecordsChanged on the push of the gate record, the environment of the hosted runner; then onRecordsChanged again
+// expect: outcome `done`, the summary naming the job; in one commit "end <job>: failed" the job's record gains an `## End` of state failed with no results, whose reason names the gate, `docs/gates/20261008-0855-development-sprint-review-c3d4.md` and "The review found no test.", and gains no `## Resumed`; the other route's job is left byte for byte as it was; the second run is `nothing to do` and commits nothing
+test("onRecordsChanged — a job waiting at a gate that is rejected ends failed, naming the gate record and its reason", async () => {
+  await withWorkspace((agentM) => ({ [REJECTED_FILE]: rejectedRecord("alice"), ...Object.fromEntries([waitingJob(JOB, agentM), waitingJob(LAB_JOB, agentM, "ci runner:lab")]) }), async (w) => {
+    const lab = fileAt(w, `docs/jobs/${LAB_JOB}.md`);
+    const status = await run(w);
+    assert.equal(status.outcome, "done");
+    assert.match(status.summary, new RegExp(JOB));
+    const record = fileAt(w, `docs/jobs/${JOB}.md`);
+    assert.match(record, /## End[^]*state: failed/);
+    assert.match(record, new RegExp(`## End[^]*reason: [^\\n]*${GATE}[^\\n]*${REJECTED_FILE}[^\\n]*${REASON.replace(/\./g, "\\.")}`));
+    assert.doesNotMatch(record, /## Resumed/);
+    assert.equal(git(w.product, "rev-list", "--count", `${w.head}..main`), "1");
+    assert.equal(git(w.product, "log", "-1", "--format=%s", "main"), `end ${JOB}: failed`);
+    assert.equal(fileAt(w, `docs/jobs/${LAB_JOB}.md`), lab, "the job of another route is left as it is");
+    const after = headOf(w);
+    git(w.productDir, "pull", "-q", "--ff-only");
+    const again = await run({ ...w, head: after });
+    assert.equal(again.outcome, "nothing to do", again.summary);
+    assert.equal(headOf(w), after, "an ended job is not ended again");
+  });
+});
+
+// TST-1412002 · level: unit · module: MOD-workflow-entries
+// guards: A JOB STOPS AT EVERY GATE; UC-034; UC-024
+// given: the product of TST-1412001 with the job waiting at the gate, and a gate record on main by `alice` that passes the gate and names the job (the counter-proof: the passed record of TST-479151)
+// input: onRecordsChanged
+// expect: outcome `done`; the job's record gains `## Resumed` naming the gate record and no `## End`
+test("onRecordsChanged — a passed record still resumes the job and ends nothing", async () => {
+  await withWorkspace((agentM) => ({ [GATE_FILE]: gateRecord("alice"), ...Object.fromEntries([waitingJob(JOB, agentM)]) }), async (w) => {
+    const status = await run(w);
+    assert.equal(status.outcome, "done");
+    const record = fileAt(w, `docs/jobs/${JOB}.md`);
+    assert.match(record, new RegExp(`## Resumed[^]*gate record: ${GATE_FILE}`));
+    assert.doesNotMatch(record, /## End/);
+  });
+});
+
+// TST-1412003 · level: unit · module: MOD-workflow-entries
+// guards: A GATE IS NOT DECIDED BY THE PARTICIPANT WHOSE WORK IT CHECKS; A JOB STOPS AT EVERY GATE
+// given: the product of TST-1412001 with the job waiting at the gate being ci-bot's, and a gate record on main, rejecting the gate and naming the job, whose decider is `ci-bot` (known positive: the same record decided by `alice` ends the job, TST-1412001)
+// input: onRecordsChanged
+// expect: outcome `nothing to do`; the job's record unchanged; no commit on main
+test("onRecordsChanged — the implementer's own rejection leaves the job waiting", async () => {
+  await withWorkspace((agentM) => ({ [REJECTED_FILE]: rejectedRecord("ci-bot"), ...Object.fromEntries([waitingJob(JOB, agentM)]) }), async (w) => {
+    const before = fileAt(w, `docs/jobs/${JOB}.md`);
+    const status = await run(w);
+    assert.equal(status.outcome, "nothing to do");
+    assert.equal(fileAt(w, `docs/jobs/${JOB}.md`), before);
+    assert.equal(headOf(w), w.head);
+  });
+});
+
+// TST-1412004 · level: unit · module: MOD-workflow-entries
+// guards: A JOB STOPS AT EVERY GATE
+// given: the product of TST-1412001 with the job waiting at the gate, and a gate record on main by `alice` that rejects the gate and names another job, JOB-20261008-0799-ffff (known positive: naming the job ends it, TST-1412001)
+// input: onRecordsChanged
+// expect: outcome `nothing to do`; the job's record unchanged; no commit on main
+test("onRecordsChanged — a rejection that names another job ends no job", async () => {
+  await withWorkspace((agentM) => ({ [REJECTED_FILE]: rejectedRecord("alice", "JOB-20261008-0799-ffff"), ...Object.fromEntries([waitingJob(JOB, agentM)]) }), async (w) => {
+    const before = fileAt(w, `docs/jobs/${JOB}.md`);
+    const status = await run(w);
+    assert.equal(status.outcome, "nothing to do");
+    assert.equal(fileAt(w, `docs/jobs/${JOB}.md`), before);
+    assert.equal(headOf(w), w.head);
+  });
+});

@@ -612,8 +612,7 @@ async function approvalRecordOf(host) {
 // guards: A RED RELEASE IS ACCEPTED ONLY WITH ITS LIMITATIONS RECORDED; ACCEPTING THE RELEASE TEST REPORT RELEASES
 // given: a green, complete candidate (TST-001 passed), no failing test and no worse rate
 // input: acceptAndRelease(host, { path, blob }, { limitations: {} }, "akmaier", "2026-10-07"), then the approval record read back from the default branch
-// expect: the record is exactly the three lines kind, file and blob; it holds no line that begins with `limitation`
-//         (MOD-approvals: `limitation` is "one line per failing test or worse rate ... zero or more", so none for a green release)
+// expect: the record is exactly the three lines kind, file and blob; it holds no line that begins with `limitation` (MOD-approvals: `limitation` is "one line per failing test or worse rate ... zero or more", so none for a green release)
 // counter-proof: passing `limitation: []` again in report.mjs's writeDocument call writes the line `limitation:` and fails this test
 test("TST-934001 acceptAndRelease — the approval record of a green release holds no limitation line", async () => {
   const host = acceptHost({ runsRows: [["TST-001", "unit", "passed", ""]] });

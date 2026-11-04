@@ -99,8 +99,7 @@ test("a source that was only added, or never changed, marks nothing", async () =
 // guards: UC-016
 // given: the history of TST-065701 (a source moved, requirements named), the one of TST-065703 (no move), and a product without docs/sources.md
 // input: the specification view of each; the Host logs its history and file-batch calls
-// expect: with a move: the history of docs/sources.md is read once, as one page of at most 30 commits with changes false, and its files once in a batch; the history of SPEC.md the same; with no move
-//   the history of SPEC.md is not read; without docs/sources.md no history is read at all
+// expect: with a move: the history of docs/sources.md is read once, as one page of at most 30 commits with changes false, and its files once in a batch; the history of SPEC.md the same; with no move the history of SPEC.md is not read; without docs/sources.md no history is read at all
 test("the marks cost one page of commits and one batch of files per history, and nothing where no source moved", async () => {
   const moved = hostOf(history());
   await marked(await render(moved), ["ALPHA RULE", "GAMMA RULE"]);

@@ -44,9 +44,6 @@ uses:
   - MOD-job-ledger.jobCost
   - MOD-progress-measures.productFacts
   - MOD-runtimes.queueJob
-  - MOD-run-planner.runOf
-  - MOD-run-planner.nextActions
-  - MOD-run-planner.finishRun
   - MOD-product-process.declarationSchema
   - MOD-product-process.gateStates
   - MOD-work-plans.sprintFacts
@@ -68,9 +65,7 @@ EXPORT`): those the page hands over, and the queued ones it takes itself from th
 the same job runner, catalogue and ledger as the page and CI, and the agent's own login on this computer (`A LOCAL AGENT
 USES THE PERSON'S OWN LOGIN`). Every process of an agent it starts runs in that agent's enclosure (ARC-054); the
 repositories are reached only by the Bridge, outside it, with the computer's own git login (`NO MODEL READS A
-CREDENTIAL`). For a job of the page, it also calls a model endpoint the page cannot call. While no tab is open, it keeps the runs it serves going: it
-computes their next actions from the records and takes those of its own route (`A RUN CONTINUES WITHOUT A CLICK BETWEEN
-ITS JOBS`), and it starts an agent's sprint close when the sprint ends (`A SPRINT CLOSED BY AN AGENT STARTS BY
+CREDENTIAL`). For a job of the page, it also calls a model endpoint the page cannot call. While no tab is open, it starts an agent's sprint close when the sprint ends (`A SPRINT CLOSED BY AN AGENT STARTS BY
 ITSELF`). It answers the agents, jobs, ask and probe routes of the Bridge's API. It runs in Node, in the Bridge's main
 process.
 
@@ -78,15 +73,13 @@ process.
 
 - `index.mjs` — the interface.
 - `handlers.mjs` — the agents, jobs, ask and probes routes.
-- `watch.mjs` — reading the served products, taking and resuming jobs, advancing runs, sprint ends.
+- `watch.mjs` — reading the served products, taking and resuming jobs, sprint ends.
 - `workfolders.mjs` — a working clone per job, its outbox, and the branches published from it.
 - `pull-requests.mjs` — a product's pull requests through the server's command-line client, logged in as the person.
 - `enclosures.mjs` — the working enclosure of an agent, or the refusal to start it, naming why.
 - `probes.mjs` — the harmless requests of the probes.
 - `access.mjs` — whether this computer's own git login reaches the repositories: one fetch of each into an empty
   repository in a temporary folder (`testAccess`).
-- **Taken over, outside this folder** (`CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT`; the count in `docs/measurements/2026-10-17_code-outside-every-module.md`). Each file goes as stated, in this module's own implementation jobs:
-  - `tests/system-uc-011-local-cli-session.test.mjs`, `tests/release-uc-011-local-cli-session.test.mjs`: their headers name this module, through which a job is handed to a local CLI session (UC-011).
 
 ## Data
 
@@ -154,9 +147,7 @@ settings (MOD-desktop-shell).
   offers are taken — a commit
   only on the head that was read, so that no other route takes them too — and run, a run that MOD-job-runner's
   `failedBecause` fails ending its job `failed` with that reason; jobs of this Bridge waiting at a gate
-  whose record now exists are resumed (`A JOB STOPS AT EVERY GATE`); the next actions of every run of a served product
-  are computed from the product's facts, those of this route taken and those of other routes queued by their start
-  records; a sprint whose close
+  whose record now exists are resumed (`A JOB STOPS AT EVERY GATE`); a sprint whose close
   the product assigned to one of this Bridge's agents is closed by that agent, once,
   when MOD-work-plans' `sprintsToClose` names it — its time box ended, or, without one, every selected item done or
   ended by the Product Owner. A product that cannot be read is skipped with its reason, and read again at the next interval.
@@ -170,7 +161,7 @@ settings (MOD-desktop-shell).
 Every job it runs, the Bridge runs from its start record alone — its kind, the parameters of its `## Parameters` and its
 pinned inputs —, prepared by the job runner on the job's working clone. No person attends a job on a Bridge: as on CI,
 its kind's writer writes at once, and a kind that hands its draft back leaves it in the record's end as `draft:`, from
-which the page shows it and a run starts the job that follows.
+which the page shows it.
 
 An endpoint configuration and its key — of a test, of a models listing or of an ask — exist only for that request. The handler retains
 neither in a clone, job record, log, disk file, shell setting nor process command.
@@ -188,10 +179,6 @@ request in the job's end record, and the Definition-of-Done check in the product
 (`enclosures`). Without them, or where an agent's enclosure answers that it does not work, no process of that agent is
 started: `GET /v1/agents` names the agent as not ready, a job ends failed and an ask fails, each with the enclosure's
 reason and its one-time step.
-
-On a Bridge, `productFacts` runs with the local clone, so the facts that need the server — pull requests, CI runs and
-their results — are `unknown`, and `nextActions` starts nothing that depends on them: merges and CI results are advanced
-by CI's entries and by the page.
 
 Its `instance` is the instance as the Bridge's clone of it holds it: the commits that clone last fetched. Its `instanceAt`
 reads the instance at the commit a served product's declaration names, through that same clone connected as a host. A
@@ -229,11 +216,9 @@ clones. Nothing else.
 - `MOD-job-ledger.JobRecord`, `RecordPart`, `takeJob`, `appendToRecord`, `jobState` — taking, resuming and ending jobs in
   their records, a draft handed back in the end; `recordsNewestFirst` — the job records of a served product it looks
   through; `jobCost` — the cost an end records; `newJobId` — the identifier of a sprint's close it starts.
-- `MOD-runtimes.queueJob` — queueing the next actions of other routes.
-- `MOD-progress-measures.productFacts` — the facts of a served product, read through the local clone, from which its runs'
-  next actions are computed.
-- `MOD-run-planner.runOf`, `MOD-run-planner.nextActions`, `MOD-run-planner.finishRun` — the runs it serves, their next
-  actions, and a run's end on `finish`.
+- `MOD-runtimes.queueJob` — queueing the close of a sprint one of this Bridge's agents closes.
+- `MOD-progress-measures.productFacts` — the facts of a served product, read through the local clone, from which the
+  sprints to close are found.
 - `MOD-product-process.gateStates` — whether a waiting job's gate is decided.
 - `MOD-work-plans.sprintFacts`, `MOD-work-plans.sprintsToClose` — a sprint's facts, and whether it has ended and who
   closes it.

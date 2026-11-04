@@ -70,7 +70,7 @@ const part = (name, text) => ({ name, text, size: 0, sources: [], required: true
 const STAND_INS = {
   preconditions: { "rests-on-accepted": async () => null, "architecture-ready": async () => null },
   recipes: Object.fromEntries(["chosen-requirements", "use-cases", "chapters-for-requirements", "source-excerpt",
-    "spec-with-queues", "whole-spec", "accepted-use-cases", "chapters-for-architecture", "implementation-inputs",
+    "spec-with-queues", "whole-spec", "accepted-use-cases", "whole-architecture", "chapters-for-architecture", "implementation-inputs",
     "chapters-for-implementation", "resource-pins"].map((name) => [name, async () => [part(`${name} part`, `the text of ${name}`)]])),
   checks: Object.fromEntries(["document-schema", STAND_IN_GRAPH, STAND_IN_CLASSES, "requirement-form"]
     .map((name) => [name, (draft) => (name === STAND_IN_GRAPH ? checkFindings(draft)

@@ -29,7 +29,7 @@ import { CONFLICT, CURRENT_RULE, INSTRUCTION, LOAN, SHELF, SPEC, all, assertProp
 // level: system
 // module: MOD-trace-pages; MOD-site-frame; MOD-prompt-bar
 // guards: UC-019; THE PAGE NAMES WHERE IT SENDS
-// given: the specification browser of the product at its default branch, the register offering drafter (this machine, draft text) and observer (Anthropic, USA, read the repository only)
+// given: the specification browser of the product at its default branch, this browser's configuration offering the endpoint drafter (this machine, draft text) and the CLI session release-bridge:observer (Anthropic, USA, read the repository only)
 // input: unfold Lending, open A LOAN HAS A DUE DATE without naming it in the bar, write the instruction in the bar and press Send with the participant drafter
 // expect: before Send the bar names drafter with its place, the only participant that can do the kind, and not observer, and nothing has been sent; after it the one request to the endpoint holds the instruction and names exactly A LOAN HAS A DUE DATE under "The requirements to change"
 test("TST-418001: the prompt bar on the specification browser names where it sends and takes the open requirement as the target", async () => {
@@ -96,8 +96,7 @@ test("TST-418003: an ordered group reaches the participant in its order and its 
 // guards: UC-019; THE PERSON WHO PROMPTS IS A SOURCE
 // given: the author's source exists in the instance but the product does not link it
 // input: the page of the requirement A LOAN HAS A DUE DATE, an instruction in the bar and Send
-// expect: the message is the conversation's, which hands the change on; the change of requirements is never sent and nothing is written: the bar says "Nothing was run." and names the two steps,
-//   registering the person (#library) and linking the source to the product (#sources), as the precondition person-source of change-requirements finds them; the bar offers no link, the steps are text
+// expect: the message is the conversation's, which hands the change on; the change of requirements is never sent and nothing is written: the bar says "Nothing was run." and names the two steps, registering the person (#library) and linking the source to the product (#sources), as the precondition person-source of change-requirements finds them; the bar offers no link, the steps are text
 test("TST-418004: a missing personal source stops the change before it is sent and names the steps", async () => {
   const s = await scenario({ linked: false });
   await onRequirementPage(s);

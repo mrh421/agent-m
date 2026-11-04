@@ -298,9 +298,12 @@ record, the appended sections in order. **A row** of a table: `{ line, cells }`,
 - `classifyCandidates(candidates: Candidate[], existing: { id: string, keys: string[] }[]) -> Classified[]` — the classes
   of one run's candidates against the existing artifacts of their kind (`A CANDIDATE IS NEW, A CHANGE, A DUPLICATE OR A
   CONFLICT`): first the candidates whose normalised key is the same are merged into one, naming every passage they came
-  from (`CANDIDATES ARE DEDUPLICATED AMONG THEMSELVES`); then a candidate whose normalised key equals an existing
-  artifact's is a duplicate of it, whatever its participant proposed, decided by rule (`EXACT DUPLICATES ARE FOUND
-  WITHOUT A MODEL`); every other candidate keeps the class its participant proposed. Keys are normalised by case,
+  from (`CANDIDATES ARE DEDUPLICATED AMONG THEMSELVES`); then a candidate whose normalised key equals that of an existing
+  artifact other than the one its participant proposed it as a change of is a duplicate of it, whatever class its
+  participant proposed, decided by rule (`EXACT DUPLICATES ARE FOUND WITHOUT A MODEL`), since a change stands under the
+  name of what it changes (`A CHANGE IS PROPOSED UNDER THE EXISTING NAME`); a requirement whose normalised rule equals
+  that of the requirement it is proposed as a change of is a duplicate of that requirement all the same; every other
+  candidate keeps the class its participant proposed. Keys are normalised by case,
   white space, quotation marks and dashes. The rules are the same for every kind of artifact (`THE DERIVATION RULES HOLD
   FOR ARCHITECTURE`); only the key differs, and the caller gives it. The result is shown to a person, who may change any
   class (`THE MODEL'S CLASSIFICATION IS MEASURED, NOT TRUSTED`).

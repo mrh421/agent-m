@@ -6,7 +6,7 @@
 // Run: node --test tests/test-pages-schedule-save.test.mjs
 //
 // Module: MOD-test-pages
-// Guards: UC-027; THE CI CONFIGURATION IS GENERATED FROM THE SCHEDULE; CODE ENTERS THE DEFAULT BRANCH THROUGH A PULL REQUEST WITH GREEN CI; GITLAB PRODUCTS ARE SUPPORTED; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; ONE CLICK PER DECISION
+// Guards: UC-027; A RELEASE RUNS EVERY TEST AT EVERY LEVEL; THE CI CONFIGURATION IS GENERATED FROM THE SCHEDULE; CODE ENTERS THE DEFAULT BRANCH THROUGH A PULL REQUEST WITH GREEN CI; GITLAB PRODUCTS ARE SUPPORTED; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; ONE CLICK PER DECISION
 // Level: unit
 //
 // The document is the small DOM of tests/site-frame-dom.mjs, imported unchanged. The product and the instance are hosts of this file, kept to
@@ -24,11 +24,17 @@
 //     instance's default branch as `instanceCommit`.
 //   - The last runs are read with listCiRuns({ workflow: "agent-m-tests.yml" }), the generated file's name (MOD-test-schedule, Data), only
 //     where the default branch holds the generated file. The occasion of a run is told by its event: push → every commit; pull_request or
-//     merge_request_event → pull request; schedule → nightly; workflow_dispatch or web → on demand. A release candidate's run is not told
-//     apart by its event and is shown on the release panel. Of several runs of an occasion, the one started last is shown.
+//     merge_request_event → pull request; schedule → nightly; workflow_dispatch or web → on demand. Of several runs of an occasion, the one
+//     started last is shown.
+//   - A release candidate's run is not told apart by its event, and CiRun names no ref. It is the newest run of the event push of the generated
+//     workflow on a commit that a release tag names (ITM-1418). A release tag is read as a candidate's tag v<version>-rc.<N>, which listTags gives
+//     for the pattern v*-rc.*. MOD-release-evidence sets that tag on the candidate's commit before its run, and the release's v<version> later on
+//     the same commit. The runs are asked with listCiRuns for each commit those tags name, the newest one each.
 //   - A nightly run has not run when the schedule ticks a row for nightly and no run of the event schedule started on or after the date of the
 //     last nightly time that has passed (UTC); the page shows the last run's date, or that there is none, beside that expected date, names on
 //     GitHub that scheduled workflows of a public repository are disabled after a period without activity, and links webLinks().actions.
+//   - A person's click on Save or Merge is a click the browser marks trusted (isTrusted true), as MOD-site-frame's forms and the generate page read it;
+//     a click a script makes is not, and writes nothing (TST-1420001, TST-1420002). Every other click of this file is a person's.
 // The counter-proofs are recorded in the pull request.
 
 import "./site-frame-dom.mjs";
@@ -53,7 +59,10 @@ const byClass = (root, name) => descendants(root, (node) => (node.className ?? "
 const byTag = (root, name) => descendants(root, (node) => node.localName === name);
 const buttonOf = (root, text) => descendants(root, (node) => node.localName === "button" && node.textContent === text).at(-1);
 const saveOf = (root) => buttonOf(root, "Save");
-const click = (button) => button.dispatchEvent(new Event("click"));
+// A person's click is one the browser marks trusted (isTrusted true); a script's click is one it does not (THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK).
+const trusted = (type) => Object.defineProperty(new Event(type), "isTrusted", { value: true });
+const click = (button) => button.dispatchEvent(trusted("click"));
+const scriptClick = (button) => button.dispatchEvent(new Event("click"));
 const day = (ms) => new Date(ms).toISOString().slice(0, 10);
 
 // ---------------------------------------------------------------- the fixtures
@@ -97,12 +106,20 @@ const ciRun = (id, event, state, started, server = "github") => ({ id, workflow:
   url: `${SERVERS[server].address.web}/runs/${id}`, started, ended: null });
 
 // The product's host on a server: its default branch holds `files`; `runs.pr` are the runs of the pull request's head, `runs.last` those of the
-// generated workflow. Every write is recorded in `calls`, in its order.
+// generated workflow; `runs.byCommit` the runs of each other commit, which listCiRuns narrows by event and, with `newest`, to the newest; `runs.tags`
+// the tags listTags gives, narrowed by its pattern's `*` as the host reads it, and `runs.tagsFail` a listTags that fails. Every write is recorded in
+// `calls`, in its order; the patterns listTags is asked for in `tagPatterns`.
 function productHost(server, files, runs = { pr: [], last: [] }) {
   const { address, pipelineSchedules } = SERVERS[server];
-  const calls = [];
+  const calls = [], tagPatterns = [];
   const host = {
-    calls, runs,
+    calls, runs, tagPatterns,
+    listTags: async (pattern) => {
+      tagPatterns.push(pattern);
+      if (host.runs.tagsFail) throw Object.assign(new Error("Unreachable"), { name: "Unreachable", reason: "the server could not be reached" });
+      const glob = new RegExp(`^${String(pattern ?? "*").split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
+      return (host.runs.tags ?? []).filter((tag) => glob.test(tag.name));
+    },
     repositoryInfo: async () => ({ defaultBranch: "main", visibility: "public", canWrite: true }),
     readSnapshot: async (ref) => ({ repository: address, ref, commit: HEAD_COMMIT, paths: Object.keys(files), blob: () => "b".repeat(40),
       read: async (path) => files[path] ?? null, readMany: async () => {}, readOn: async () => null }),
@@ -116,6 +133,10 @@ function productHost(server, files, runs = { pr: [], last: [] }) {
     listCiRuns: async (filter) => {
       calls.push(["listCiRuns", filter]);
       if (filter.commit === PR_HEAD) return host.runs.pr;
+      if (filter.commit) {
+        const found = (host.runs.byCommit?.[filter.commit] ?? []).filter((run) => filter.event === undefined || run.event === filter.event);
+        return filter.newest ? [...found].sort((a, b) => String(b.started ?? "").localeCompare(String(a.started ?? ""))).slice(0, filter.newest) : found;
+      }
       if (filter.workflow === "agent-m-tests.yml") return host.runs.last;
       return [];
     },
@@ -181,6 +202,44 @@ for (const server of ["github", "gitlab"]) {
     assert.deepEqual(byClass(proposalOf(shown.target), "pull-request").map((link) => link.getAttribute("href")), [`${address.web}/pull/7`]);
     assert.deepEqual(writes(shown.host, "mergePullRequest"), []);
     assert.deepEqual(writes(shown.host, "setPipelineSchedule"), []);
+  });
+
+  // TST-1420001 · level: unit · module: MOD-test-pages
+  // guards: THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; UC-027
+  // given: a product on the server (GitHub, then GitLab) with a saved schedule, the route schedule drawn
+  // input: a click on Save that a script makes (isTrusted false), then a person's click on the same Save
+  // expect: after the script's click no branch, no commit and no pull request, and no pull request shown; counter-proof: the person's click then opens one pull request and the page links it
+  test(`TST-1420001: schedule on ${server} — a script's click on Save writes nothing; a person's opens the pull request`, async () => {
+    const shown = await page(server, { "docs/tests/schedule.md": SAVED });
+    scriptClick(saveOf(shown.target));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual(shown.host.calls.filter(([call]) => call !== "listCiRuns"), [], "a script's click writes nothing");
+    assert.equal(proposalOf(shown.target), undefined, "no pull request is shown");
+    click(saveOf(shown.target));
+    await until(() => proposalOf(shown.target), "the pull request shown after the person's click");
+    assert.equal(writes(shown.host, "createBranch").length, 1);
+    assert.equal(writes(shown.host, "commitFiles").length, 1);
+    assert.equal(writes(shown.host, "openPullRequest").length, 1);
+    assert.deepEqual(byClass(proposalOf(shown.target), "pull-request").map((link) => link.getAttribute("href")), [`${address.web}/pull/7`]);
+  });
+
+  // TST-1420002 · level: unit · module: MOD-test-pages
+  // guards: THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; GITLAB PRODUCTS ARE SUPPORTED; UC-027
+  // given: the pull request of a person's Save on the server (GitHub, then GitLab), whose CI is green, with Merge offered
+  // input: a click on Merge that a script makes (isTrusted false), then a person's click on the same Merge
+  // expect: after the script's click nothing is merged, no pipeline schedule is set and the page does not say it is merged; counter-proof: the person's click then merges the pull request once at the head shown, and on GitLab sets the pipeline schedule once
+  test(`TST-1420002: schedule on ${server} — a script's click on Merge merges nothing; a person's merges`, async () => {
+    const shown = await saved(server, undefined, { pr: [ciRun("1", "pull_request", "success", null, server)], last: [] });
+    const merge = buttonOf(proposalOf(shown.target), "Merge");
+    scriptClick(merge);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual(writes(shown.host, "mergePullRequest"), [], "a script's click merges nothing");
+    assert.deepEqual(writes(shown.host, "setPipelineSchedule"), [], "a script's click sets no pipeline schedule");
+    assert.equal(byClass(shown.target, "merged").length, 0, "the page does not say it is merged");
+    click(merge);
+    await until(() => byClass(shown.target, "merged").length, "the merge shown after the person's click");
+    assert.deepEqual(writes(shown.host, "mergePullRequest").map(([, number, head]) => [number, head]), [[7, PR_HEAD]]);
+    assert.equal(writes(shown.host, "setPipelineSchedule").length, server === "gitlab" ? 1 : 0);
   });
 
   // TST-759002 · level: unit · module: MOD-test-pages
@@ -288,7 +347,79 @@ for (const server of ["github", "gitlab"]) {
     assert.deepEqual(byTag(missed, "a").map((link) => link.getAttribute("href")), [`${address.web}/actions`]);
     if (server === "github") assert.match(missed.textContent, /disabled/);
   });
+
+  // TST-1418001 · level: unit · module: MOD-test-pages
+  // guards: UC-027; A RELEASE RUNS EVERY TEST AT EVERY LEVEL
+  // given: a product with a saved schedule and the generated file; its tags v2026.9.0-rc.1 and v2026.9.0 on commit B, v2026.10.0-rc.1 on commit C, vendor-sync on commit D; the generated workflow's runs of B: push 31 (success, 2026-10-01); of C: push 32 (failure, 2026-10-04), push 33 (success, 2026-10-06), and an on-demand start 35 (2026-10-07); of D: push 34 (2026-10-09); the last runs of the four other occasions as TST-759006 gives them
+  // input: the route schedule rendered
+  // expect: the last runs show the five occasions in the order every commit, pull request, nightly, release candidate, on demand; the release candidate's links run 33, the newest push run on a commit a candidate's tag names — not 31 of the older candidate, not the on-demand start 35, not 34 of the tag vendor-sync; the tags were asked for the pattern v*-rc.*, the runs of the generated workflow and the event push for commits B and C each, not D; the page no longer says a release candidate's run is shown on the release panel; known positive: every commit still links run 11
+  test(`TST-1418001: schedule on ${server} — the release candidate's last run is the newest push run on a commit a candidate's tag names`, async () => {
+    const [B, C, D] = ["b", "c", "d"].map((letter) => letter.repeat(39) + "1");
+    const events = server === "github" ? { pr: "pull_request", demand: "workflow_dispatch" } : { pr: "merge_request_event", demand: "web" };
+    const on = (commit, ...run) => ({ ...ciRun(...run, server), commit });
+    const last = [ciRun("10", "push", "success", "2026-10-01T10:00:00Z", server), ciRun("11", "push", "failure", "2026-10-02T10:00:00Z", server),
+      ciRun("12", events.pr, "success", "2026-10-02T11:00:00Z", server), ciRun("13", "schedule", "success", new Date().toISOString(), server),
+      ciRun("14", events.demand, "success", "2026-10-03T09:00:00Z", server)];
+    const runs = { pr: [], last,
+      tags: [{ name: "v2026.9.0-rc.1", commit: B }, { name: "v2026.9.0", commit: B }, { name: "v2026.10.0-rc.1", commit: C }, { name: "vendor-sync", commit: D }],
+      byCommit: { [B]: [on(B, "31", "push", "success", "2026-10-01T12:00:00Z")],
+        [C]: [on(C, "32", "push", "failure", "2026-10-04T12:00:00Z"), on(C, "33", "push", "success", "2026-10-06T12:00:00Z"), on(C, "35", events.demand, "success", "2026-10-07T12:00:00Z")],
+        [D]: [on(D, "34", "push", "success", "2026-10-09T12:00:00Z")] } };
+    const { target, host } = await page(server, { "docs/tests/schedule.md": SAVED, [generated]: "x\n" }, runs);
+    const table = byClass(target, "last-runs")[0];
+    const rows = descendants(table, (node) => node.hasAttribute?.("data-occasion")).map((node) => node.getAttribute("data-occasion"));
+    assert.deepEqual(rows, ["every commit", "pull request", "nightly", "release candidate", "on demand"]);
+    const linkOf = (occasion) => byTag(descendants(table, (node) => node.getAttribute?.("data-occasion") === occasion)[0], "a").map((link) => link.getAttribute("href"));
+    assert.deepEqual(linkOf("release candidate"), [`${address.web}/runs/33`]);
+    assert.deepEqual(linkOf("every commit"), [`${address.web}/runs/11`], "known positive: the last push run of every commit");
+    assert.deepEqual(host.tagPatterns, ["v*-rc.*"]);
+    const asked = writes(host, "listCiRuns").map(([, filter]) => filter).filter((filter) => filter.commit);
+    assert.deepEqual(asked.map((filter) => filter.commit).sort(), [B, C]);
+    for (const filter of asked) assert.deepEqual({ workflow: filter.workflow, event: filter.event }, { workflow: "agent-m-tests.yml", event: "push" });
+    assert.doesNotMatch(byClass(target, "last-runs-block")[0].textContent, /release panel/);
+  });
 }
+
+// TST-1418002 · level: unit · module: MOD-test-pages
+// guards: UC-027; A RELEASE RUNS EVERY TEST AT EVERY LEVEL
+// given: a GitHub product with a saved schedule and the generated file; once without any tag, once with the candidate's tag v2026.10.0-rc.1 on commit E, of which no run started
+// input: the route schedule rendered for each
+// expect: each time the last runs show the row release candidate, saying "no run yet", with no link; known positive: with run 40 (push) on commit E, the row links run 40
+test("TST-1418002: schedule — the release candidate's row says so where none has run", async () => {
+  const E = "e".repeat(39) + "1";
+  const rowOf = (target) => descendants(byClass(target, "last-runs")[0], (node) => node.getAttribute?.("data-occasion") === "release candidate")[0];
+  const files = { "docs/tests/schedule.md": SAVED, [SERVERS.github.generated]: "x\n" };
+  const untagged = await page("github", files, { pr: [], last: [], tags: [] });
+  const tagged = await page("github", files, { pr: [], last: [], tags: [{ name: "v2026.10.0-rc.1", commit: E }], byCommit: {} });
+  for (const { target } of [untagged, tagged]) {
+    assert.ok(rowOf(target), "the row release candidate is shown");
+    assert.match(rowOf(target).textContent, /no run yet/);
+    assert.equal(byTag(rowOf(target), "a").length, 0);
+  }
+  const ran = await page("github", files, { pr: [], last: [], tags: [{ name: "v2026.10.0-rc.1", commit: E }],
+    byCommit: { [E]: [{ ...ciRun("40", "push", "success", "2026-10-06T12:00:00Z"), commit: E }] } });
+  assert.deepEqual(byTag(rowOf(ran.target), "a").map((link) => link.getAttribute("href")), ["https://github.com/org/product/runs/40"], "known positive");
+});
+
+// TST-1418003 · level: unit · module: MOD-test-pages
+// guards: UC-027
+// given: a GitHub product with a saved schedule and the generated file, whose tags cannot be read (listTags fails with Unreachable), and the last runs of TST-759006 for the other occasions
+// input: the route schedule rendered
+// expect: the row release candidate says that the release tags cannot be read, with no link and not "no run yet"; known positive: the rows every commit, pull request, nightly and on demand still link runs 11, 12, 13 and 14
+test("TST-1418003: schedule — tags that cannot be read are said so in the release candidate's row, the other rows kept", async () => {
+  const last = [ciRun("10", "push", "success", "2026-10-01T10:00:00Z"), ciRun("11", "push", "failure", "2026-10-02T10:00:00Z"),
+    ciRun("12", "pull_request", "success", "2026-10-02T11:00:00Z"), ciRun("13", "schedule", "success", new Date().toISOString()),
+    ciRun("14", "workflow_dispatch", "success", "2026-10-03T09:00:00Z")];
+  const { target } = await page("github", { "docs/tests/schedule.md": SAVED, [SERVERS.github.generated]: "x\n" }, { pr: [], last, tagsFail: true });
+  const table = byClass(target, "last-runs")[0];
+  const rowOf = (occasion) => descendants(table, (node) => node.getAttribute?.("data-occasion") === occasion)[0];
+  assert.match(rowOf("release candidate").textContent, /release tags cannot be read/);
+  assert.doesNotMatch(rowOf("release candidate").textContent, /no run yet/);
+  assert.equal(byTag(rowOf("release candidate"), "a").length, 0);
+  const linked = Object.fromEntries(["every commit", "pull request", "nightly", "on demand"].map((occasion) => [occasion, byTag(rowOf(occasion), "a").map((link) => link.getAttribute("href"))]));
+  assert.deepEqual(linked, { "every commit": ["https://github.com/org/product/runs/11"], "pull request": ["https://github.com/org/product/runs/12"],
+    nightly: ["https://github.com/org/product/runs/13"], "on demand": ["https://github.com/org/product/runs/14"] }, "known positive");
+});
 
 // TST-759008 · level: unit · module: MOD-test-pages
 // guards: UC-027

@@ -82,7 +82,10 @@ the fact that the person saw the notice; `graph` belongs to the web-API route, `
 them is present. On the Bridge route, `bridge` names the Bridge the connection goes through, by the name under which the
 browser keeps it, and `jumpHostNoted` records that the person acknowledged, before saving, that the jump host can read
 the password and the mails, where that Bridge is reached through the jump host (`A MAILBOX THROUGH THE JUMP HOST IS NAMED
-AS READABLE THERE`). The password is stored only after its own notice was acknowledged on the page (`THE MAILBOX PASSWORD
+AS READABLE THERE`). `account` is the login on both servers, unless the connection names `smtpAccount`, the login on
+the SMTP server. A mail the connection drafts and sends is from `account`, unless the connection names `sender` — `{
+name: string | null, address: string }` —, from which it is then sent, with the connection's `address` as its
+`Reply-To` where `sender.address` differs from it (UC-037). The password is stored only after its own notice was acknowledged on the page (`THE MAILBOX PASSWORD
 IS STORED ONLY AFTER ITS OWN DISCLOSURE`). The tokens of the Graph route are not part of the connection: Microsoft's library
 keeps them in its own cache in `localStorage`, whose keys Access lists among the browser's settings and removes on a clear
 (ARC-053).

@@ -134,8 +134,7 @@ test("the CiEnvironment holds the release's tag, phase, platform, folders and se
 // guards: THE BRIDGE IS ONE FILE PER PLATFORM
 // given: .github/workflows/release.yml
 // input: its text
-// expect: it runs on a pushed tag; builds on a macOS, a Windows and a Linux runner; runs nothing but the entry (node src/workflow-entries/main.mjs onReleaseTagged); its publish job needs the
-//   builds; counter-proof: a file that builds on one runner only does not pass the same check
+// expect: it runs on a pushed tag; builds on a macOS, a Windows and a Linux runner; runs nothing but the entry (node src/workflow-entries/main.mjs onReleaseTagged); its publish job needs the builds; counter-proof: a file that builds on one runner only does not pass the same check
 const releaseWorkflow = (text) => ({
   onTag: /^on:\s*\n\s+push:\s*\n\s+tags:/m.test(text),
   runners: ["macos-latest", "windows-latest", "ubuntu-latest"].every((runner) => text.includes(runner)),

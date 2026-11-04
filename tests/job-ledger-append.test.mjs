@@ -102,7 +102,7 @@ test("appendToRecord — each kind of part appended after the last section, the 
   assert.equal(jobState(await recordOf(text), null), "done");
 });
 
-// TST-472718 · level: unit · module: MOD-job-ledger
+// TST-1302006 · level: unit · module: MOD-job-ledger
 // guards: A JOB IS RECORDED IN ITS PRODUCT REPOSITORY; A RECORD IS EVIDENCE, NOT A PROPOSAL; UC-007
 // given: one End with two writer notes, one of them holding commas and quotes; and one End without notes
 // input: appendToRecord(QUEUED, End), then the record read back

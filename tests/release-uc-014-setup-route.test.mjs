@@ -76,8 +76,7 @@ function assertPermissionWithWhy(text) {
 // guards: UC-014; THE TOKEN LINK IS PREFILLED
 // given: a fresh browser; the instance akmaier/agent-m; no token stored; known positive — the page has both steps
 // input: render the route `setup`; read Step A's link
-// expect: UC-014 step 7 "A button opens GitHub's token page with name, description, expiry ... prefilled": Step A holds a link to https://github.com/settings/personal-access-tokens/new whose
-//   query carries a non-empty name, a non-empty description, and expires_in 90 (UC-014 step 8 "the 90 days of the prefilled link")
+// expect: UC-014 step 7 "A button opens GitHub's token page with name, description, expiry ... prefilled": Step A holds a link to https://github.com/settings/personal-access-tokens/new whose query carries a non-empty name, a non-empty description, and expires_in 90 (UC-014 step 8 "the 90 days of the prefilled link")
 test("release · UC-014 7: Step A opens GitHub's new-token page with name, description and 90 days prefilled", async () => {
   const { target } = await open();
   assert.ok(stepA(target) && stepB(target), "known positive: both steps stand on the page");
@@ -92,8 +91,7 @@ test("release · UC-014 7: Step A opens GitHub's new-token page with name, descr
 // guards: UC-014; ONE GITHUB TOKEN SERVES EVERY FEATURE
 // given: the page of TST-627001
 // input: read every parameter of Step A's link other than name, description, expires_in and target_name (GitHub's owner parameter)
-// expect: exactly Contents, Issues and Pull requests write; Actions and Workflows write; Metadata read — six permissions, none more, none less, none with another access
-//   (ONE GITHUB TOKEN SERVES EVERY FEATURE: "Contents, Issues and Pull requests read and write, Actions and Workflows read and write, Metadata read")
+// expect: exactly Contents, Issues and Pull requests write; Actions and Workflows write; Metadata read — six permissions, none more, none less, none with another access (ONE GITHUB TOKEN SERVES EVERY FEATURE: "Contents, Issues and Pull requests read and write, Actions and Workflows read and write, Metadata read")
 test("release · UC-014 7: the prefilled link asks for exactly the permissions every feature needs and no other", async () => {
   const { target } = await open();
   const link = tokenLink(target);
@@ -106,8 +104,7 @@ test("release · UC-014 7: the prefilled link asks for exactly the permissions e
 // guards: UC-014; THE REPOSITORY CHOICE IS SPELLED OUT
 // given: the page of TST-627001
 // input: read the text of Step A that stands outside its folded explanation
-// expect: UC-014 step 7 "Underneath, what to do there: choose Only select repositories, pick <owner>/agent-m — only the instance ..., press Generate token, copy it": the text names
-//   "Only select repositories", the instance akmaier/agent-m with "nothing else" or "only the instance", "Generate token" and "copy"
+// expect: UC-014 step 7 "Underneath, what to do there: choose Only select repositories, pick <owner>/agent-m — only the instance ..., press Generate token, copy it": the text names "Only select repositories", the instance akmaier/agent-m with "nothing else" or "only the instance", "Generate token" and "copy"
 test("release · UC-014 7: underneath, Step A says to choose Only select repositories, pick the instance alone, press Generate token and copy it", async () => {
   const { target } = await open();
   const text = withoutFolded(stepA(target));
@@ -122,10 +119,7 @@ test("release · UC-014 7: underneath, Step A says to choose Only select reposit
 // guards: UC-014; EVERY STEP EXPLAINS ITSELF
 // given: the page of TST-627001
 // input: read the folded explanations in Step A, however many there are and in whatever order
-// expect: UC-014 step 7 "A folded ... says what each is for": among Step A's details there is one, not open, whose text, for each of Contents (read and write), Issues (read and write),
-//   Pull requests (read and write), Actions (read and write) and Workflows (read and write), gives the access in the same sentence as the purpose "to save and accept", "for reports that
-//   become issues", "for the jobs' changes", "to start a run", "for a generated CI configuration"; Metadata (read) is named with a reason of at least eight letters. The number of
-//   details and their order are not asserted. A Step A with the permissions in no details fails
+// expect: UC-014 step 7 "A folded ... says what each is for": among Step A's details there is one, not open, whose text, for each of Contents (read and write), Issues (read and write), Pull requests (read and write), Actions (read and write) and Workflows (read and write), gives the access in the same sentence as the purpose "to save and accept", "for reports that become issues", "for the jobs' changes", "to start a run", "for a generated CI configuration"; Metadata (read) is named with a reason of at least eight letters. The number of details and their order are not asserted. A Step A with the permissions in no details fails
 test("release · UC-014 7: Step A carries a folded explanation of what each permission is for", async () => {
   const { target } = await open();
   const saysWhat = (folded) => { try { assertPermissionWithWhy(folded.textContent); return true; } catch { return false; } };
@@ -138,8 +132,7 @@ test("release · UC-014 7: Step A carries a folded explanation of what each perm
 // guards: A TOKEN IS SCOPED TO WHAT IT WRITES
 // given: the page of TST-627001
 // input: read the whole text of Step A, folded explanation included
-// expect: A TOKEN IS SCOPED TO WHAT IT WRITES, "the configuration screen states the minimum scope and why each part is needed": the step names "Only select repositories", the instance
-//   akmaier/agent-m, and each of the six permissions with its access and a reason (the purposes of TST-627004, and for Metadata a reason of at least eight letters)
+// expect: A TOKEN IS SCOPED TO WHAT IT WRITES, "the configuration screen states the minimum scope and why each part is needed": the step names "Only select repositories", the instance akmaier/agent-m, and each of the six permissions with its access and a reason (the purposes of TST-627004, and for Metadata a reason of at least eight letters)
 test("release · A TOKEN IS SCOPED TO WHAT IT WRITES: the step states Only select repositories, the instance, and each permission with why it is needed", async () => {
   const { target } = await open();
   const text = stepA(target).textContent;
@@ -152,9 +145,7 @@ test("release · A TOKEN IS SCOPED TO WHAT IT WRITES: the step states Only selec
 // guards: UC-014; EVERY STEP EXPLAINS ITSELF
 // given: the page of TST-627001
 // input: read the details elements of Step A and of Step B
-// expect: UC-014 "Both steps carry a folded What is this?": among its details each step holds one whose summary reads "What is this?", folded (no open attribute), with a body of more
-//   than forty characters beyond the summary. UC-014 step 7 "A folded Why these? says what each is for": among its details Step A also holds one whose summary reads "Why these?",
-//   folded, whose body names Contents, Issues, Pull requests, Actions, Workflows and Metadata; the fold of Step A that names all six permissions has the summary "Why these?" and no other
+// expect: UC-014 "Both steps carry a folded What is this?": among its details each step holds one whose summary reads "What is this?", folded (no open attribute), with a body of more than forty characters beyond the summary. UC-014 step 7 "A folded Why these? says what each is for": among its details Step A also holds one whose summary reads "Why these?", folded, whose body names Contents, Issues, Pull requests, Actions, Workflows and Metadata; the fold of Step A that names all six permissions has the summary "Why these?" and no other
 test("release · UC-014 7–8: both steps carry a folded What is this?, and Step A a folded Why these?", async (t) => {
   const { target } = await open();
   const foldedTitled = (step, summary) => foldedIn(step).find((folded) => byTag(folded, "summary")[0]?.textContent === summary);
@@ -176,9 +167,7 @@ test("release · UC-014 7–8: both steps carry a folded What is this?, and Step
 // guards: UC-014; THE SHARED PAGES ORIGIN IS DISCLOSED; CONFIGURATION LIVES IN THE BROWSER
 // given: a fresh browser; no acknowledgement stored; a server that would answer 200 for the instance
 // input: render the route; read Step B; paste a valid token into the field without ticking "I have read this"; press Store and check
-// expect: THE SHARED PAGES ORIGIN IS DISCLOSED "states, before a token or key is stored, that every GitHub Pages site under the same <owner>.github.io domain can read what Agent M stores
-//   in the browser": Step B states that every GitHub Pages site under the same akmaier.github.io domain can read it, and the statement stands before the token field on the page; after
-//   rendering nothing is stored; the tick is not ticked and the token field, the date field and Store and check are shut; after the press nothing is stored and no request is sent
+// expect: THE SHARED PAGES ORIGIN IS DISCLOSED "states, before a token or key is stored, that every GitHub Pages site under the same <owner>.github.io domain can read what Agent M stores in the browser": Step B states that every GitHub Pages site under the same akmaier.github.io domain can read it, and the statement stands before the token field on the page; after rendering nothing is stored; the tick is not ticked and the token field, the date field and Store and check are shut; after the press nothing is stored and no request is sent
 test("release · UC-014 8: the shared-origin notice stands before the token field, and nothing is stored or sent before I have read this is ticked", async () => {
   const { target } = await open();
   assert.match(stepB(target).textContent, /every GitHub Pages site under that same akmaier\.github\.io domain can read/);
@@ -209,9 +198,7 @@ test("release · UC-014 8: the expiry date is preset to 90 days from today", asy
 // guards: UC-014; CONFIGURATION LIVES IN THE BROWSER
 // given: a fresh browser; the tick ticked; the date left at its preset; a public repository akmaier/agent-m that the server answers with its default branch
 // input: paste the token github_pat_RELEASE0123456789abcdefgh; press Store and check
-// expect: UC-014 step 8 "Agent M stores both in localStorage and checks that the token reaches the instance": the store holds the setting github-token with the pasted token as its value and
-//   the preset date 90 days from today as its expires; the page shows the check as reached ("✓" and the instance akmaier/agent-m); a GET of https://api.github.com/repos/akmaier/agent-m
-//   was sent carrying "Bearer " and the token
+// expect: UC-014 step 8 "Agent M stores both in localStorage and checks that the token reaches the instance": the store holds the setting github-token with the pasted token as its value and the preset date 90 days from today as its expires; the page shows the check as reached ("✓" and the instance akmaier/agent-m); a GET of https://api.github.com/repos/akmaier/agent-m was sent carrying "Bearer " and the token
 test("release · UC-014 8: Store and check keeps the token and its expiry date in this browser and reads the instance with the token", async () => {
   const page = await open();
   const requests = await storeToken(page);
@@ -238,8 +225,7 @@ test("release · UC-014 8: a corrected expiry date is the one that is kept", asy
 // guards: UC-014
 // given: a fresh browser; the tick ticked; a server that answers 200 for the instance
 // input: paste a token; press Store and check; then press the button that says the instance is ready; then press "+ Add product"
-// expect: UC-014 step 9 "The main page shows the instance, ready: ... and + Add product (UC-001)": after the read the page offers a button whose label contains "ready" and a button
-//   "+ Add product" (or "+ Add a product"); the first leads to the page `main`, the second to the page `add-product`, each once
+// expect: UC-014 step 9 "The main page shows the instance, ready: ... and + Add product (UC-001)": after the read the page offers a button whose label contains "ready" and a button "+ Add product" (or "+ Add a product"); the first leads to the page `main`, the second to the page `add-product`, each once
 test("release · UC-014 9: after a successful read the instance is shown ready, leading to the main page and to + Add product", async () => {
   const page = await open();
   await storeToken(page);
@@ -256,8 +242,7 @@ test("release · UC-014 9: after a successful read the instance is shown ready, 
 // guards: UC-014
 // given: a fresh browser; the tick ticked; the server answers 401 (a token that does not reach the instance), then, on a fresh page, 404
 // input: paste a token; press Store and check
-// expect: UC-014 step 8 "checks that the token reaches the instance" and step 9 shows the instance ready only after it does: with 401 and with 404 the page shows no button saying the
-//   instance is ready and no "+ Add product"; a "✗" stands on the page
+// expect: UC-014 step 8 "checks that the token reaches the instance" and step 9 shows the instance ready only after it does: with 401 and with 404 the page shows no button saying the instance is ready and no "+ Add product"; a "✗" stands on the page
 test("release · UC-014 8–9: the instance is not shown ready when the read with the token fails", async () => {
   for (const status of [401, 404]) {
     const page = await open();

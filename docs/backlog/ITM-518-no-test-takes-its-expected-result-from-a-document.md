@@ -20,12 +20,14 @@ origin:
 ## Outcome
 
 The check the SPEC names for `A TEST DOES NOT TAKE ITS EXPECTED RESULT FROM A DOCUMENT`,
-`tests/test_expected_results_stated.py`, exists: it lists every test that names a module and reads `SPEC.md`, a file
+`tests/test_expected_results_stated.py`, exists — ITM-650 built it (`4ebfa61c`, `a4c48e84`), with the counter-proof the
+SPEC names (TST-650002) —: it lists every test that names a module and reads `SPEC.md`, a file
 under `docs/use-cases/` or a file under `docs/architecture/` when it runs, for review. Sprint 28's review found such tests
 still in place: TST-472343 reads `docs/architecture/MOD-job-runner.md`, and the case at
 `tests/spec-changes-queue-entries.test.mjs` "queue-entries — each entry has its rationale" computes its expected trailers
 with `provenanceLines`; a search of `tests/` found at least 8, 20 and 12 test files reading a module file, a use case and
-`SPEC.md` (queue 2026-10-15b's impact list), as lower bounds.
+`SPEC.md` (queue 2026-10-15b's impact list), as lower bounds. `tests/job-runner-records.test.mjs:20` still reads `docs/architecture/MOD-job-runner.md` for TST-472343 (`:55`). What is
+left is the second point of the Acceptance: the list read, and each listed test named for an item of its module.
 
 ## Acceptance
 

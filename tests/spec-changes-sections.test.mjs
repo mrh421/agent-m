@@ -236,8 +236,7 @@ const twice = (...names) => names.map((name) => changeOf(name, "A SAMPLE RULE", 
 // guards: A CHANGE IS PROPOSED UNDER THE EXISTING NAME; UC-005; UC-019
 // given: two candidates, A BETTER NAME and A SECOND NAME, each classed as a change of A SAMPLE RULE; and, to show the same call composing, each of them alone
 // input: entrySections(SPEC, draft, classes, "Job Source")
-// expect: each alone gives one section (known positive); both together throw an error named TwoChanges, whose requirement is "A SAMPLE RULE", whose candidates are ["A BETTER NAME", "A SECOND NAME"] in the order of the classes, and whose message
-//   reads "A BETTER NAME and A SECOND NAME change A SAMPLE RULE: one block would replace the other. Nothing was composed."
+// expect: each alone gives one section (known positive); both together throw an error named TwoChanges, whose requirement is "A SAMPLE RULE", whose candidates are ["A BETTER NAME", "A SECOND NAME"] in the order of the classes, and whose message reads "A BETTER NAME and A SECOND NAME change A SAMPLE RULE: one block would replace the other. Nothing was composed."
 test("entrySections — two candidates that change one requirement are TwoChanges, nothing composed", () => {
   const [first, second] = twice("A BETTER NAME", "A SECOND NAME");
   assert.equal(compose([first]).length, 1, "known positive: the first alone");

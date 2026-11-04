@@ -122,3 +122,22 @@ test("analyse-issue — a participant cannot reject an issue: a class outside bu
     assert.deepEqual([result.stoppedBecause, result.draft, result.written], ["unusable", null, null], cls);
   }
 });
+
+// TST-1374002 · level: component · module: MOD-job-catalogue
+// guards: UC-012; A BACKLOG ITEM NAMES WHAT IT REALISES
+// given: the prepared kind; three drafters that propose bug for issue 5 naming src/export/index.mjs as wrong — one names THE EXPORT IS A PDF under violated, one answers as before ITM-1374 without violated, one names the number 3 under violated
+// input: runJob of each, nobody attending
+// expect: the first draft is usable and shown as it is, violated THE EXPORT IS A PDF kept; the second is usable and shown as it is, with no violated (an old answer still reads); the third is unusable — stopped because unusable, no draft, nothing written —, since violated is a requirement's name, a text
+test("TST-1374002: analyse-issue — a bug's answer keeps the requirement it names as violated, an answer without it still reads, and one whose violated is no text is unusable", async () => {
+  const named = { class: "bug", reasoning: "The code drops the last page.", wrong: ["src/export/index.mjs"], violated: RULE };
+  const old = { class: "bug", reasoning: "The code drops the last page.", wrong: ["src/export/index.mjs"] };
+  for (const proposed of [named, old]) {
+    const { job, context } = await prepared();
+    const result = await runJob(job, { drafter: driver(DRAFTER, [{ draft: proposed, answers: [] }]), reviewers: [] }, { attended: false, context });
+    assert.deepEqual([result.stoppedBecause, result.draft, result.written?.shown], ["passed", proposed, proposed], JSON.stringify(proposed));
+  }
+  const { job, context } = await prepared();
+  const answer = { draft: { ...old, violated: 3 }, answers: [] };
+  const result = await runJob(job, { drafter: driver(DRAFTER, [answer, answer, answer, answer, answer, answer]), reviewers: [] }, { attended: false, context });
+  assert.deepEqual([result.stoppedBecause, result.draft, result.written], ["unusable", null, null]);
+});

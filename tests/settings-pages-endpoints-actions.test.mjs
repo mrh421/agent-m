@@ -91,8 +91,7 @@ async function asTheBrowser(run) {
 // guards: UC-003; THE PROMPT BAR'S ENDPOINTS AND CLI SESSIONS ARE BOUND AS PARTICIPANTS ARE
 // given: an empty store; the endpoint form filled with nvidia's address, kind and model, no key, the place "NVIDIA, USA", the context 128000 and the CI secret NVIDIA_API_KEY
 // input: Save and test
-// expect: endpoint:nvidia holds the place, the context as a number and the secret's name, and no key; no request is made to the endpoint — it runs through GitHub Actions — and the page says so, naming the secret;
-// and Save and test spawns its test job there, which this repository, holding no job workflow, refuses, saying why and committing nothing
+// expect: endpoint:nvidia holds the place, the context as a number and the secret's name, and no key; no request is made to the endpoint — it runs through GitHub Actions — and the page says so, naming the secret; and Save and test spawns its test job there, which this repository, holding no job workflow, refuses, saying why and committing nothing
 test("the endpoint form keeps the place, the context and the CI secret's name; an endpoint with a secret and no key runs through GitHub Actions and is not called", async () => {
   const store = freshStore(), repo = instanceRepository();
   const target = document.createElement("div");

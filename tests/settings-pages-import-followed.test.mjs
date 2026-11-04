@@ -103,7 +103,7 @@ async function importFile(srv, nodes, settings) {
 // guards: A CLEAR IS A REAL CLEAR
 // given: the live page on a GitHub product's pages that has drawn Settings, the instance's token and the product's own token stored
 // input: press Clear on the line of the GitHub token, import a file that holds a new GitHub token, then open the Repositories tab of Settings
-// expect: the new token is stored, and every request of the Repositories tab to the instance carries it (and there is at least one), and none carries the cleared one
+// expect: the new token is stored, and every request of the Repositories tab to the instance carries it (and there is at least one), and none carries the cleared one; the one POST /graphql without it is the product's request of greenToMerge, with the product's own token (ITM-1170)
 test("TST-870001 · a GitHub token imported after a clear is carried by the next request of the open page", async (t) => {
   const { srv, sent, nodes } = await settingsOpen();
   await press(srv, controls(lineOf(nodes(), "GitHub token"), "settings-repository-clear")[0]);
@@ -116,7 +116,9 @@ test("TST-870001 · a GitHub token imported after a clear is carried by the next
   const instance = after.sent.filter((request) => !request.what.includes(`/repos/${PRODUCT}`));
   t.diagnostic(`requests on the Repositories tab ${after.requests}, of them to the instance ${instance.length}; carrying the imported token: ${carrying(instance, IMPORTED).length}; carrying the cleared one: ${carrying(after.sent, TOKEN).length}`);
   assert.equal(instance.length > 0, true, "the Repositories tab sent requests to the instance");
-  assert.deepEqual(instance.filter((request) => !request.headers.includes(IMPORTED)).map((request) => request.what), [], "every request to the instance carries the imported token");
+  // ITM-1170: the one request without the imported token is the product's GraphQL request of greenToMerge, which carries the product's own token; its path names no repository.
+  assert.deepEqual(instance.filter((request) => !request.headers.includes(IMPORTED)).map((request) => request.what), ["POST https://api.github.com/graphql"], "every request to the instance carries the imported token");
+  assert.ok(instance.filter((request) => !request.headers.includes(IMPORTED)).every((request) => request.headers.includes(PRODUCT_TOKEN)), "that GraphQL request carries the product's own token");
   assert.deepEqual(carrying(after.sent, TOKEN), [], "no request carries the cleared token");
 });
 

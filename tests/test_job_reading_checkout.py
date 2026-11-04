@@ -125,7 +125,7 @@ def result(kind: str, checkout_path: Path) -> dict:
 
 
 class TestJobReadingCheckout(unittest.TestCase):
-    # TST-417100 - level: release - module: MOD-source-register
+    # TST-417100 · level: release · module: MOD-source-register
     # guards: A JOB IN A CHECKOUT OF THE INSTANCE READS THE CHAPTERS THERE; A REQUIREMENTS JOB RECEIVES THE CHAPTER ON REQUIREMENTS ENGINEERING; A TEST JOB RECEIVES THE CHAPTER ON TESTING; AN ARCHITECTURE JOB RECEIVES THE CHAPTERS ON MODELING, ARCHITECTURE, DESIGN AND IMPLEMENTATION; AN IMPLEMENTATION JOB RECEIVES THE CHAPTERS ON MODELING, DESIGN, IMPLEMENTATION AND TESTING
     # given: Markdown fixture cases, a temporary checkout of the instance with SRC-vibe-coding's register entry and chapter files, and real MOD-source-register chapter recipes
     # input: prepareJob for every listed job kind with context.instance.checkout naming the checkout
@@ -159,7 +159,7 @@ class TestJobReadingCheckout(unittest.TestCase):
                             by_chapter[number] = part["sha256"]
                         self.assertEqual(by_chapter, {number: chapter["sha256"] for number, chapter in expected.items()})
 
-    # TST-417101 - level: release - module: MOD-source-register
+    # TST-417101 · level: release · module: MOD-source-register
     # guards: A JOB IN A CHECKOUT OF THE INSTANCE READS THE CHAPTERS THERE
     # given: a temporary checkout of the instance whose chapter 13 file differs from the hash recorded in SRC-vibe-coding.md
     # input: prepareJob for write-tests with context.instance.checkout naming that checkout

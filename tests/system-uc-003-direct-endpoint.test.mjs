@@ -68,7 +68,7 @@ test("TST-292001: Settings Configure saves an OpenAI-compatible endpoint before 
     assert.deepEqual(stored(OPENAI.name), { url: OPENAI.url, kind: OPENAI.kind, model: OPENAI.model, key: OPENAI.key }, "failure node: browser-store already holds the form record when endpoint-calls starts");
     assert.equal(init.headers.Authorization, `Bearer ${OPENAI.key}`);
     assert.deepEqual(JSON.parse(init.body), { model: OPENAI.model, messages: [{ role: "user", content: "Call agent_m_probe once. It is a harmless capability check." }], max_tokens: 64,
-      tools: [{ type: "function", function: { name: "agent_m_probe", description: "Report that tool calling works without changing anything.", parameters: { type: "object", properties: {}, additionalProperties: false } } }] });
+      tools: [{ type: "function", function: { name: "agent_m_probe", description: "Report that tool calling works without changing anything.", parameters: { type: "object", properties: {}, additionalProperties: false } } }], stream: false });
     return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 });
   }]);
   await enterEndpoint(server, start, main);

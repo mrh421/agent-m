@@ -10,7 +10,7 @@
 // Where the file leaves a reading open, the tests state the one they take, and the pull request names it:
 //   - The commit is `params.candidate.commit` (what MOD-release-evidence's startReleaseCandidate gives the job) or else `params.commit`; a job with neither is refused, `NoCommit`.
 //   - The occasion is `params.occasion` when it is one of the record's five, else `release-candidate` for a job with `params.candidate`, else `on-demand`.
-//   - The levels are `params.levels` when given, else the levels (not the cross-cutting row `paid`) the product's docs/tests/schedule.md — or the book's default where none is saved — ticks for the occasion.
+//   - The levels are `params.levels` when given, else for a release candidate every row of the product's docs/tests/schedule.md (the row `paid` included, whatever the row's cells say), else the levels (not the cross-cutting row `paid`) the product's docs/tests/schedule.md — or the book's default where none is saved — ticks for the occasion.
 //   - The command is the schedule's front-matter `command`; where it names none the part says the tests run with node's own test runner.
 //   - The record's participant is the job's drafter's name, else the person; its `date` the job context's `now`; its path `runs/<commit>/<yyyymmdd>-<hhmm>-<occasion>-<4 hex>.md`; it names no `run` address and no `uncommitted`.
 //   - The draft's outcomes become the rows of `## Outcomes` (Test, Level, Outcome, Runs empty). The draft holds no expected or observed result, so no `## Failures` is written. An outcome without a level cannot
@@ -53,29 +53,27 @@ const RESULT = { draft: { outcomes: OUTCOMES }, drafter: { name: "runner-a" }, r
 // guards: A RELEASE RUNS EVERY TEST AT EVERY LEVEL; UC-013
 // given: a release candidate job on commit cccc… of a product with no saved schedule, so the book's default holds
 // input: the recipe commit-and-levels
-// expect: one required part named commit-and-levels; its text holds the commit, the levels unit, component, system, release and user, and says the tests run with node's own test runner; it lists no level `paid`
-test("commit-and-levels gives the commit, every level the default schedule runs on a release candidate, and the runner", async () => {
+// expect: one required part named commit-and-levels; its text holds the commit, the levels unit, component, system, paid, release and user, and says the tests run with node's own test runner
+test("commit-and-levels gives the commit, every row of the default schedule, the row paid included, and the runner", async () => {
   const parts = await recipe(contextOf(CANDIDATE));
   assert.equal(parts.length, 1);
   assert.equal(parts[0].name, "commit-and-levels");
   assert.equal(parts[0].required, true);
   assert.ok(parts[0].text.includes(COMMIT));
-  for (const level of ["unit", "component", "system", "release", "user"]) assert.match(parts[0].text, new RegExp(`\\b${level}\\b`));
-  assert.doesNotMatch(parts[0].text, /\bpaid\b/);
+  for (const level of ["unit", "component", "system", "paid", "release", "user"]) assert.match(parts[0].text, new RegExp(`\\b${level}\\b`));
   assert.match(parts[0].text, /node's own test runner/);
 });
 
 // TST-586102 · level: unit · module: MOD-result-records
 // guards: A RELEASE RUNS EVERY TEST AT EVERY LEVEL; UC-013
-// given: a product whose docs/tests/schedule.md names the command "make check", and ticks the release candidate column for unit, component, system and release but not user
+// given: a product whose docs/tests/schedule.md names the command "make check", and ticks the release candidate column for unit, component, system and release but not for user and paid
 // input: the recipe commit-and-levels
-// expect: the part's text holds "make check", the levels unit, component, system and release, and not the level user nor "node's own test runner"
-test("commit-and-levels takes the levels and the command from the product's schedule", async () => {
+// expect: the part's text holds "make check", the levels unit, component, system, paid, release and user (a row whose cell is empty is not left out), and not "node's own test runner"
+test("commit-and-levels takes every row of the product's schedule for a candidate, and the command it names", async () => {
   const files = { "docs/tests/schedule.md": scheduleOf("command: make check\n", ROWS) };
   const [part] = await recipe(contextOf(CANDIDATE, { files }));
   assert.match(part.text, /make check/);
-  for (const level of ["unit", "component", "system", "release"]) assert.match(part.text, new RegExp(`\\b${level}\\b`));
-  assert.doesNotMatch(part.text, /\buser\b/);
+  for (const level of ["unit", "component", "system", "paid", "release", "user"]) assert.match(part.text, new RegExp(`\\b${level}\\b`));
   assert.doesNotMatch(part.text, /node's own test runner/);
 });
 
@@ -104,7 +102,7 @@ test("commit-and-levels refuses a job that names no commit", async () => {
 // guards: EVERY TEST RUN LEAVES A RESULT RECORD; TEST RESULTS ARE KEPT IN THE REPOSITORY; UC-013
 // given: a release candidate job on commit cccc… whose runner runner-a reported three outcomes (unit passed, component failed, release not run); an empty branch test-results at head h0; now 2026-10-19 08:05 UTC
 // input: the writer result-record
-// expect: one commit on test-results on head h0 adding exactly one file runs/cccc…/20261019-0805-release-candidate-<4 hex>.md; read with the run schema its fields are commit cccc…, levels unit, component, system, release, user, occasion release-candidate, participant runner-a, date 2026-10-19 08:05 UTC, no run, no uncommitted; its Outcomes rows are TST-101 unit passed, TST-102 component failed, TST-103 release not run, with Runs empty; the outcome is { commits: [h1], files: [the path], pullRequest: null, shown: null, notes: [] }
+// expect: one commit on test-results on head h0 adding exactly one file runs/cccc…/20261019-0805-release-candidate-<4 hex>.md; read with the run schema its fields are commit cccc…, levels unit, component, system, release, user (the row paid is no level), occasion release-candidate, participant runner-a, date 2026-10-19 08:05 UTC, no run, no uncommitted; its Outcomes rows are TST-101 unit passed, TST-102 component failed, TST-103 release not run, with Runs empty; the outcome is { commits: [h1], files: [the path], pullRequest: null, shown: null, notes: [] }
 test("result-record appends the run's record to test-results on the head it read", async () => {
   const fake = resultsHost();
   const outcome = await write(RESULT, contextOf(CANDIDATE, { host: fake.host }));
@@ -117,6 +115,30 @@ test("result-record appends the run's record to test-results on the head it read
   assert.deepEqual(record.fields, { commit: COMMIT, levels: ["unit", "component", "system", "release", "user"], occasion: "release-candidate", participant: "runner-a", date: "2026-10-19 08:05 UTC" });
   assert.deepEqual(record.sections[0].rows.map(({ cells }) => [cells.Test, cells.Level, cells.Outcome, cells.Runs ?? ""]),
     [["TST-101", "unit", "passed", ""], ["TST-102", "component", "failed", ""], ["TST-103", "release", "not run", ""]]);
+});
+
+// TST-1442001 · level: unit · module: MOD-result-records
+// guards: A RELEASE RUNS EVERY TEST AT EVERY LEVEL; UC-028
+// given: a release candidate job on commit cccc… of a product whose schedule ticks no cell of the release candidate column
+// input: the recipe commit-and-levels
+// expect: the text names the levels unit, component, system, paid, release and user, each row of the schedule, though no cell of the release candidate column is ticked
+test("commit-and-levels names every row of the schedule for a candidate whatever its release candidate column says", async () => {
+  const none = ["unit", "component", "system", "paid", "release", "user"].map((row) => `| ${row} | ✓ | | | | | |`);
+  const [part] = await recipe(contextOf(CANDIDATE, { files: { "docs/tests/schedule.md": scheduleOf("", none) } }));
+  for (const level of ["unit", "component", "system", "paid", "release", "user"]) assert.match(part.text, new RegExp(`\\b${level}\\b`));
+});
+
+// TST-1442002 · level: unit · module: MOD-result-records
+// guards: A RELEASE RUNS EVERY TEST AT EVERY LEVEL; UC-028
+// given: the book's default schedule; jobs on commit cccc… with params.occasion pull-request and nightly, none with a candidate
+// input: the recipe commit-and-levels for each
+// expect: each text names unit, component and system and none of paid, release, user — the columns name the rows and paid is left out, as before
+test("commit-and-levels keeps the rows the columns name for the other occasions", async () => {
+  for (const occasion of ["pull-request", "nightly"]) {
+    const [part] = await recipe(contextOf({ commit: COMMIT, occasion }));
+    for (const level of ["unit", "component", "system"]) assert.match(part.text, new RegExp(`\\b${level}\\b`), occasion);
+    for (const level of ["paid", "release", "user"]) assert.doesNotMatch(part.text, new RegExp(`\\b${level}\\b`), occasion);
+  }
 });
 
 // TST-586106 · level: unit · module: MOD-result-records

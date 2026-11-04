@@ -81,8 +81,7 @@ async function newVersion(page, version) {
 // guards: UC-016; A LIVING SOURCE IS PINNED; A SOURCE VERSION IS NEVER OVERWRITTEN; A PERSON'S OWN INPUT IS COMMITTED DIRECTLY; ONE CLICK PER DECISION
 // given: SRC-guide, a repository source (identifier https://github.com/erin/guide) registered with its version 2026-10-01 read at the commit 96210fa4…; the repository now stands at a newer commit, 240ddc98…; the token of erin/guide stored
 // input: render library/SRC-guide; press + New version; type the version 2026-11-01 and the same date; choose no file; press Save new version
-// expect: the panel offers no field for files; its statement reads "Becomes public: the register entry, always, in the instance repository akmaier/agent-m. No file is stored: the commit
-// https://github.com/erin/guide stands at when you save is recorded."; one commit in the instance and none in erin/guide, holding exactly docs/sources/SRC-guide.md, made with the instance's token, its message "New version 2026-11-01 of SRC-guide (Agent M dashboard)"; the entry keeps the row of 2026-10-01 line for line and has the row `| `2026-11-01` | 2026-11-01 | - | https://github.com/erin/guide commit 240ddc98fbd96ee987230e72d664cfd892e6574e | …`; the result reads "✓ 2026-11-01 is recorded for SRC-guide: committed to akmaier/agent-m."; the entry lists 2026-10-01 and 2026-11-01, the second "read from https://github.com/erin/guide commit 240ddc98fbd96ee987230e72d664cfd892e6574e"; erin/guide was read with its own token and written nowhere
+// expect: the panel offers no field for files; its statement reads "Becomes public: the register entry, always, in the instance repository akmaier/agent-m. No file is stored: the commit https://github.com/erin/guide stands at when you save is recorded."; one commit in the instance and none in erin/guide, holding exactly docs/sources/SRC-guide.md, made with the instance's token, its message "New version 2026-11-01 of SRC-guide (Agent M dashboard)"; the entry keeps the row of 2026-10-01 line for line and has the row `| `2026-11-01` | 2026-11-01 | - | https://github.com/erin/guide commit 240ddc98fbd96ee987230e72d664cfd892e6574e | …`; the result reads "✓ 2026-11-01 is recorded for SRC-guide: committed to akmaier/agent-m."; the entry lists 2026-10-01 and 2026-11-01, the second "read from https://github.com/erin/guide commit 240ddc98fbd96ee987230e72d664cfd892e6574e"; erin/guide was read with its own token and written nowhere
 test("new version — a repository source records the commit the repository stands at now, with no file", async (t) => {
   const page = await open(t, { newer: true });
   await click(one(page.target, "library-new-version"));
@@ -112,8 +111,7 @@ test("new version — a repository source records the commit the repository stan
 // guards: UC-016; A SOURCE VERSION IS NEVER OVERWRITTEN; A LIVING SOURCE IS PINNED
 // given: the same source with a second version, 2026-11-01, read at the commit 240ddc98…; the repository stands at that commit, the one 2026-11-01 records (and not the one 2026-10-01 records)
 // input: + New version 2026-12-01, Save
-// expect: the result reads "✗ SRC-guide already records the same bytes as 2026-11-01 — nothing was recorded." (it names the version that records the commit, not the first); nothing is committed anywhere and
-// the page sent no write; the entry lists 2026-10-01 and 2026-11-01 only
+// expect: the result reads "✗ SRC-guide already records the same bytes as 2026-11-01 — nothing was recorded." (it names the version that records the commit, not the first); nothing is committed anywhere and the page sent no write; the entry lists 2026-10-01 and 2026-11-01 only
 test("new version — the commit an existing version records is refused as the same bytes, naming that version, and nothing is recorded", async (t) => {
   const lines = REGISTERED.split("\n");
   const at = lines.findIndex((line) => line.startsWith("| `2026-10-01`"));
@@ -133,16 +131,16 @@ test("new version — the commit an existing version records is refused as the s
 // guards: UC-016; A PAGE LOAD READS THE REPOSITORY IN BATCHES; A TOKEN GOES ONLY TO THE SERVER THAT ISSUED IT
 // given: the same source with the repository at the newer commit; once with the tokens stored and once with none
 // input: render library/SRC-guide; + New version 2026-11-01, Save
-// expect: opening sends no request to erin/guide; the press of Save sends 3 to it, with a token and without one — the repository's information 1, its head 1, its tree 1 —, none of them a write; with the token
-// stored the version is recorded ("✓"), and with none the instance refuses the commit, nothing is recorded and the result begins with ✗
-test("new version — one Save reads the repository in 3 requests, with and without a token, and opening reads it not at all", async (t) => {
+// expect: opening sends no request to erin/guide; the press of Save sends 3 to it without a token and 4 with one — the repository's information 1, with a token greenToMerge's GraphQL request beside it 1 (ITM-1170), its head 1, its tree 1 —, none of them a write; with the token stored the version is recorded ("✓"), and with none the instance refuses the commit, nothing is recorded and the result begins with ✗
+test("new version — one Save reads the repository in 3 requests without a token and 4 with one, and opening reads it not at all", async (t) => {
   for (const token of [true, false]) {
     const label = token ? "with a token" : "without a token";
     const page = await open(t, { newer: true, token });
     assert.equal(requestsTo(page, GUIDE_PATH).length, 0, `${label}: opening`);
     await newVersion(page, "2026-11-01");
     await until(() => text(page.target, "library-version-result") !== "", `${label}: the result is shown`);
-    assert.equal(requestsTo(page, GUIDE_PATH).length, 3, `${label}: Save`);
+    // ITM-1170: with a token, the GraphQL request of greenToMerge beside the repository's information.
+    assert.equal(requestsTo(page, GUIDE_PATH).length, token ? 4 : 3, `${label}: Save`);
     assert.equal(requestsTo(page, GUIDE_PATH).some(isWrite), false, `${label}: no write`);
     assert.equal(text(page.target, "library-version-result").startsWith(token ? "✓" : "✗"), true, `${label}: the result`);
     assert.equal(commitsOf(page, INSTANCE).length, token ? 1 : 0, `${label}: the commit`);
@@ -153,8 +151,7 @@ test("new version — one Save reads the repository in 3 requests, with and with
 // guards: UC-016; A SOURCE VERSION IS NEVER OVERWRITTEN
 // given: the same source whose repository the server does not know
 // input: + New version 2026-11-01, Save
-// expect: the result begins "✗ ", names erin/guide as not found and ends " — nothing was recorded." — it does not speak of the same bytes, since no commit was read to compare —; nothing is committed and the
-// page sent no write
+// expect: the result begins "✗ ", names erin/guide as not found and ends " — nothing was recorded." — it does not speak of the same bytes, since no commit was read to compare —; nothing is committed and the page sent no write
 test("new version — a repository that cannot be read records nothing, and the page names it", async (t) => {
   const page = await open(t, { repository: false });
   await newVersion(page, "2026-11-01");
@@ -171,8 +168,7 @@ test("new version — a repository that cannot be read records nothing, and the 
 // guards: UC-016; A SOURCE VERSION IS FIXED BY IDENTIFIER AND HASH
 // given: SRC-guide as an EU legal text: kind regulation, identifier https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689 (an address that reads as a GitLab project's), no version row yet (it waits for its fetch; a fetched one starts the fetch run instead, tests/settings-pages-library-legal-text-version.test.mjs)
 // input: render library/SRC-guide; press + New version
-// expect: the panel offers the field for files, as for any source that is no repository (the page reads the repository of no EU legal text), and its statement begins "Becomes public: the register entry, always"
-// without the words "No file is stored"; the page sent no request to eur-lex.europa.eu
+// expect: the panel offers the field for files, as for any source that is no repository (the page reads the repository of no EU legal text), and its statement begins "Becomes public: the register entry, always" without the words "No file is stored"; the page sent no request to eur-lex.europa.eu
 test("new version — an EU legal text whose identifier reads as a repository's address is no repository source", async (t) => {
   const legal = [...FRONT(ELI_URL, "regulation"), ""].join("\n");
   const page = await open(t, { entryText: legal, repository: false });

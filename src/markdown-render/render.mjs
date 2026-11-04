@@ -55,7 +55,7 @@ export function renderArtifact(text, { frontMatter = "table" } = {}) {
       const value = Array.isArray(parsed.fields[key]) ? parsed.fields[key].join(", ") : parsed.fields[key];
       return `<tr><th>${h(key)}</th><td>${h(value)}</td></tr>`;
     }).join("");
-    const table = frontMatter === "hidden" || !parsed.order.length ? "" : `<table class="frontmatter"><tbody>${rows}</tbody></table>`;
+    const table = frontMatter === "hidden" || !parsed.order.length ? "" : `<table class="frontmatter list"><tbody>${rows}</tbody></table>`;
     rendered.innerHTML = table + DOMPurify.sanitize(markdown.parse(parsed.body), SANITISE);
     for (const table of rendered.getElementsByTagName("table")) {
       const header = table.getElementsByTagName("thead")[0];

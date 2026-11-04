@@ -1,9 +1,10 @@
-// The Backlog page shows the state of the current process first — each team's running sprint, what it holds, the state of
-// each held item and its burn-down, or that the team runs none, with Plan sprint for it —, then the backlog, each item after
-// the items it builds on, with its state and what keeps it from a team's selection (UC-032 steps 1, 5 and 6; UC-035; the
-// user's order of the page). Plan sprint lists what the team may select; Start sprint commits the team's sprint through
-// MOD-work-plans' startSprint. The page is laid out as #uc and #arc are: a head, panels, list tables, buttons, badges and a
-// folded "What is this?" — no style of its own.
+// The Progress page shows what goes on now — each team's running sprint, what it holds, the state of each held item and its
+// burn-down, or that the team runs none (UC-035) —; the Backlog page shows each team first — its last ended sprint with its final
+// burn-down, with Plan sprint for it —, then the backlog, each item after the items it builds on, with its state and what keeps it
+// from a team's selection (UC-032 steps 1, 5 and 6; the user's order of the page; ITM-1252, which moved the running sprint to
+// #progress). Plan sprint lists what the team may select; Start sprint commits the team's sprint through MOD-work-plans'
+// startSprint. The pages are laid out as #uc and #arc are: a head, panels, list tables, buttons, badges and a folded "What is
+// this?" — no style of its own.
 // Run: node --test tests/dashboard-backlog-teams.test.mjs
 //
 // Module: MOD-implementation-pages
@@ -11,14 +12,15 @@
 // Level: component
 //
 // The real dashboard (the harness's APP_FILE) and the route `backlog` of MOD-implementation-pages run in
-// tests/app-harness.mjs against a GitHub API mock; this file brings a fake of GitHub's pulls API and of "Create a reference".
+// tests/app-harness.mjs against a GitHub API mock; this file brings a fake of GitHub's pulls API — with its sort by the last update —,
+// of its search's total_count, and of "Create a reference".
 // The fixture product works in sprints without a time box, with a work-in-progress limit of 2, and has two teams. team1 runs
 // its sprint 01 since 2026-09-14 on its own branch, with ITM-001 — merged into that branch on 2026-09-15 — and ITM-002, whose
 // pull request is open; team2 closed its sprint 01 and sent ITM-003 back to the backlog. ITM-004 builds on ITM-003; ITM-005
 // changes MOD-store, which ITM-001 changes; ITM-006 realises a requirement that is not accepted. The burn-down of a running
 // sprint runs to today, so only its first days are checked.
 
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, normalize } from "node:path";
@@ -36,17 +38,24 @@ const linkedSheets = () => [...read("docs/index.html").matchAll(/<link rel="styl
 
 function pr({ number, item, base, created, merged = null }) {
   return { number, title: `${item}: the work of ${item}`, head: { ref: `team/${item}`, sha: "b".repeat(40) }, base: { ref: base },
-    state: merged ? "closed" : "open", created_at: created, merged_at: merged, merge_commit_sha: merged ? "f".repeat(40) : null,
+    state: merged ? "closed" : "open", created_at: created, updated_at: merged ?? created, merged_at: merged, merge_commit_sha: merged ? "f".repeat(40) : null,
     body: "developer-a · fixture-model\n\nWhat the pull request does." };
 }
 function pullsApi(prs) {
   return async (url, init) => {
+    if (url.origin === "https://api.github.com" && url.pathname === "/search/issues") {
+      const query = url.searchParams.get("q") ?? "", since = /updated:>=(\S+)/.exec(query)?.[1];
+      const found = prs.filter((p) => (!query.includes("is:closed") || p.state === "closed") && (!query.includes("is:open") || p.state === "open")
+        && (!since || Date.parse(p.updated_at) >= Date.parse(since)));
+      return new Response(JSON.stringify({ total_count: found.length, incomplete_results: false, items: [] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
     if (url.origin !== "https://api.github.com" || url.pathname !== `/repos/${REPO}/pulls`) return null;
     if (init.method !== "GET") return new Response("{}", { status: 405 });
     const base = url.searchParams.get("base"), state = url.searchParams.get("state") ?? "open";
     const per = Number(url.searchParams.get("per_page") ?? 30), page = Number(url.searchParams.get("page") ?? 1);
+    const by = url.searchParams.get("sort") === "updated" ? "updated_at" : "created_at";
     const list = prs.filter((p) => !base || p.base.ref === base).filter((p) => state === "all" || p.state === state)
-      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+      .sort((a, b) => b[by].localeCompare(a[by]));
     return new Response(JSON.stringify(list.slice((page - 1) * per, page * per)), { status: 200, headers: { "Content-Type": "application/json" } });
   };
 }
@@ -130,11 +139,13 @@ const CLOSED_PRS = [...PRS,
   pr({ number: 7, item: "ITM-004", base: "main", created: "2026-09-02T11:00:00Z", merged: "2026-09-03T16:40:00Z" }),
   pr({ number: 8, item: "ITM-006", base: "main", created: "2026-09-08T09:00:00Z", merged: "2026-09-10T09:00:00Z" })];
 
-async function backlogPage({ created = [], files = fixtureFiles(), prs = PRS } = {}) {
+async function backlogPage({ created = [], files = fixtureFiles(), prs = PRS, hash = "#backlog" } = {}) {
   const server = await repoServer({ files, handlers: [pullsApi(prs), refsApi(created)] });
-  const page = await openDashboard({ server, hash: "#backlog" });
+  const page = await openDashboard({ server, hash });
   return { server, page, created };
 }
+// The Progress page of the same product: what goes on now (UC-035).
+const progressPage = (options = {}) => backlogPage({ ...options, hash: "#progress" });
 // The HTML of the part that begins with `marker` and ends where the next panel begins.
 function part(html, marker) {
   const at = html.indexOf(marker);
@@ -146,28 +157,27 @@ const row = (html, item) => { const at = html.indexOf(`data-item="${item}"`); re
 
 // ---------------------------------------------------------------- the state of the current process first
 
-// guards: UC-032; UC-035; the user's order of the page
+// TST-1429001 · level: component · module: MOD-implementation-pages
+// guards: UC-032; UC-035
 // given: the fixture product, both teams named by their role assignments
 // input: open #backlog
-// expect: the head, then team1's panel, then team2's, then the backlog, then the names no item realises yet — in that order
-test("#backlog — the teams' sprints come first, then the backlog, then what no item realises yet", async () => {
+// expect: the head, then the names no item realises yet, then team1's panel, then team2's, then the backlog — in that order
+test("TST-1429001: #backlog — what no item realises yet comes first, then the teams' sprints, then the backlog", async () => {
   const { page } = await backlogPage();
   const html = page.main();
-  const order = ['<section class="head"', 'data-team="team1"', 'data-team="team2"', 'data-part="backlog"', 'data-part="uncovered"']
+  const order = ['<section class="head"', 'data-part="uncovered"', 'data-team="team1"', 'data-team="team2"', 'data-part="backlog"']
     .map((marker) => html.indexOf(marker));
   assert.ok(order.every((at) => at >= 0), String(order));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
 
-// guards: UC-035; EVERY TEAM RUNS SPRINTS OF ITS OWN; A SPRINT HOLDS ITS ITEMS UNTIL THEY REACH THE DEFAULT BRANCH;
-//         PROGRESS AND JOB STATE ARE DERIVED, NOT STORED
+// TST-1429002 · level: component · module: MOD-implementation-pages
+// guards: UC-035; EVERY TEAM RUNS SPRINTS OF ITS OWN; A SPRINT HOLDS ITS ITEMS UNTIL THEY REACH THE DEFAULT BRANCH; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED
 // given: team1's running sprint 01 with ITM-001, merged into its branch on 2026-09-15, and ITM-002, whose pull request is open
-// input: open #backlog
-// expect: team1's panel names its sprint team1/01 and its goal; lists ITM-001 done and ITM-002 in progress, each with the
-//         module it changes; and holds the sprint's burn-down as a Mermaid chart that begins with 2 remaining on its first day
-//         and 1 from the merge on
-test("#backlog — a team's running sprint: its items with their states and modules, and its burn-down", async () => {
-  const { page } = await backlogPage();
+// input: open #progress
+// expect: team1's panel names its sprint team1/01 and its goal; lists ITM-001 done and ITM-002 in progress, each with the module it changes; and holds the sprint's burn-down as a Mermaid chart that begins with 2 remaining on its first day and 1 from the merge on
+test("TST-1429002: #progress — a team's running sprint: its items with their states and modules, and its burn-down", async () => {
+  const { page } = await progressPage();
   const team1 = part(page.main(), 'data-team="team1"');
   assert.match(team1, /team1\/01/);
   assert.match(team1, /Store and show/);
@@ -178,28 +188,28 @@ test("#backlog — a team's running sprint: its items with their states and modu
   assert.match(team1, /line \[2, 1/);
 });
 
+// TST-1429003 · level: component · module: MOD-implementation-pages
 // guards: UC-035; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED
-// given: the same-day sprint — team1's sprint 01 starts on 2026-09-14 with three items; ITM-001 is merged at 09:30 UTC and
-//        ITM-005 at 11:45 UTC that day, and ITM-002's pull request is open
-// input: open #backlog
-// expect: team1's chart shows four points — the start, the two merges by their time and now — with 3, 2, 1 and 1 items left
-test("#backlog — a running sprint's chart: the items left at its start, after each merge, and now", async () => {
-  const { page } = await backlogPage({ files: { ...fixtureFiles(), [TEAM1_SPRINT]: SAME_DAY_SPRINT }, prs: SAME_DAY_PRS });
-  const team1 = part(page.main(), 'data-team="team1"');
-  assert.match(team1, /<code class="language-mermaid">xychart-beta/);
-  assert.match(team1, /x-axis \[&quot;start&quot;, &quot;09:30&quot;, &quot;11:45&quot;, &quot;now&quot;\]/);
-  assert.match(team1, /line \[3, 2, 1, 1\]/);
+// given: the same-day sprint — team1's sprint 01 starts on 2026-09-14 with three items; ITM-001 is merged at 09:30 UTC and ITM-005 at 11:45 UTC that day, and ITM-002's pull request is open; the page's clock stands at 2026-09-17 12:00 UTC
+// input: open #progress
+// expect: team1's chart shows one point per day of the sprint, from its start to today — 09-14, 09-15, 09-16 and 09-17 —, each the items left at that day's end: 1, 1, 1 and 1
+test("TST-1429003: #progress — a running sprint's chart: the items left at the end of each day, from its start to today", async () => {
+  mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-09-17T12:00:00Z") });
+  try {
+    const { page } = await progressPage({ files: { ...fixtureFiles(), [TEAM1_SPRINT]: SAME_DAY_SPRINT }, prs: SAME_DAY_PRS });
+    const team1 = part(page.main(), 'data-team="team1"');
+    assert.match(team1, /<code class="language-mermaid">xychart-beta/);
+    assert.match(team1, /x-axis \[&quot;09-14&quot;, &quot;09-15&quot;, &quot;09-16&quot;, &quot;09-17&quot;\]/);
+    assert.match(team1, /line \[1, 1, 1, 1\]/);
+  } finally { mock.timers.reset(); }
 });
 
+// TST-1429004 · level: component · module: MOD-implementation-pages
 // guards: UC-035; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED
-// given: team2's closed sprint 01, from 2026-09-01 to 2026-09-07, with ITM-003, ITM-004 and ITM-006; ITM-003 merged into the
-//        default branch on 2026-09-02 at 10:15 UTC and ITM-004 on 2026-09-03 at 16:40 UTC; ITM-006 went back to the backlog
-//        and was merged only on 2026-09-10, after the sprint's end
+// given: team2's closed sprint 01, from 2026-09-01 to 2026-09-07, with ITM-003, ITM-004 and ITM-006; ITM-003 merged into the default branch on 2026-09-02 at 10:15 UTC and ITM-004 on 2026-09-03 at 16:40 UTC; ITM-006 went back to the backlog and was merged only on 2026-09-10, after the sprint's end
 // input: open #backlog
-// expect: team2's panel still says it runs no sprint, names its last sprint and offers Plan sprint, and shows that sprint's
-//         final chart: start, the two merges by their date and time, and end — 3, 2, 1 and 1 items left —, with no merge
-//         after its end and no "now"
-test("#backlog — a team's closed sprint: its final chart from start through each merge to end", async () => {
+// expect: team2's panel still says it runs no sprint, names its last sprint and offers Plan sprint, and shows that sprint's final chart: start, the two merges by their date and time, and end — 3, 2, 1 and 1 items left —, with no merge after its end and no "now"
+test("TST-1429004: #backlog — a team's closed sprint: its final chart from start through each merge to end", async () => {
   const { page } = await backlogPage({ files: { ...fixtureFiles(), [TEAM2_SPRINT]: CLOSED_SPRINT }, prs: CLOSED_PRS });
   const team2 = part(page.main(), 'data-team="team2"');
   assert.match(team2, /no running sprint/i);
@@ -210,23 +220,23 @@ test("#backlog — a team's closed sprint: its final chart from start through ea
   assert.doesNotMatch(team2, /&quot;now&quot;/);
 });
 
+// TST-1429005 · level: component · module: MOD-implementation-pages
 // guards: PROGRESS AND JOB STATE ARE DERIVED, NOT STORED; A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the fixture product, whose pull requests fit into one page of GitHub's pulls API
 // input: open #backlog
-// expect: the load lists the pull requests in one request, and makes 9 requests in all — the commit, the tree, the batch of its 16 files, the facts stored for the commit (none), the pull requests, then the
-//         instance at the commit its declaration's model_version names (the commit, the tree and one batch) and the one question whether the default branch holds the head of a sprint's pull request: the merge
-//         times come from the pull requests the page reads anyway (A PAGE LOAD READS THE REPOSITORY IN BATCHES); the prompt bar reads through what the load read and adds no request
-test("#backlog — the chart's merges cost no request: one listing of the pull requests, and 9 requests in all", async () => {
+// expect: the load lists the pull requests in one request, and makes 11 requests in all — the commit, the tree, the backlog's view of the commit and latest.json on overview-cache, which the fake holds none of (so the page derives the view itself, ITM-1260), the pull requests (no commit's facts file is stored, so none is asked for), the batches of the files the facts and the SPEC come from, then the instance at the commit its declaration's model_version names (the commit, the tree and one batch) and the one question whether the default branch holds the head of a sprint's pull request: the merge times come from the pull requests the page reads anyway (A PAGE LOAD READS THE REPOSITORY IN BATCHES); the prompt bar reads through what the load read and adds no request
+test("TST-1429005: #backlog — the chart's merges cost no request: one listing of the pull requests, and 11 requests in all", async () => {
   const { page } = await backlogPage();
   assert.equal(page.requests.filter((r) => /\/pulls(?:\?|\/|$)/.test(r)).length, 1, page.requests.join(" | "));
-  assert.equal(page.requests.length, 9, page.requests.join(" | "));
+  assert.equal(page.requests.length, 11, page.requests.join(" | "));
 });
 
-// guards: UC-032 step 6; UC-035
+// TST-1429006 · level: component · module: MOD-implementation-pages
+// guards: UC-032; UC-035
 // given: team2, whose only sprint is closed
 // input: open #backlog
 // expect: team2's panel says it runs no sprint, names its last sprint, team2/01, and offers Plan sprint for team2
-test("#backlog — a team without a running sprint says so, and offers Plan sprint", async () => {
+test("TST-1429006: #backlog — a team without a running sprint says so, and offers Plan sprint", async () => {
   const { page } = await backlogPage();
   const team2 = part(page.main(), 'data-team="team2"');
   assert.match(team2, /no running sprint/i);
@@ -234,20 +244,22 @@ test("#backlog — a team without a running sprint says so, and offers Plan spri
   assert.match(team2, /data-plan="team2"/);
 });
 
-// guards: NO JOB STARTS ABOVE THE WORK-IN-PROGRESS LIMIT; UC-032 step 7
+// TST-1429007 · level: component · module: MOD-implementation-pages
+// guards: NO JOB STARTS ABOVE THE WORK-IN-PROGRESS LIMIT; UC-032
 // given: the model's work-in-progress limit of 2; team1's sprint holding ITM-002 in progress
-// input: open #backlog
+// input: open #progress
 // expect: team1's panel says how many of its items are in progress against the limit: 1 of 2
-test("#backlog — a team's panel names its items in progress against the model's limit", async () => {
-  const { page } = await backlogPage();
+test("TST-1429007: #progress — a team's panel names its items in progress against the model's limit", async () => {
+  const { page } = await progressPage();
   assert.match(part(page.main(), 'data-team="team1"'), /1 of 2 items in progress/);
 });
 
+// TST-1429008 · level: component · module: MOD-implementation-pages
 // guards: PROGRESS AND JOB STATE ARE DERIVED, NOT STORED; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK
 // given: the fixture product, with a merged pull request that names no item
 // input: open #backlog
 // expect: every request of the load is a read — nothing is written —; ITM-005, which no pull request names, is still ready
-test("#backlog — a load writes nothing; a pull request naming no item changes no state", async () => {
+test("TST-1429008: #backlog — a load writes nothing; a pull request naming no item changes no state", async () => {
   const { page, server } = await backlogPage();
   assert.equal(server.writes.length, 0);
   assert.ok(page.requests.every((r) => !/^(write|other (POST|PUT|PATCH|DELETE))/.test(r)), page.requests.join(" | "));
@@ -256,13 +268,12 @@ test("#backlog — a load writes nothing; a pull request naming no item changes 
 
 // ---------------------------------------------------------------- then the backlog
 
-// guards: UC-032 steps 1 and 5; SPRINTS OF DIFFERENT TEAMS CHANGE NO MODULE THE OTHER CHANGES OR USES
+// TST-1429009 · level: component · module: MOD-implementation-pages
+// guards: UC-032; SPRINTS OF DIFFERENT TEAMS CHANGE NO MODULE THE OTHER CHANGES OR USES
 // given: the fixture's six items
 // input: open #backlog
-// expect: one row per item, each after the items it builds on; ITM-001 done, ITM-002 in progress, ITM-003 ready, ITM-004
-//         waiting for an item it builds on, naming ITM-003, ITM-006 waiting for acceptance; ITM-005 marked as kept from team2,
-//         naming the sprint team1/01, the item ITM-001 and the module MOD-store
-test("#backlog — the backlog: each item after the items it builds on, its state, and what keeps it from a team", async () => {
+// expect: one row per item, each after the items it builds on; ITM-001 done, ITM-002 in progress, ITM-003 ready, ITM-004 waiting for an item it builds on, naming ITM-003, ITM-006 waiting for acceptance; ITM-005 marked as kept from team2, naming the sprint team1/01, the item ITM-001 and the module MOD-store
+test("TST-1429009: #backlog — the backlog: each item after the items it builds on, its state, and what keeps it from a team", async () => {
   const { page } = await backlogPage();
   const backlog = part(page.main(), 'data-part="backlog"');
   const rows = [...backlog.matchAll(/<tr data-item="(ITM-\d{3})"/g)].map((m) => m[1]);
@@ -279,15 +290,12 @@ test("#backlog — the backlog: each item after the items it builds on, its stat
 
 // ---------------------------------------------------------------- Plan sprint and Start sprint
 
-// guards: UC-032 step 6, 6c; EVERY TEAM RUNS SPRINTS OF ITS OWN; SPRINTS OF DIFFERENT TEAMS CHANGE NO MODULE THE OTHER
-//         CHANGES OR USES; A PHASE OR A TIME BOX MAY HAVE A BRANCH OF ITS OWN
+// TST-1429010 · level: component · module: MOD-implementation-pages
+// guards: UC-032; EVERY TEAM RUNS SPRINTS OF ITS OWN; SPRINTS OF DIFFERENT TEAMS CHANGE NO MODULE THE OTHER CHANGES OR USES; A PHASE OR A TIME BOX MAY HAVE A BRANCH OF ITS OWN
 // given: the fixture product; the person's token
 // input: click Plan sprint for team2; set the goal and the closer; select ITM-003; click Start sprint
-// expect: the plan lists ITM-003 to select and ITM-005 disabled, kept by team1's sprint; the closer preset to team2's Owner,
-//         bob; Start sprint creates the branch
-//         sprint/team2/02 and commits docs/backlog/sprints/team2/02.md — sprint 2, the goal, the selection ITM-003 — and
-//         nothing else
-test("#backlog — Plan sprint for a team: kept items cannot be selected; Start sprint commits the team's next sprint", async () => {
+// expect: the plan lists ITM-003 to select and ITM-005 disabled, kept by team1's sprint; the closer preset to team2's Owner, bob; Start sprint creates the branch sprint/team2/02 and commits docs/backlog/sprints/team2/02.md — sprint 2, the goal, the selection ITM-003 — and nothing else
+test("TST-1429010: #backlog — Plan sprint for a team: kept items cannot be selected; Start sprint commits the team's next sprint", async () => {
   const { page, server, created } = await backlogPage();
   await page.click('[data-plan="team2"]');
   assert.ok(inMain('[data-select-item="ITM-003"]'), "ITM-003 can be selected");
@@ -306,14 +314,12 @@ test("#backlog — Plan sprint for a team: kept items cannot be selected; Start 
     [2, "Mail again", ["ITM-003"], "sprint/team2/02"]);
 });
 
-// guards: SPRINT PLANNING SHOWS WHAT THE OTHER TEAMS' SPRINTS HOLD; UC-032 step 5
-// given: the fixture product; team1's sprint 01 holds ITM-001, which changes MOD-store, and ITM-002, which changes
-//        MOD-pages, which uses MOD-store; team2 runs no sprint, and its closed sprint 01 sent ITM-003 back to the backlog
+// TST-1429011 · level: component · module: MOD-implementation-pages
+// guards: SPRINT PLANNING SHOWS WHAT THE OTHER TEAMS' SPRINTS HOLD; UC-032
+// given: the fixture product; team1's sprint 01 holds ITM-001, which changes MOD-store, and ITM-002, which changes MOD-pages, which uses MOD-store; team2 runs no sprint, and its closed sprint 01 sent ITM-003 back to the backlog
 // input: click Plan sprint for team2; then Cancel, and Plan sprint for team1
-// expect: beside team2's plan, what the other teams' sprints hold: ITM-001 and ITM-002, each with its title, team1/01, the
-//         modules it changes and the modules they use, and nothing else; beside team1's, that no other team's sprint holds
-//         an item
-test("#backlog — Plan sprint lists every item the other teams' sprints hold, with its sprint and the modules it changes and uses", async () => {
+// expect: beside team2's plan, what the other teams' sprints hold: ITM-001 and ITM-002, each with its title, team1/01, the modules it changes and the modules they use, and nothing else; beside team1's, that no other team's sprint holds an item
+test("TST-1429011: #backlog — Plan sprint lists every item the other teams' sprints hold, with its sprint and the modules it changes and uses", async () => {
   const { page } = await backlogPage();
   await page.click('[data-plan="team2"]');
   const others = part(page.main(), 'data-part="held"');
@@ -332,14 +338,12 @@ test("#backlog — Plan sprint lists every item the other teams' sprints hold, w
 
 // ---------------------------------------------------------------- the layout of #uc and #arc
 
-// guards: EVERY STEP EXPLAINS ITSELF; the user's layout of the pages
+// TST-1429012 · level: component · module: MOD-implementation-pages
+// guards: EVERY STEP EXPLAINS ITSELF
 // given: the fixture product, its plan for team2 open
 // input: open #backlog, click Plan sprint for team2
-// expect: the title in a section.head, every button a btn and every folded explanation a details.explain; the page holds
-//         no style attribute, none of the old board's classes, and no class the style sheets the review page links — the
-//         site's src/theme/lme.css and src/site-frame/look.css, those of #uc and #arc — do not define, but for the language of the burn-down's
-//         diagram, which the Markdown renderer marks for Mermaid as it does on #uc and #arc; every panel explains itself
-test("#backlog — the page is laid out as #uc and #arc are: panels, list tables, buttons and badges, no style of its own", async () => {
+// expect: the title in a section.head, every button a btn and every folded explanation a details.explain; the page holds no style attribute, none of the old board's classes, and no class the style sheets the review page links — the site's src/theme/lme.css and src/site-frame/look.css, those of #uc and #arc — do not define, but for the language of the burn-down's diagram, which the Markdown renderer marks for Mermaid as it does on #uc and #arc; every panel explains itself
+test("TST-1429012: #backlog — the page is laid out as #uc and #arc are: panels, list tables, buttons and badges, no style of its own", async () => {
   const { page } = await backlogPage();
   await page.click('[data-plan="team2"]');
   const html = page.main();
@@ -367,15 +371,15 @@ test("#backlog — the page is laid out as #uc and #arc are: panels, list tables
 
 // ---------------------------------------------------------------- the page on a phone, and its chart
 
-// guards: UC-032; UC-035; the user's layout on a phone
+// TST-1429013 · level: component · module: MOD-implementation-pages
+// guards: UC-032; UC-035
 // given: the fixture product, its plan for team2 open
-// input: open #backlog, click Plan sprint for team2
-// expect: each of the page's four tables — team1's sprint, the plan, what the other teams' sprints hold and the backlog —
-//         stands alone in a box whose class a style sheet under src/ that the page links lets scroll sideways
-test("#backlog — every table stands in a box of its own that scrolls sideways", async () => {
+// input: open #backlog, click Plan sprint for team2; and open #progress
+// expect: each of the pages' four tables — team1's sprint on #progress; the plan, what the other teams' sprints hold and the backlog on #backlog — stands alone in a box whose class a style sheet under src/ that the page links lets scroll sideways
+test("TST-1429013: #backlog and #progress — every table stands in a box of its own that scrolls sideways", async () => {
   const { page } = await backlogPage();
   await page.click('[data-plan="team2"]');
-  const html = page.main();
+  const html = page.main() + part((await progressPage()).page.main(), 'data-team="team1"');
   const tables = html.match(/<table\b/g) ?? [];
   assert.equal(tables.length, 4, "known positive: team1's sprint, the plan, the held items and the backlog each show a table");
   const boxes = [...html.matchAll(/<div class="([\w-]+)"(?: tabindex="0")?>\s*<table\b[\s\S]*?<\/table>\s*<\/div>/g)].map(([, name]) => name);
@@ -387,16 +391,16 @@ test("#backlog — every table stands in a box of its own that scrolls sideways"
   }
 });
 
-// guards: UC-035; the user's chart: its text as large as the page's text
+// TST-1429014 · level: component · module: MOD-implementation-pages
+// guards: UC-035
 // given: the fixture product, on a page whose body text the browser draws at 17px
-// input: open #backlog
-// expect: team1's chart is configured to draw its title and its axes' labels and titles — five sizes — at 17px, and is
-//         still the same chart
-test("#backlog — the chart's text is as large as the page's body text", async () => {
+// input: open #progress
+// expect: team1's chart is configured to draw its title and its axes' labels and titles — five sizes — at 17px, and is still the same chart
+test("TST-1429014: #progress — the chart's text is as large as the page's body text", async () => {
   const before = globalThis.getComputedStyle;
   globalThis.getComputedStyle = (element) => ({ fontSize: element === globalThis.document?.body ? "17px" : "" });
   try {
-    const { page } = await backlogPage();
+    const { page } = await progressPage();
     const source = unesc(/<code class="language-mermaid">([\s\S]*?)<\/code>/.exec(part(page.main(), 'data-team="team1"'))?.[1] ?? "");
     const config = /^---\n([\s\S]*?)\n---\n/.exec(source)?.[1] ?? "";
     assert.match(config, /xyChart:[\s\S]*xAxis:[\s\S]*yAxis:/, `the chart carries its configuration: ${source}`);
@@ -408,15 +412,16 @@ test("#backlog — the chart's text is as large as the page's body text", async 
   }
 });
 
-// guards: UC-035; the user's chart: its text as large as the page's text, at the width the site keeps the chart at
+// TST-1429015 · level: component · module: MOD-implementation-pages
+// guards: UC-035
 // given: the fixture product, on a page whose style keeps the burn-down chart 640px wide
-// input: open #backlog
+// input: open #progress
 // expect: team1's chart is configured to be drawn 640px wide, the width at which the page shows it
-test("#backlog — the chart is drawn as wide as the page keeps it", async () => {
+test("TST-1429015: #progress — the chart is drawn as wide as the page keeps it", async () => {
   const before = globalThis.getComputedStyle;
   globalThis.getComputedStyle = () => ({ fontSize: "", getPropertyValue: (name) => (name === "--burn-down-width" ? " 640px" : "") });
   try {
-    const { page } = await backlogPage();
+    const { page } = await progressPage();
     const source = unesc(/<code class="language-mermaid">([\s\S]*?)<\/code>/.exec(part(page.main(), 'data-team="team1"'))?.[1] ?? "");
     assert.match(/^---\n([\s\S]*?)\n---\n/.exec(source)?.[1] ?? "", /^ {2}xyChart:\n {4}width: 640$/m, source);
   } finally {

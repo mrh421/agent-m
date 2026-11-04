@@ -19,6 +19,7 @@ import { parseAddress, connect } from "../repository-hosts/index.mjs";
 import { readSetting, writeSetting, clearSetting } from "../browser-store/index.mjs";
 import { explain } from "../site-frame/index.mjs";
 import { repositoryChoiceSteps, sharedPagesNotice, defaultExpiry, tokenRefusal, TOKEN_DAYS } from "./products.mjs";
+import { heads } from "./routes.mjs";
 
 const EXPIRY_WARN_DAYS = 14;
 const INSTANCE_TOKEN_KEY = "github-token";
@@ -53,9 +54,7 @@ function stepA(repository, link) {
 }
 
 export const route = {
-  name: "setup",
-  entry: "settings",
-  title: "Finish setting up your instance",
+  ...heads.setup,
   async render(target, context) {
     const store = context.store;
     const repository = context.instance.repository;

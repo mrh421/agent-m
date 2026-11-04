@@ -24,8 +24,6 @@ implemented as specified; you name it in the sprint's record, and it waits for t
   `builds_on`, `tests`, `origin`, `## Outcome`, `## Acceptance`).
 - The order of starts: at most four items in progress; an item starts once every item it builds on is merged into the
   sprint's branch; two items that change the same module are never in progress together.
-- A change between jobs only where a release test or an item's Acceptance needs it, named at its place in the order of
-  starts.
 - No change request unless an item cannot be built as the accepted texts say; then the record names it and why.
 - Write `docs/backlog/sprints/<team>/<nn>.md`, numbered within your team, in the form of the last record: front matter
   `sprint`, `goal`, `start`, `end` (empty), `closer`, `branch` (`sprint/<team>/<nn>`), `selection`; then `## Selection`
@@ -37,23 +35,18 @@ The gate is yours for each pull request into the sprint's branch that the Scrum 
 you check (`A GATE IS NOT DECIDED BY THE PARTICIPANT WHOSE WORK IT CHECKS`). Read, before the first gate,
 `AN IMPLEMENTATION JOB BEGINS WITH A FAILING TEST`, `AN IMPLEMENTATION JOB CHANGES ONLY ITS MODULES`,
 `THE DEFAULT DEFINITION OF DONE IS THE JOB RULES`, `A NEW TEST IS SHOWN TO FAIL ON A PLANTED FAULT` and
-`WHAT NO MODULE OWNS IS CHANGED BETWEEN JOBS`; for each gate, the item's file and the pull request in full —
+`CODE OUTSIDE THE ARCHITECTURE IS MOVED INTO IT`; for each gate, the item's file and the pull request in full —
 description, commits, every changed file, its CI runs.
 
 For an item, check:
 1. The first commit holds only test files, and CI was red on it — except for an item of release or system tests, which
    adds no behaviour.
 2. CI is green on the last commit.
-3. Only the item's scope changed: the folders `src/<slug>/` of its modules, new test files whose header names one of
-   them, and an existing test whose header names one of them where only how it prepares its fixture changed — or where
-   its expected result changed, only if the item names that test and the accepted module file changes the behaviour it
-   asserts (`AN IMPLEMENTATION JOB CHANGES ONLY ITS MODULES`; for a refactoring item never, `A REFACTORING JOB CHANGES NO
-   EXPECTED RESULT`) — for an item of release or system tests, only test files. List every changed file and why it is in
-   scope.
+3. Only the item's scope changed, as `AN IMPLEMENTATION JOB CHANGES ONLY ITS MODULES` gives it; for a refactoring item no
+   expected result changed (`A REFACTORING JOB CHANGES NO EXPECTED RESULT`); for an item of release or system tests, only
+   test files. List every changed file and why it is in scope.
 4. Every new test names the requirement it guards and the module it exercises, and has a recorded counter-proof.
 5. The item's Acceptance holds, as far as reading the change and its tests shows.
-For a change between jobs, instead of checks 1, 3 and 5: each change is one of the kinds
-`WHAT NO MODULE OWNS IS CHANGED BETWEEN JOBS` names.
 
 Your decision is final within the sprint, and it is no discussion:
 - **Passed:** `gh pr review <n> --repo akmaier/agent-m --comment --body "<what you checked>. Decision: merge, <your

@@ -29,12 +29,10 @@ import { UPSTREAM, instanceOf } from "../site/instance-repository.mjs";
 // dashboard reaches MOD-notifications, as ITM-236's Outcome names it) — through each module's own interface.
 import { openStore, readSetting, writeSetting, secretValues } from "../browser-store/index.mjs";
 import { parseAddress, connect, HostError } from "../repository-hosts/index.mjs";
-import { watchForAcceptance } from "../notifications/index.mjs";
-import { storedOverview } from "../progress-measures/index.mjs";
-import { attachPromptBar, explain, pageStarted } from "./index.mjs";
+import { attachPromptBar, explain, pageStarted, routeProblem } from "./index.mjs";
 import { subjectOf, entryShownOf } from "./subject.mjs";
 import { foldMenu } from "./menu.mjs";
-import { fragmentOf, instanceHostFollowingStore, loadView, routeOf, productHostFollowingStore, tokenKeyOf } from "./routing.mjs";
+import { fragmentOf, instanceHostFollowingStore, loadView, loadRoute, routeOf, productHostFollowingStore, tokenKeyOf } from "./routing.mjs";
 import { registerViews } from "./register.mjs";
 import { noticePlace, showTokenNotices } from "./notices.mjs";
 
@@ -72,6 +70,9 @@ const viewOf = (slug) => {
   if (!inPage) return NO_VIEW;
   throw new Error(`dashboard-app.mjs: data-views names no ${slug}`);
 };
+// A route of a loaded view is imported before the app shows it (MOD-site-frame's Route `module`): what it loads asked for at once, then its file (loadRoute). The app
+// then renders the view's route, and asks the imported route for `folders` and `reads`.
+const importedFirst = (route) => loadRoute(route).then(() => route);
 const settingsPages = viewOf("settings-pages"), reviewPages = viewOf("review-pages"), tracePages = viewOf("trace-pages"), testPages = viewOf("test-pages"),
   maintenancePages = viewOf("maintenance-pages"), implementationPages = viewOf("implementation-pages");
 
@@ -237,6 +238,8 @@ export function deriveTarget({ hostname, pathname, search, hash }) {
 
 // The instance is the fork this page is served from; the product is chosen with ?repo= or ?product= (SPEC §10). Set by start().
 let T, GITLAB, SERVER, store, host, hostAddress, hostToken, snapshot, snapshotHost;
+// The load's first read of the branch, which a route shown before it ends — #settings — waits for.
+let firstLoad = null;
 // `store` is this browser's MOD-browser-store store of the instance (openStore), read by its catalogue's keys.
 // The GitHub token (the instance's key, UC-014): the value of the setting `github-token`.
 const ghToken = () => readSetting(store, "github-token")?.value ?? null;
@@ -289,18 +292,58 @@ function once(key, f) {
   return memo.get(key);
 }
 
-async function loadSnapshot() {
+// The folders and files of the tree the load's snapshot holds (MOD-repository-hosts' readSnapshot with `folders`), or null for the whole tree.
+let snapshotFolders = null;
+const withFolders = (folders) => (folders ? { folders } : undefined);
+// The load's snapshot and what it holds, as the views take them: the pinned commit, the tree of its paths with their blobs.
+function hold(snap, activeHost, folders) {
+  snapshot = snap;
+  snapshotHost = activeHost;
+  snapshotFolders = folders;
+  state.commit = snap.commit;
+  state.tree = snap.paths.map((path) => ({ path, sha: snap.blob(path) }));
+  state.byPath = new Map(state.tree.map((e) => [e.path, e]));
+}
+
+// The branch read anew, with the folders of the route shown — the ones the load's snapshot holds, unless the route asks for others.
+async function loadSnapshot(folders = snapshotFolders) {
   const before = state.commit;
   const activeHost = currentHost();
   // GITLAB PRODUCTS ARE SUPPORTED: its default branch unless ?ref= names one, resolved to one commit.
   if (GITLAB && !T.refGiven) T.ref = (await activeHost.repositoryInfo()).defaultBranch || T.ref;
-  const snap = await activeHost.readSnapshot(T.ref);
-  snapshot = snap;
-  snapshotHost = activeHost;
-  state.commit = snap.commit;
-  state.tree = snap.paths.map((path) => ({ path, sha: snap.blob(path) }));
-  state.byPath = new Map(state.tree.map((e) => [e.path, e]));
+  hold(await activeHost.readSnapshot(T.ref, withFolders(folders)), activeHost, folders);
   if (state.commit !== before) memo = new Map();
+}
+
+// Whether a snapshot of `held` holds every folder and file of `wanted`: the whole tree holds all; a list holds a path inside one of its folders.
+const holds = (held, wanted) => held === null
+  || (wanted !== null && wanted.every((path) => held.some((folder) => path === folder || path.startsWith(`${folder}/`))));
+
+// The folders the page reads of the tree for the address shown (MOD-site-frame's Route `folders`): those its review routes name — #uc, #arc and
+// #review are MOD-review-pages' routes, the start page its use cases —; for #spec, the frame's own: the SPEC, the product's links file and the
+// register, the change queues, the approval records and the group files. Any other address, and a route that names none, reads the whole tree
+// (null). On the instance's own page the two files of the instance the prompt bar reads when it is drawn stand beside them (MOD-prompt-bar,
+// Files), so that the bar reads through the load's snapshot.
+const SPEC_FOLDERS = ["SPEC.md", "docs/sources.md", "docs/sources", "docs/spec-freigaben", "docs/approvals", "docs/groups"];
+const BAR_FILES = ["docs/participants.md", "docs/conversation-recording.md"];
+async function foldersOf(kind, a, b) {
+  const targets = reviewTargets(kind || "uc", a, b);
+  if (targets === null) return null;
+  const named = targets.length ? await Promise.all(targets.map(async ({ name, params }) => (await loadRoute(reviewPages.routes.find((route) => route.name === name)))?.folders?.(params) ?? null)) : [SPEC_FOLDERS];
+  if (named.includes(null)) return null;
+  return [...new Set([...named.flat(), ...(isInstanceShown() ? BAR_FILES : [])])];
+}
+const isInstanceShown = () => {
+  const address = parseAddress(T.product.address);
+  return address.server === "github" && address.path === T.instance;
+};
+
+// The load's snapshot holds the folders of the route shown: where it does not, the pinned commit is read again with them — the commit, never
+// the branch, so that the page shows one commit. The texts read already are kept by the host, by their blobs.
+async function holdFolders(folders) {
+  if (holds(snapshotFolders, folders)) return;
+  const activeHost = currentHost();
+  hold(await activeHost.readSnapshot(state.commit, withFolders(folders)), activeHost, folders);
 }
 
 // A page load reads the files a route shows in batches, ahead of the reads of the views (Snapshot.readMany): each route's
@@ -310,9 +353,6 @@ async function loadSnapshot() {
 const USE_CASE_PATH = /^docs\/use-cases\/UC-\d{3}-[^/]+\.md$/;
 const QUEUE_INDEX_PATH = /^docs\/spec-freigaben\/[^/]+\/index\.md$/;
 const QUEUE_HEAD_PATH = /^docs\/spec-freigaben\/[^/]+\/(?:index|entscheidungen)\.md$/;
-const ITEM_PATH = /^docs\/backlog\/ITM-\d{3,}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
-const SPRINT_PATH = /^docs\/backlog\/sprints\/([^/]+)\/\d+\.md$/;
-const ASSIGNMENT_PATH = /^docs\/role-assignments\/([^/]+)\.md$/;
 const MODULE_PATH = /^docs\/architecture\/MOD-[^/]+\.md$/;
 const DECISION_PATH = /^docs\/architecture\/ARC-\d{3}-[^/]+\.md$/;
 const pathsOf = (...res) => state.tree.map((e) => e.path).filter((p) => res.some((re) => re.test(p)));
@@ -337,18 +377,13 @@ async function readAhead(kind) {
     // read in a second wave, and no other queue is read. Where no overview is stored, every queue's index and decisions are read in the second wave, by their paths; the
     // specification (MOD-trace-pages) finds the entries waiting from them and reads their proposals through the snapshot in a batch. A tree without a queue asks for no overview.
     const queued = pathsOf(QUEUE_INDEX_PATH).length > 0;
-    const [, stored] = await Promise.all([readWave(["SPEC.md", "docs/sources.md", ...registerPaths(state.tree.map((e) => e.path))]),
-      queued ? pinned().then((snap) => storedOverview(snap)).catch(() => null) : null]);
-    if (stored) {
-      await readWave(stored.queues.flatMap((queue) => [`${queue.folder}/index.md`, `${queue.folder}/entscheidungen.md`,
-        ...queue.entries.filter((entry) => entry.state !== "in SPEC").flatMap((entry) => [entry.proposal?.path, entry.rationale, entry.file, entry.record])]).filter(Boolean));
-    } else {
-      await readWave(pathsOf(QUEUE_HEAD_PATH));
-    }
-  } else if (kind === "backlog") {
-    // The module files are read for a product with more than one team (the route backlog of MOD-implementation-pages reads them).
-    const teams = new Set([...pathsOf(ASSIGNMENT_PATH).map((p) => ASSIGNMENT_PATH.exec(p)[1]), ...pathsOf(SPRINT_PATH).map((p) => SPRINT_PATH.exec(p)[1])]);
-    await readWave(["docs/process.md", "SPEC.md", ...pathsOf(ITEM_PATH, SPRINT_PATH, ASSIGNMENT_PATH), ...(teams.size > 1 ? pathsOf(MODULE_PATH) : [])]);
+    // The second wave starts once the overview is read, beside the first, not after it.
+    const stored = queued ? pinned().then(async (snap) => (await import("../progress-measures/index.mjs")).storedOverview(snap)).catch(() => null) : Promise.resolve(null);
+    const second = stored.then((held) => (held
+      ? readWave(held.queues.flatMap((queue) => [`${queue.folder}/index.md`, `${queue.folder}/entscheidungen.md`,
+        ...queue.entries.filter((entry) => entry.state !== "in SPEC").flatMap((entry) => [entry.proposal?.path, entry.rationale, entry.file, entry.record])]).filter(Boolean))
+      : readWave(pathsOf(QUEUE_HEAD_PATH))));
+    await Promise.all([readWave(["SPEC.md", "docs/sources.md", ...registerPaths(state.tree.map((e) => e.path))]), second]);
   }
 }
 
@@ -368,7 +403,7 @@ const paths = (re) => state.tree.filter((e) => re.test(e.path));
 async function pinned() {
   const activeHost = currentHost();
   if (snapshotHost !== activeHost) {
-    snapshot = await activeHost.readSnapshot(state.commit);
+    snapshot = await activeHost.readSnapshot(state.commit, withFolders(snapshotFolders));
     snapshotHost = activeHost;
   }
   return snapshot;
@@ -531,7 +566,7 @@ function startNotifications() {
     return; // StorageUnavailable: a browser that refuses storage holds no switch, and no check runs
   }
   if (typeof globalThis.Notification === "undefined") return;
-  watchForAcceptance({ store: notificationsStore, instance: { repository: T.instance, host: instanceHostFollowingToken() }, productHost: productHostFollowingStore({ store: notificationsStore }), addressOf: addressOfNotification });
+  import("../notifications/index.mjs").then(({ watchForAcceptance }) => watchForAcceptance({ store: notificationsStore, instance: { repository: T.instance, host: instanceHostFollowingToken() }, productHost: productHostFollowingStore({ store: notificationsStore }), addressOf: addressOfNotification }));
 }
 
 // The instance's host for the checks, which keep it for the page's whole life: each call of its functions goes through a host connected
@@ -613,12 +648,18 @@ function pagesHost() {
   const host = Object.freeze({
     ...Object.fromEntries(Object.entries(real).map(([name, member]) => [name, typeof member === "function" ? noted(member) : member])),
     repositoryInfo: noted(() => (info ??= real.repositoryInfo().catch((e) => { info = null; throw e; }))),
-    readSnapshot: noted(async (ref) => {
-      if (ref === T.ref && snapshot && snapshotHost === real && (loading > 0 || written === snapshot)) {
+    readSnapshot: noted(async (ref, options) => {
+      // The page drawn again at the commit its write named (MOD-review-pages): the head that write made, read once below.
+      if (written && ref === written.commit && !options?.folders) {
+        const head = written;
+        written = null;
+        return head;
+      }
+      if (ref === T.ref && !options?.folders && snapshot && snapshotHost === real && (loading > 0 || written === snapshot)) {
         written = null;
         return snapshot;
       }
-      return real.readSnapshot(ref);
+      return real.readSnapshot(ref, options);
     }),
     // The head a commit made is read once, for the app; the page shown again after it takes that read (the next one) and does not read it anew.
     commitFiles: noted(async (change) => {
@@ -665,13 +706,43 @@ function implementationContext() {
   };
 }
 
+// The ViewContext of MOD-settings-pages' routes that read the repositories — #settings and the guided pages it opens —: the review pages' context, whose host
+// hands the snapshot this load read; for the instance itself the product is the instance, through that same host. The step that adds a product is this page's
+// #add, a named endpoint is #endpoints/<name>, the Bridge #bridge, `main` is the product's own dashboard; any other route is written as the frame writes it.
+function settingsContext() {
+  const shown = reviewContext();
+  return {
+    ...shown,
+    product: shown.product ?? { address: T.product.address, kind: "github", host: shown.instance.host, tokenStored: Boolean(token()) },
+    go(route, params = {}) {
+      if (route === "add-product") location.hash = params.address ? `#add/${encodeURIComponent(params.address)}` : "#add";
+      else if (route === "endpoints") location.hash = params.name ? `#endpoints/${encodeURIComponent(params.name)}` : "#endpoints";
+      else if (route === "bridge") location.hash = "#bridge";
+      else if (route === "main") location.search = productHref(productOf(params.product)).slice(1);
+      else location.hash = fragmentOf(route, params);
+    },
+  };
+}
+
 // A route that works on the product shown — MOD-test-pages' runs, schedule and generate, MOD-trace-pages' trace —, drawn into <main> with implementationContext(), as the
 // backlog is, reading through the snapshot this load read.
 async function renderProductRoute(view, name, params) {
   loading += 1;
   try {
     shownContext = implementationContext();
-    await view.routes.find((route) => route.name === name).render(main(), shownContext, params);
+    await (await importedFirst(view.routes.find((route) => route.name === name))).render(main(), shownContext, params);
+  } finally {
+    loading -= 1;
+  }
+}
+
+// A route drawn with the review pages' context — the app's own host, which hands the snapshot this load read, and no product for the instance itself
+// (MOD-site-frame's ViewContext) —, so that it reads the repository it shows no second time: #roles, #process and #release.
+async function renderLoaded(route, params) {
+  loading += 1;
+  try {
+    shownContext = reviewContext();
+    await (await importedFirst(route)).render(main(), shownContext, params);
   } finally {
     loading -= 1;
   }
@@ -686,8 +757,14 @@ async function renderReviewPages(targets, lead = []) {
   try {
     if (!targets.length) await renderSpecification(context);
     for (const [at, { name, params }] of targets.entries()) {
-      await reviewPages.routes.find((route) => route.name === name).render(boxes[at], context, params);
-      if (name === "module" && !params.id) await renderComponents(context);
+      const shown = reviewPages.routes.find((route) => route.name === name);
+      const imported = await loadRoute(shown);
+      // The route is handed the snapshot this load read (MOD-site-frame's Route `reads`), before it is rendered.
+      if (snapshot && typeof imported.reads === "function") await readWave(await imported.reads(params, await pinned()));
+      // The component diagram under the lists of the architecture is drawn beside them, not after them: its box stands below theirs.
+      const components = name === "module" && !params.id ? renderComponents(context) : null;
+      await shown.render(boxes[at], context, params);
+      await components;
     }
   } finally {
     loading -= 1;
@@ -698,7 +775,7 @@ async function renderReviewPages(targets, lead = []) {
 async function renderComponents(context) {
   const box = document.createElement("div");
   main().append(box);
-  await tracePages.routes.find((route) => route.name === "trace").render(box,
+  await (await importedFirst(tracePages.routes.find((route) => route.name === "trace"))).render(box,
     { instance: { host: context.instance.host }, product: { host: (context.product ?? context.instance).host } }, { key: "modules", ref: T.ref });
 }
 
@@ -708,7 +785,7 @@ let specificationShown = null;
 async function renderSpecification(context) {
   const box = document.createElement("div");
   main().append(box);
-  const trace = tracePages.routes.find((route) => route.name === "trace");
+  const trace = await importedFirst(tracePages.routes.find((route) => route.name === "trace"));
   const shown = { context: { instance: { host: context.instance.host }, product: { host: (context.product ?? context.instance).host } }, params: { key: "specification", ref: T.ref } };
   specificationShown = shown;
   await trace.render(box, shown.context, shown.params);
@@ -755,27 +832,37 @@ function markTab(kind) {
   const entry = route ? entryShownOf(route, routeOf(location.hash).params) : entryOf(kind || "uc");
   document.querySelectorAll(".tabs [data-entry]").forEach((t) => t.classList.toggle("active", t.dataset.entry === entry));
 }
+// The views the menu counts as built: those of built.json and the built-in ones (src/site/views.mjs), and each route a loaded view provides that this app draws with that view —
+// every route of MOD-implementation-pages, so that the entry Implementation leads to its first, `progress`.
+const builtHere = () => new Set([...builtViews(builtFiles), ...implementationPages.routes.map((route) => route.name)]);
 async function renderTabs() {
   const el = document.getElementById("tabs");
-  if (el) el.innerHTML = menuHtml({ built: builtViews(builtFiles), tabs: true }).replaceAll(' role="tab"', "");
+  if (el) el.innerHTML = menuHtml({ built: builtHere(), tabs: true }).replaceAll(' role="tab"', "");
   const [kind, a] = location.hash.replace(/^#/, "").split("/");
   markTab(kind === "review" ? a : kind);
 }
 
-async function route() {
-  routeSeq += 1;
-  shownContext = null;
+// What the address's fragment shows: its view or route (`kind`) and the parts after it; a menu entry named alone is its first built view, or,
+// where it has none, the entry that is not built yet (`unavailableEntry`).
+function addressShown() {
   let [kind, a, b] = location.hash.replace(/^#/, "").split("/");
   const entry = MENU.find((candidate) => candidate.key === kind);
   const params = routeOf(location.hash).params;
   let unavailableEntry = null;
   if (entry && (a === undefined || (b === undefined && Object.keys(params).length > 0 && Object.keys(params).every((key) => key === "product")))) {
-    const view = stageView(entry, builtViews(builtFiles));
+    const view = stageView(entry, builtHere());
     if (view) kind = view;
     else unavailableEntry = entry;
     a = undefined;
     b = undefined;
   }
+  return { kind, a, b, params, unavailableEntry };
+}
+
+async function route() {
+  routeSeq += 1;
+  shownContext = null;
+  const { kind, a, b, params, unavailableEntry } = addressShown();
   markTab(kind === "review" ? a : kind);
   // The views of the repository read what they show first.
   if (state.commit && ["", "uc", "arc", "spec", "review"].includes(kind || "")) main().innerHTML = `<p class="muted">Reading…</p>`;
@@ -788,32 +875,47 @@ async function route() {
     }
     loadProducts();
     renderProductSelector();
-    if (state.commit && !a && ["", "uc", "arc", "spec", "backlog", "use-case", "decision", "module"].includes(kind || "")) await readAhead(kind || "");
+    // The snapshot holds the folders the route shows (MOD-site-frame's Route `folders`); a route that names none is given the whole tree.
+    if (state.commit && !unavailableEntry) await holdFolders(await foldersOf(kind, a, b));
+    if (state.commit && !a && ["", "uc", "arc", "spec", "use-case", "decision", "module"].includes(kind || "")) await readAhead(kind || "");
+    // A route of a loaded view that names its first wave (Route's `reads`) is given that wave in batches, through the snapshot this load read.
+    const named = loadedRoute(kind);
+    const imported = named && implementationPages.routes.includes(named) ? await loadRoute(named) : null;
+    if (state.commit && typeof imported?.reads === "function") await readWave(await imported.reads(params, await pinned()));
     const reviewed = reviewTargets(kind, a, b);
     if (reviewed) {
       await renderReviewPages(reviewed, showsSetup(kind, a) ? [setupBanner()] : []);
     } else if (kind === "how") {
       renderHow();
     } else if (kind === "settings") {
+      // The review pages' context — the app's own host, which hands the snapshot this load read —, once the load has read it (A PAGE LOAD READS THE REPOSITORY
+      // IN BATCHES); a load that failed leaves the page to read for itself, so that Settings still opens. For the instance itself the product's section shows the
+      // instance, through that same host.
+      await firstLoad?.catch(() => {});
       const settings = settingsPages.routes.find((r) => r.name === "settings");
-      const settingsStore = openStore(T.instance);
-      const address = parseAddress(T.product.address);
-      await settings.render(main(), {
-        instance: {
-          repository: T.instance,
-          host: connect(parseAddress(`https://github.com/${T.instance}`), { token: ghToken(), secrets: secrets() }),
-        },
-        product: { address: T.product.address, kind: address.server, host: connect(address, { token: token(), secrets: secrets() }) },
-        store: settingsStore,
-        go(route, params = {}) {
-          if (route === "add-product") location.hash = params.address ? `#add/${encodeURIComponent(params.address)}` : "#add";
-          if (route === "endpoints") location.hash = params.name ? `#endpoints/${encodeURIComponent(params.name)}` : "#endpoints";
-          if (route === "bridge") location.hash = "#bridge";
-          if (route === "main") location.search = productHref(productOf(params.product)).slice(1);
-        },
-      }, {});
+      await loadRoute(settings);
+      loading += 1;
+      try {
+        await settings.render(main(), settingsContext(), {});
+      } finally {
+        loading -= 1;
+      }
+    } else if (["participants", "library", "resources", "sources", "mailbox"].includes(kind)) {
+      // The guided pages the Settings page opens — where a repository setting is kept, from its Edit (UC-042 step 3), and the mailbox (UC-037) —, drawn as
+      // #settings is, with the same context; the empty `product` — #resources/product= — names the instance itself (MOD-site-frame's ViewContext).
+      await firstLoad?.catch(() => {});
+      const kept = settingsPages.routes.find((r) => r.name === kind);
+      await loadRoute(kept);
+      loading += 1;
+      try {
+        const context = settingsContext();
+        await kept.render(main(), params.product === "" ? { ...context, product: null } : context, params);
+      } finally {
+        loading -= 1;
+      }
     } else if (kind === "add" || kind === "add-product") {
       const addProduct = settingsPages.routes.find((r) => r.name === "add-product");
+      await loadRoute(addProduct);
       await addProduct.render(main(), {
         instance: { repository: T.instance }, product: null, store: openStore(T.instance),
         go(_route, { product }) { location.search = productHref(productOf(product)).slice(1); },
@@ -826,6 +928,7 @@ async function route() {
       return;
     } else if (kind === "get-your-own") {
       const getYourOwn = settingsPages.routes.find((r) => r.name === "get-your-own");
+      await loadRoute(getYourOwn);
       await getYourOwn.render(main(), {
         instance: { repository: T.instance }, product: null, store: openStore(T.instance),
         go(route) {
@@ -837,6 +940,7 @@ async function route() {
     }
     else if (kind === "endpoints") {
       const endpoints = settingsPages.routes.find((r) => r.name === "endpoints");
+      await loadRoute(endpoints);
       await endpoints.render(main(), {
         instance: { repository: T.instance }, product: null, store: openStore(T.instance),
         go(route, params = {}) {
@@ -846,6 +950,7 @@ async function route() {
       }, { name: a ? decodeURIComponent(a) : "" });
     } else if (kind === "setup") {
       const setup = settingsPages.routes.find((r) => r.name === "setup");
+      await loadRoute(setup);
       await setup.render(main(), {
         instance: { repository: T.instance }, product: null, store: openStore(T.instance),
         go(route) {
@@ -855,12 +960,7 @@ async function route() {
         },
       }, {});
     } else if (kind === "release") {
-      const releasePanel = testPages.routes.find((r) => r.name === "release");
-      shownContext = {
-        instance: { host: connect(parseAddress(`https://github.com/${T.instance}`), { token: ghToken() }) },
-        product: { host: connect(parseAddress(T.product.address), { token: token() }) },
-      };
-      await releasePanel.render(main(), shownContext, {});
+      await renderLoaded(testPages.routes.find((r) => r.name === "release"), {});
     } else if (kind === "runs" || kind === "schedule" || kind === "generate") {
       await renderProductRoute(testPages, kind, routeOf(location.hash).params);
     } else if (kind === "trace") {
@@ -868,6 +968,7 @@ async function route() {
       await renderProductRoute(tracePages, "trace", { ref: T.ref, ...routeOf(location.hash).params });
     } else if (kind === "mail") {
       const mailRoute = maintenancePages.routes.find((r) => r.name === "mail");
+      await loadRoute(mailRoute);
       await mailRoute.render(main(), {
         page: "review", instance: { repository: T.instance }, product: null, store: openStore(T.instance),
         go(route, params = {}) {
@@ -877,6 +978,7 @@ async function route() {
       }, {});
     } else if (kind === "replies") {
       const repliesRoute = maintenancePages.routes.find((r) => r.name === "replies");
+      await loadRoute(repliesRoute);
       await repliesRoute.render(main(), {
         page: "review", instance: { repository: T.instance }, product: null, store: openStore(T.instance),
         go(route, params = {}) {
@@ -885,20 +987,25 @@ async function route() {
         },
       }, routeOf(location.hash).params);
     } else if (kind === "process" || kind === "roles") {
-      // The product and the instance, each connected with its own token: the route reads and builds everything the page shows.
       const route = implementationPages.routes.find((r) => r.name === kind);
-      const hosts = { instance: { host: connect(parseAddress(`https://github.com/${T.instance}`), { token: ghToken() }) }, product: { host: connect(parseAddress(T.product.address), { token: token() }) } };
-      await route.render(main(), hosts);
+      await renderLoaded(route, {});
       if (kind === "process") main().insertAdjacentHTML("afterbegin", `<section class="head"><h2>${h(route.title)}</h2></section>`);
     } else if (kind === "backlog" || kind === "board" || kind === "implement") {
       loading += 1;
       try {
-        await implementationPages.routes.find((r) => r.name === kind).render(main(), implementationContext(), kind === "backlog" ? {} : params);
+        const page = kind === "backlog"
+          ? implementationPages.routes.find((r) => r.name === "backlog")
+          : implementationPages.routes.find((r) => r.name === kind);
+        await (await importedFirst(page)).render(main(), implementationContext(), params);
       } finally {
         loading -= 1;
       }
+    } else if (implementationPages.routes.some((r) => r.name === kind)) {
+      // Every other route of MOD-implementation-pages — `progress`, what goes on now, among them — is drawn as the backlog is, on the product shown.
+      await renderProductRoute(implementationPages, kind, params);
     } else if (kind === "bridge") {
       const bridge = settingsPages.routes.find((r) => r.name === "bridge");
+      await loadRoute(bridge);
       await bridge.render(main(), {
         instance: { repository: T.instance }, product: null, store: openStore(T.instance),
         go(route, params = {}) {
@@ -924,7 +1031,10 @@ async function route() {
       flash = null;
     }
   } catch (e) {
-    main().innerHTML = `<p class="warn">${h(errorText(noteRefusal(e)))}</p>`;
+    noteRefusal(e);
+    // A host's failure in the product's terms (errorText); any other error is a fault of the page itself, said in plain words with its message below (routeProblem).
+    if (e instanceof HostError) main().innerHTML = `<p class="warn">${h(errorText(e))}</p>`;
+    else main().replaceChildren(routeProblem(e, Boolean(token())));
   }
   window.scrollTo(0, 0);
 }
@@ -964,14 +1074,21 @@ async function start() {
     route();
   }
   try {
-    await loadSnapshot();
+    const { kind, a, b, unavailableEntry } = addressShown();
+    // #spec draws the specification (MOD-trace-pages' route trace): its modules, and with them MOD-progress-measures, which its read ahead takes the stored overview from,
+    // are imported beside the first read, from the route's preloads at once, not after it, level by level.
+    if (kind === "spec" && !a) importedFirst(tracePages.routes.find((route) => route.name === "trace")).catch(() => {});
+    firstLoad = (unavailableEntry ? Promise.resolve(null) : foldersOf(kind, a, b)).then((folders) => loadSnapshot(folders));
+    await firstLoad;
     document.getElementById("repo-line").innerHTML =
       `<a href="${h(T.product.address)}" target="_blank" rel="noopener">${h(GITLAB ? T.product.address : T.repo)}</a> · ${h(T.ref)} · <code>${h(state.commit.slice(0, 12))}</code>`;
   } catch (e) {
     noteRefusal(e);
     state.loadError = e;
     if (early) return;
-    main().innerHTML = loadErrorHtml({ error: e, product: T.product, ref: T.ref, hasToken: Boolean(token()) });
+    // A failed read of the branch names what failed (loadErrorHtml); an error that is no host's failure is a fault of the page itself (routeProblem).
+    if (e instanceof HostError) main().innerHTML = loadErrorHtml({ error: e, product: T.product, ref: T.ref, hasToken: Boolean(token()) });
+    else main().replaceChildren(routeProblem(e, Boolean(token())));
     addEventListener("hashchange", route);
     return;
   }
@@ -988,7 +1105,7 @@ function startBar() {
   foot.className = "site-frame-prompt-bar";
   document.body.append(foot);
   const barStore = openStore(T.instance);
-  const isInstance = () => { const address = parseAddress(T.product.address); return address.server === "github" && address.path === T.instance; };
+  const isInstance = isInstanceShown;
   attachPromptBar(foot, { page: "review", store: barStore,
     // The instance shown is read through the app's own host, which holds what this load read; another instance through the host that follows the store.
     instance: { repository: T.instance, host: isInstance() ? pagesHost() : instanceHostFollowingStore({ store: barStore, address: parseAddress(`https://github.com/${T.instance}`) }) },

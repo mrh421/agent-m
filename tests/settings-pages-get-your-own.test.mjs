@@ -43,9 +43,7 @@ const current = (target) => byClass(target, "step").filter((step) => step.getAtt
 // guards: UC-014; AN INSTANCE IS A FORK OF AGENT M
 // given: known positive — the route setup, which the same view serves, renders; the original dashboard akmaier/agent-m; no owner named in the address
 // input: render the route get-your-own with no parameters
-// expect: the route stands in the view's routes, under the entry settings; the page is headed "Get your own Agent M"; it asks for the person's GitHub name in a text field
-//   that is empty and has the focus; it holds the four steps "Step 1 · Fork", "Step 2 · Turn on the dashboard", "Step 3 · Turn on the workflows — optional now" and
-//   "Step 4 · Open your dashboard", in this order, and Step 1 is the current one
+// expect: the route stands in the view's routes, under the entry settings; the page is headed "Get your own Agent M"; it asks for the person's GitHub name in a text field that is empty and has the focus; it holds the four steps "Step 1 · Fork", "Step 2 · Turn on the dashboard", "Step 3 · Turn on the workflows — optional now" and "Step 4 · Open your dashboard", in this order, and Step 1 is the current one
 test("get-your-own — the page asks for the GitHub name and holds the four steps, the first one current", async () => {
   assert.ok(view.routes.find((candidate) => candidate.name === "setup"), "known positive: the view serves the route setup");
   assert.ok(route, "the view serves the route get-your-own");
@@ -64,8 +62,7 @@ test("get-your-own — the page asks for the GitHub name and holds the four step
 // guards: UC-014; AN INSTANCE IS A FORK OF AGENT M
 // given: the original dashboard akmaier/agent-m, no owner known
 // input: render the route get-your-own
-// expect: Step 1 holds one link, "Open GitHub's fork page ↗", to exactly https://github.com/akmaier/agent-m/fork, opened in a new tab with rel noopener; Steps 2, 3 and 4 hold no
-//   link to GitHub and say that the GitHub name comes first
+// expect: Step 1 holds one link, "Open GitHub's fork page ↗", to exactly https://github.com/akmaier/agent-m/fork, opened in a new tab with rel noopener; Steps 2, 3 and 4 hold no link to GitHub and say that the GitHub name comes first
 test("get-your-own — without an owner, Step 1 opens GitHub's fork page of akmaier/agent-m and Steps 2 to 4 hold no link", async () => {
   const { target } = await open();
   const fork = byTag(stepTitled(target, STEPS[0]), "a").find((anchor) => anchor.textContent === "Open GitHub's fork page ↗");
@@ -83,8 +80,7 @@ test("get-your-own — without an owner, Step 1 opens GitHub's fork page of akma
 // guards: UC-014; THE PAGES ROOT IS THE REPOSITORY ROOT
 // given: the original dashboard; the owner acme named in the address (#get-your-own/owner=acme)
 // input: render the route get-your-own with the parameter owner = acme
-// expect: the field holds acme; Step 2 opens exactly https://github.com/acme/agent-m/settings/pages, Step 3 exactly https://github.com/acme/agent-m/actions, and Step 4 exactly
-//   https://acme.github.io/agent-m/; each in a new tab with rel noopener; Step 1 still opens the fork page of akmaier/agent-m
+// expect: the field holds acme; Step 2 opens exactly https://github.com/acme/agent-m/settings/pages, Step 3 exactly https://github.com/acme/agent-m/actions, and Step 4 exactly https://acme.github.io/agent-m/; each in a new tab with rel noopener; Step 1 still opens the fork page of akmaier/agent-m
 test("get-your-own — with the owner known, each step opens its exact GitHub page", async () => {
   const { target } = await open({ params: { owner: "acme" } });
   assert.equal(byClass(target, "owner")[0].value, "acme");
@@ -113,8 +109,7 @@ test("get-your-own — Step 2 says what to choose on the Pages settings page", a
 // guards: UC-014
 // given: the original dashboard; the owner acme
 // input: render the route get-your-own with owner = acme; read Step 3's words and buttons
-// expect: Step 3 says the workflows are needed only to fetch EU legal texts and to write an accepted change of the instance's own SPEC without a token; it says GitHub disables
-//   workflows on every fork until the owner enables them, and names the button "I understand my workflows, go ahead and enable them"; and it offers a button "Later"
+// expect: Step 3 says the workflows are needed only to fetch EU legal texts and to write an accepted change of the instance's own SPEC without a token; it says GitHub disables workflows on every fork until the owner enables them, and names the button "I understand my workflows, go ahead and enable them"; and it offers a button "Later"
 test("get-your-own — Step 3 says what the workflows are for and offers Later", async () => {
   const { target } = await open({ params: { owner: "acme" } });
   const step = stepTitled(target, STEPS[2]);
@@ -169,8 +164,7 @@ test("get-your-own — each step name opens its step, and an unknown name opens 
 // guards: UC-014; EVERY STEP EXPLAINS ITSELF
 // given: the original dashboard; no owner
 // input: type acme into the field, then acme corp/evil, then an empty name
-// expect: after acme the links of Steps 2 to 4 are those of acme (settings/pages, actions, acme.github.io/agent-m/) and say nothing of entering a name first; after
-//   acme corp/evil they hold no link and the page says a GitHub name has letters, digits and single hyphens; after the empty name they hold no link again
+// expect: after acme the links of Steps 2 to 4 are those of acme (settings/pages, actions, acme.github.io/agent-m/) and say nothing of entering a name first; after acme corp/evil they hold no link and the page says a GitHub name has letters, digits and single hyphens; after the empty name they hold no link again
 test("get-your-own — typing the GitHub name fills the links of Steps 2 to 4, and a name GitHub does not allow fills none", async () => {
   const { target } = await open();
   const field = byClass(target, "owner")[0];
@@ -210,8 +204,7 @@ test("get-your-own — every step carries the frame's folded explanation of its 
 // guards: UC-014; AGENT M IS MIT-LICENSED; EVERY STEP EXPLAINS ITSELF
 // given: the original dashboard
 // input: render the route get-your-own; read the licence's words and fold
-// expect: the page says Agent M is MIT-licensed and that the licence of every product stays the person's; beside it a folded explanation, the frame's explain of the topic
-//   get-your-own-licence under the summary "What is this?", outside the four steps
+// expect: the page says Agent M is MIT-licensed and that the licence of every product stays the person's; beside it a folded explanation, the frame's explain of the topic get-your-own-licence under the summary "What is this?", outside the four steps
 test("get-your-own — the MIT licence is stated with a folded explanation", async () => {
   const { target } = await open();
   const licence = byClass(target, "licence")[0];

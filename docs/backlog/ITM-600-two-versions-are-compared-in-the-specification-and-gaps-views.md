@@ -22,7 +22,7 @@ origin:
 
 ## Outcome
 
-UC-020 1b: "compares two versions". MOD-trace-graph provides `compareGraphs`, which is not built (`src/trace-graph/index.mjs:10-11`).
+UC-020 1b: "compares two versions". MOD-trace-graph provides `compareGraphs` (`docs/architecture/MOD-trace-graph.md:260`), which is not built: no file under `src/` names it.
 
 **The reading of 2026-10-17 (sprint team1/63): it waits for ITM-599's merge.** It compares in that view.
 `compareGraphs` and `showDifference` are in MOD-trace-pages' Uses. `compareGraphs` is not built, and its rule is stated in
@@ -40,3 +40,12 @@ stops for a draft to akmaier.
 - `compareGraphs` works as its file states it.
 - The views show what was added, removed and changed between two versions.
 - The first commit holds only the tests, and CI is red on it. No stub is committed.
+- **No existing expected result changes; searched at sprint team1/133's planning.** The comparison is a second choice
+  in the version bar, a control of its own class `version-compare`, offered on the specification and the gaps only. So
+  these stay: the count of `.version-choice` (`tests/site-usability.test.mjs:318`, five controls on `#spec`), the
+  options of `tests/trace-pages-specification.test.mjs:177` and the audit's choice (`tests/trace-pages-audit.test.mjs:202-207`).
+  Nothing is read for the comparison before a second version is picked, so the counts of `tests/load-per-view.test.mjs`
+  stay.
+- The reading taken: a second version whose commit has no graph stored is named with `GraphNotStored`, as
+  MOD-trace-graph's `storedGraph` states it; no draft is needed.
+- Test identifiers: TST-600401 onward for its own cases (TST-600001 to 600157 are taken).

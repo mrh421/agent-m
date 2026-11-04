@@ -1,5 +1,5 @@
 // The repository hosts — one interface to a repository on GitHub or on a GitLab server: parseAddress, connect, and the host it
-// returns, with repositoryInfo, readSnapshot, readHistory, listTags, issueCounts, commitFiles, createTag, listReleaseAssets, createBranch, startWorkflow, setCiSecret, setPipelineSchedule, ciVariableScopes, listCiRuns,
+// returns, with repositoryInfo, readSnapshot, readHistory, listTags, issueCounts, listIssues, readIssue, commitFiles, createTag, listReleaseAssets, createBranch, startWorkflow, setCiSecret, setPipelineSchedule, ciVariableScopes, listCiRuns,
 // cancelCiRun, ciRunLog, ciRunLabels and webLinks. Every function of a host that reaches a server says so and names how it fails, as a HostError (A REMOTE INTERFACE
 // NAMES HOW IT FAILS).
 //
@@ -130,6 +130,17 @@ function oldestFirst(commits) {
   return out;
 }
 
+// The folders readSnapshot is given -> the paths named, each once and without a trailing slash, or null where none are given (the whole tree).
+// Each is a path in the repository — no leading slash, no empty, "." or ".." part —, and at least one is named.
+function foldersOf(folders) {
+  if (folders === undefined || folders === null) return null;
+  const named = Array.isArray(folders) ? folders.map((folder) => (typeof folder === "string" ? folder.replace(/\/+$/, "") : folder)) : null;
+  if (!named?.length || named.some((p) => typeof p !== "string" || !p || p.startsWith("/") || p.split("/").some((s) => s === "" || s === "." || s === ".."))) {
+    throw new TypeError("readSnapshot's folders are a list of paths of folders or files in the repository");
+  }
+  return [...new Set(named)];
+}
+
 // The failures readSnapshot itself knows and readMany passes on; any other failure of a batch request reads nothing ahead.
 const KNOWN_FAILURES = new Set(["TokenRefused", "PermissionMissing", "RateLimited", "Unreachable"]);
 
@@ -156,6 +167,7 @@ function throughClone(repository, folder, rest) {
     listTags: rest ? (...a) => rest.listTags(...a) : without("the tags"),
     issueCounts: rest ? (...a) => rest.issueCounts(...a) : without("the issue counts"),
     listIssues: rest ? (...a) => rest.listIssues(...a) : without("the issues"),
+    readIssue: rest ? (...a) => rest.readIssue(...a) : without("an issue"),
     commentOnIssue: rest ? (...a) => rest.commentOnIssue(...a) : without("a comment on an issue"),
     setIssueLabels: rest ? (...a) => rest.setIssueLabels(...a) : without("the labels of an issue"),
     setIssueState: rest ? (...a) => rest.setIssueState(...a) : without("the state of an issue"),
@@ -231,17 +243,30 @@ export function connect(address, credentials = {}) {
     // fails with NotFound, TokenRefused, PermissionMissing, RateLimited, Unreachable.
     repositoryInfo: () => adapter.repositoryInfo(),
 
-    // readSnapshot(ref) -> Snapshot { repository, ref, commit, paths, read(path), readMany(paths), blob(path) } — the repository at one commit.
-    // Crosses the network, and so does read(path); fail with NotFound, TokenRefused, PermissionMissing, RateLimited, Unreachable.
-    async readSnapshot(ref) {
+    // readSnapshot(ref, { folders }) -> Snapshot { repository, ref, commit, paths, read(path), readMany(paths), blob(path) } — the repository at one commit.
+    // With `folders` — paths of folders or files —, its paths are only the files at every depth of those folders and the files named: on GitHub with a
+    // token from their own trees in one round of requests sent together, elsewhere from the whole tree, narrowed. A read, a blob or a readMany of a path outside them
+    // fails with OutsideSnapshot { path }, never as if the file did not exist. Crosses the network, and so does read(path); fail with NotFound,
+    // TokenRefused, PermissionMissing, RateLimited, Unreachable. A folders list that is not a list of paths in the repository is a TypeError.
+    async readSnapshot(ref, options = {}) {
       if (typeof ref !== "string" || !ref.trim()) throw new TypeError("readSnapshot names a branch, a tag or a commit");
-      const { commit, blobs } = await adapter.snapshot(ref);
+      const named = foldersOf(options?.folders);
+      const { commit, blobs: listed } = await adapter.snapshot(ref, named);
+      const inside = (path) => named === null || named.some((folder) => path === folder || String(path).startsWith(`${folder}/`));
+      const blobs = named === null ? listed : new Map([...listed].filter(([path]) => inside(path)));
+      const outside = (path) => new HostError("OutsideSnapshot", { path }, `${path} lies outside what this snapshot of ${repository.web} at ${ref} ` +
+        `holds — ${named.join(", ")}: read the snapshot with the folders it is read from.`);
       return Object.freeze({
         repository, ref, commit, paths: Object.freeze([...blobs.keys()]),
-        blob: (path) => blobs.get(path) ?? null,
+        blob: (path) => {
+          if (!inside(path)) throw outside(path);
+          return blobs.get(path) ?? null;
+        },
         // Fetches many files' texts ahead of their reads where the adapter has a batch request (GitHub, with a token); otherwise
         // nothing. A failure readSnapshot knows is passed on; any other failure of a batch leaves its files to their own reads.
         async readMany(paths) {
+          const away = paths.find((path) => !inside(path));
+          if (away !== undefined) throw outside(away);
           if (!adapter.readFiles || commit === null) return;
           const wanted = new Map();
           for (const path of paths) {
@@ -271,6 +296,7 @@ export function connect(address, credentials = {}) {
           }
         },
         read(path) {
+          if (!inside(path)) return Promise.reject(outside(path));
           const sha = blobs.get(path);
           if (!sha) return Promise.resolve(null);
           if (!texts.has(sha)) {
@@ -337,14 +363,22 @@ export function connect(address, credentials = {}) {
     issueCounts: () => adapter.issueCounts(),
 
     // listIssues(filter) -> Issue[] — the issues of the repository, each with its comments: those of a state (open unless the filter says closed or all), carrying every label of `labels`, and, with `search`, found
-    // by the server's own search; pull requests are no issues. Every page is read. Crosses the network; fails as readSnapshot, and with NotSupported through a clone without a token. A filter that is not
-    // { state?: "open" | "closed" | "all", labels?: texts, search?: text } is a TypeError.
+    // by the server's own search; pull requests are no issues. Every page is read. With `comments: false` no comment is asked for and each issue's comments are empty. Crosses the network; fails as readSnapshot, and
+    // with NotSupported through a clone without a token. A filter that is not { state?: "open" | "closed" | "all", labels?: texts, search?: text, comments?: boolean } is a TypeError.
     async listIssues(filter = {}) {
-      const { state = "open", labels = [], search } = filter ?? {};
+      const { state = "open", labels = [], search, comments = true } = filter ?? {};
       if (!["open", "closed", "all"].includes(state)) throw new TypeError(`listIssues lists open, closed or all issues, not ${state}`);
       if (!isTexts(labels)) throw new TypeError("listIssues gives the labels as a list of texts");
       if (search !== undefined && (typeof search !== "string" || !search.trim())) throw new TypeError("listIssues gives the search as a text");
-      return adapter.listIssues({ state, labels: [...labels], search });
+      if (typeof comments !== "boolean") throw new TypeError("listIssues is told whether to read the comments with true or false");
+      return adapter.listIssues({ state, labels: [...labels], search, comments });
+    },
+
+    // readIssue(number) -> Issue — one issue with its comments, in one request and one per page of its comments. Crosses the network; fails as listIssues, and with NotFound for a number the repository has no
+    // issue of — a pull request's number among them. A number that is no positive whole number is a TypeError.
+    async readIssue(number) {
+      issueNumber(number);
+      return adapter.readIssue(number);
     },
 
     // commentOnIssue(number, body) -> void — a comment on an issue, with the person's token. Crosses the network; fails with TokenRefused, PermissionMissing, RateLimited, Unreachable, and NotSupported without
@@ -485,7 +519,8 @@ export function connect(address, credentials = {}) {
     },
 
     // listPullRequests(filter) -> PullRequest[] — the pull requests of GitHub or the merge requests of GitLab, every page, optionally only those of a state (open, merged, closed, all — the
-    // default) or of a source branch. Crosses the network; fails as readSnapshot — a failure is never an empty list. Through a clone, the server's answer where a token is given, else NotSupported.
+    // default) or of a source branch. The pages of a listing are asked for at once, once the server has
+    // said how many there are. Crosses the network; fails as readSnapshot — a failure is never an empty list. Through a clone, the server's answer where a token is given, else NotSupported.
     async listPullRequests(filter = {}) {
       const { state = "all", branch } = filter ?? {};
       if (!PR_STATES.includes(state)) throw new TypeError(`a pull request's state is one of ${PR_STATES.join(", ")}: ${String(state)}`);
@@ -548,15 +583,17 @@ export function connect(address, credentials = {}) {
       return adapter.mergePullRequest(number, expectedHead);
     },
 
-    // listCiRuns({ commit, branch, workflow }) -> CiRun[] — the GitHub Actions runs or GitLab pipelines, every page, optionally only those of a commit, of a branch, and — on GitHub — of a workflow. Crosses the
+    // listCiRuns({ commit, branch, workflow, event, newest }) -> CiRun[] — the GitHub Actions runs or GitLab pipelines, every page, optionally only those of a commit, of a branch, of an event
+    // (GitHub's event, GitLab's source) and — on GitHub — of a workflow; with `newest`, a whole number from 1, only that many, the newest first, in one request. Crosses the
     // network; fails as readSnapshot — a failure is never an empty list. Through a clone, the server's answer where a token is given, else NotSupported.
     async listCiRuns(filter = {}) {
       if (typeof filter !== "object" || filter === null || Array.isArray(filter)) throw new TypeError("a filter of CI runs is an object");
-      const { workflow, branch, commit } = filter;
-      for (const [key, value] of Object.entries({ workflow, branch, commit })) {
+      const { workflow, branch, commit, event, newest } = filter;
+      for (const [key, value] of Object.entries({ workflow, branch, commit, event })) {
         if (value !== undefined && (typeof value !== "string" || !value.trim())) throw new TypeError(`the ${key} of a filter of CI runs is a name`);
       }
-      return adapter.listCiRuns({ workflow, branch, commit });
+      if (newest !== undefined && !(Number.isInteger(newest) && newest >= 1)) throw new TypeError("the newest of a filter of CI runs is a whole number from 1");
+      return adapter.listCiRuns({ workflow, branch, commit, event, newest });
     },
 
     // cancelCiRun(id) -> void — asks the server to cancel a run; one that has ended already is no failure, and its state shows that it has. Crosses the network; fails with TokenRefused, PermissionMissing,

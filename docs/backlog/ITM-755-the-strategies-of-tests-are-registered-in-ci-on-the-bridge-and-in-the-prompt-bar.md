@@ -20,6 +20,9 @@ tests:
 origin:
   - akmaier's request of 2026-10-17 to implement UC-021 to UC-035
   - ITM-572's reading: "The others (… scheduleStrategies, resultStrategies …) join as the items that build them add them"
+built_by:
+  - dbf9956a0fc2632cd4a504f8ab099b1c9b1974f6
+  - 6da35df1bc4b5e29453b9f11f8e25dc5dcca9e86
 ---
 # ITM-755 The strategies of tests are registered in CI, on the Bridge and in the prompt bar
 

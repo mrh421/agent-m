@@ -98,7 +98,8 @@ if (input.check === "kinds") {
   return { kinds: seen > 0, unavailable };
 }
 const files = runtimes.jobWorkflowFiles(input.server, INSTANCE, { token: input.token, keys: input.keys }, input.runners);
-let text = files.map((file) => file.text).join("\n");
+// The checks of the key and token sentences read the generated job workflow's files: the file beside it, which runs onMainChanged, runs no agent and no job of Agent M.
+let text = files.filter((file) => !/agent-m-main-changed\.yml$/.test(file.path)).map((file) => file.text).join("\n");
 if (input.plant === "key-literal") {
   const key = input.keys[0];
   text = input.server === "github" ? text.replace("      " + key + ": ${{ secrets." + key + " }}", "      " + key + ": sk-ant-LITERAL-0123456789") : text.replace("  variables:\n", "  variables:\n    " + key + ": sk-ant-LITERAL-0123456789\n");

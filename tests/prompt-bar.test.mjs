@@ -64,15 +64,24 @@ class Storage {
 
 // ---------------------------------------------------------------- the store, the hosts, the endpoint
 
+// The instance's participant list, which the bar does not read for its offer (UC-049 1): what the bar offers is declared in this browser's store.
 const COLUMNS = "| Name | Type | Model | Context | Price | Capabilities | Processing place | Route |\n|---|---|---|---|---|---|---|---|";
 const row = (name, type, route, { context = "200000", capabilities = "draft text", place = "Anthropic, USA" } = {}) =>
   `| ${name} | ${type} | model-${name} | ${context} | — | ${capabilities} | ${place} | ${route} |`;
 const registerOf = (...rows) => `# Participants of this instance\n\n${COLUMNS}\n${rows.join("\n")}\n`;
-const DRAFTER = row("drafter-a", "model endpoint", "endpoint ep1");
-const OTHER = row("drafter-b", "model endpoint", "endpoint ep2", { place: "this machine" });
-const DRAFTER_CI = row("drafter-a", "model endpoint", "endpoint ep1 secret KEY_A");
+
+// What this browser declares: an endpoint `endpoint:<name>` with its place, context and model (UC-003), or a CLI session `session:mac:<agent>` of the
+// Bridge mac, which offers the agent ready (UC-044). drafter-a is called at https://models.example, drafter-b at https://local.example.
+const BRIDGE = "http://127.0.0.1:7777";
+const endpoint = (name, { context = 200000, place = "Anthropic, USA", url = name === "drafter-b" ? "https://local.example/v1" : "https://models.example/v1", ...more } = {}) =>
+  ({ key: `endpoint:${name}`, value: { kind: "openai-compatible", url, model: `model-${name}`, key: name === "drafter-b" ? null : "sk-fixture", place, context, ...more } });
+const session = (agent, { capabilities = ["draft text"], place = "this machine", context = 200000 } = {}) =>
+  ({ key: `session:mac:${agent}`, agent, value: { place, context, model: `model-${agent}`, capabilities } });
+const DRAFTER = endpoint("drafter-a");
+const OTHER = endpoint("drafter-b", { place: "this machine" });
+// drafter-a called through the Bridge mac, naming the CI secret of its key: a message goes through the Bridge, and a hand-over may take GitHub Actions (UC-049 4a.2).
+const DRAFTER_CI = endpoint("drafter-a", { secret: "KEY_A", bridge: "mac" });
 const JOB_WORKFLOW = { ".github/workflows/agent-m-jobs.yml": "name: agent-m-jobs\n" };
-const SUB = row("sub-agent", "CLI agent", "through drafter-a");
 
 const failure = (name, fields = {}) => Object.assign(new Error(`${name} ${JSON.stringify(fields)}`), { name }, fields);
 const sha = (n) => createHash("sha1").update(`commit ${n}`).digest("hex");
@@ -116,22 +125,39 @@ const SWITCH_ON = "---\nrecording: on\n---\n# Recording of conversations\n";
 const seen = [];
 registerStrategies("tests/prompt-bar.test.mjs", { recipes: { "chapters-for-page": async (context, params) => { seen.push(params); return []; } } });
 
-// The model endpoint ep1 behind the global fetch: it answers the drafts given in turn (the last again), and keeps every request with what the page showed at that moment.
-let requests = [], showing = () => "";
+// The model endpoints behind the global fetch: they answer the drafts given in turn (the last again), and keep every request with what the page showed at that moment.
+// The Bridge mac at BRIDGE answers testBridge's two requests, listing the agents of the sessions the page declares ready, and an ask with the next draft; its requests
+// are kept apart, in `bridgeCalls`.
+let requests = [], bridgeCalls = [], bridgeAgents = [], showing = () => "";
 const realFetch = globalThis.fetch;
+const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+function bridgeAnswer(url, init, next) {
+  const { pathname } = new URL(url);
+  bridgeCalls.push(`${init?.method ?? "GET"} ${pathname}`);
+  if (pathname === "/v1/pair") return json({ bridge: { name: "mac", version: "1.0.0", platform: "darwin" }, origin: "https://alice.github.io" });
+  if (pathname === "/v1/agents") return json({ agents: bridgeAgents.map((name) => ({ name, version: "1.0.0", ready: true, loggedIn: true })), missing: [] });
+  if (pathname === "/v1/ask") { requests.push({ url: String(url), body: String(init?.body ?? ""), page: showing() }); return json({ ask: "ask-1" }); }
+  if (pathname === "/v1/ask/ask-1") return json({ state: "done", text: next(), calls: [], usage: null });
+  return new Response("{}", { status: 404 });
+}
 function endpointAnswers(...drafts) {
   requests = [];
+  bridgeCalls = [];
   const queue = [...drafts];
-  globalThis.fetch = async (url, init) => {
-    requests.push({ url: String(url), body: String(init?.body ?? ""), page: showing() });
+  const next = () => {
     const draft = queue.length > 1 ? queue.shift() : queue[0];
-    const content = typeof draft === "string" ? draft : JSON.stringify({ draft, answers: [] });
-    return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), { status: 200, headers: { "content-type": "application/json" } });
+    return typeof draft === "string" ? draft : JSON.stringify({ draft, answers: [] });
+  };
+  globalThis.fetch = async (url, init) => {
+    if (String(url).startsWith(BRIDGE)) return bridgeAnswer(String(url), init, next);
+    requests.push({ url: String(url), body: String(init?.body ?? ""), page: showing() });
+    return json({ choices: [{ message: { content: next() } }], usage: { prompt_tokens: 10, completion_tokens: 5 } });
   };
 }
 // An endpoint that never answers but ends when the request is aborted.
 function endpointHangs() {
   requests = [];
+  bridgeCalls = [];
   globalThis.fetch = (url, init) => new Promise((resolve, reject) => {
     requests.push({ url: String(url), body: String(init?.body ?? ""), page: showing() });
     init?.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
@@ -147,16 +173,17 @@ const subjectOf = (over = {}) => ({
   draftRoute: null, withhold: null, refuses: [], ...over,
 });
 
-// A page: the instance with its register and recording switch, a store keeping the endpoint ep1 (and ep2 where asked) and the instance's token, and the bar started
-// on it. `product` is a repository when the page is a product's.
-function page({ rows = [DRAFTER], ep2 = false, recording = false, product = null, token = true, subject = subjectOf(), instanceFiles = {}, tab = new Storage() } = {}) {
+// A page: the instance with its participant list (`listed`, empty unless given) and recording switch, a store declaring what `offer` names — and the Bridge mac
+// where a session or an endpoint needs it — and the instance's token, and the bar started on it. `product` is a repository when the page is a product's.
+function page({ offer = [DRAFTER], listed = [], recording = false, product = null, token = true, subject = subjectOf(), instanceFiles = {}, tab = new Storage() } = {}) {
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: new Storage() });
   Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: tab });
   const store = openStore("alice/agent-m");
-  writeSetting(store, "endpoint:ep1", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture" });
-  if (ep2) writeSetting(store, "endpoint:ep2", { kind: "openai-compatible", url: "https://local.example/v1", model: "model-drafter-b", key: null });
+  for (const each of offer) writeSetting(store, each.key, each.value);
+  bridgeAgents = offer.filter((each) => each.agent).map((each) => each.agent);
+  if (offer.some((each) => each.agent || each.value.bridge === "mac")) writeSetting(store, "bridge:mac", { address: BRIDGE, token: "token-mac" });
   if (token) writeSetting(store, product ? "github-token:alice/thesis-tool" : "github-token", { value: "github_pat_FIXTURE0123456789abcdef", name: "alice", expires: "2027-01-01" });
-  const instance = fakeRepo(INSTANCE_WEB, { "docs/participants.md": registerOf(...rows), ...(recording ? { "docs/conversation-recording.md": SWITCH_ON } : {}), ...instanceFiles });
+  const instance = fakeRepo(INSTANCE_WEB, { "docs/participants.md": registerOf(...listed), ...(recording ? { "docs/conversation-recording.md": SWITCH_ON } : {}), ...instanceFiles });
   const productRepo = product ? fakeRepo(PRODUCT_WEB, product) : null;
   const target = document.createElement("div");
   showing = () => textOf(target);
@@ -180,27 +207,28 @@ const answer = (text, extra = {}) => ({ answer: text, ...extra });
 
 // TST-600020 · level: component · module: MOD-prompt-bar
 // guards: UC-049; THE PAGE NAMES WHERE IT SENDS
-// given: an instance whose register offers no participant this browser reaches (the endpoint ep1 is stored, but the only row is a subagent reached through another participant), and a second instance with no register file
+// given: a store that keeps the endpoint ep1 as an older settings page stored it — address, kind, model and key, no place and no context —, while the instance's participant list holds drafter-a, a model endpoint on `endpoint ep1` with its place and context; and a second store that declares nothing, with the same list
 // input: startPromptBar on each
-// expect: the target stays empty for both — nothing drawn, nothing said — and no request and no write is made
+// expect: the target stays empty for both — nothing drawn, nothing said — and no request and no write is made: the list is not read for the offer (UC-049 1), and ep1 lacks a place and a context (UC-049 1b)
 test("startPromptBar — with no participant offered it draws nothing and says nothing", async () => {
   endpointAnswers(answer("unused"));
-  const subagentOnly = page({ rows: [SUB] });
+  const listed = [row("drafter-a", "model endpoint", "endpoint ep1")];
+  const undeclared = page({ offer: [{ key: "endpoint:ep1", value: { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture" } }], listed });
   await tick(); await tick(); await tick();
-  assert.equal(subagentOnly.target.childNodes.length, 0);
-  assert.equal(subagentOnly.explained.length, 0);
+  assert.equal(undeclared.target.childNodes.length, 0);
+  assert.equal(undeclared.explained.length, 0);
   assert.equal(requests.length, 0);
-  assert.equal(subagentOnly.instance.attempts.length, 0);
-  const none = page({ rows: [] });
+  assert.equal(undeclared.instance.attempts.length, 0);
+  const none = page({ offer: [], listed });
   await tick(); await tick(); await tick();
   assert.equal(none.target.childNodes.length, 0);
 });
 
 // TST-600021 · level: component · module: MOD-prompt-bar
 // guards: UC-049; THE PAGE NAMES WHERE IT SENDS; A PARTICIPANT DECLARES WHERE IT PROCESSES DATA; EVERY STEP EXPLAINS ITSELF
-// given: a register of drafter-a (endpoint ep1, place "Anthropic, USA") only; and one of drafter-a, drafter-b (endpoint ep2, place "this machine") and the subagent sub-agent (route `through drafter-a`)
+// given: this browser declares the endpoint drafter-a (place "Anthropic, USA") only; and, on a second page, drafter-a, drafter-b (place "this machine") and the endpoint unplaced, which declares no place; the instance's list holds the subagent sub-agent (route `through drafter-a`)
 // input: startPromptBar on each
-// expect: for the first, the bar names "drafter-a — Anthropic, USA" and has no <select>; for the second a <select class="participant"> with exactly two options, "drafter-a — Anthropic, USA" and "drafter-b — this machine" (valued drafter-a, drafter-b), no sub-agent; both ask the frame to explain the topic "prompt-bar"; no request is made and nothing is written while the bar is drawn; the recording line is hidden
+// expect: for the first, the bar names "drafter-a — Anthropic, USA" and has no <select>; for the second a <select class="participant"> with exactly two options, "drafter-a — Anthropic, USA" and "drafter-b — this machine" (valued drafter-a, drafter-b), no unplaced and no sub-agent; both ask the frame to explain the topic "prompt-bar"; no request is made and nothing is written while the bar is drawn; the recording line is hidden
 test("startPromptBar — one participant is named, several are chosen among, each with its processing place; a subagent never", async () => {
   endpointAnswers(answer("unused"));
   const single = page();
@@ -209,7 +237,7 @@ test("startPromptBar — one participant is named, several are chosen among, eac
   assert.equal(all(single.target, (node) => node.localName === "select").length, 0);
   assert.deepEqual(single.explained, ["prompt-bar"]);
   assert.equal(one(single.target, "recording").hidden, true);
-  const several = page({ rows: [DRAFTER, OTHER, SUB], ep2: true });
+  const several = page({ offer: [DRAFTER, OTHER, endpoint("unplaced", { place: "" })], listed: [row("sub-agent", "CLI agent", "through drafter-a")] });
   await drawn(several);
   const options = all(several.target, (node) => node.localName === "option");
   assert.deepEqual(options.map(textOf), ["drafter-a — Anthropic, USA", "drafter-b — this machine"]);
@@ -221,7 +249,7 @@ test("startPromptBar — one participant is named, several are chosen among, eac
 
 // TST-600022 · level: component · module: MOD-prompt-bar
 // guards: UC-049; THE PAGE NAMES WHERE IT SENDS; ONE CLICK PER DECISION
-// given: one participant drafter-a on endpoint ep1 that answers "Split it in two."; the subject's menu entry "use-cases" and no refused tool; the message "split this use case"
+// given: one participant, this browser's endpoint drafter-a, that answers "Split it in two."; the subject's menu entry "use-cases" and no refused tool; the message "split this use case"
 // input: Send, then a second message "and name the new one" in the same tab
 // expect: at the first request the page already names "drafter-a — Anthropic, USA" under "Sent to"; the request goes to https://models.example/v1/chat/completions and its text holds the instruction and the page "The page shows UC-007, drafted for drafter-a."; the kind's strategy was given the parameters instruction "split this use case", an empty conversation, entry "use-cases" and refuses []; the answer "Split it in two." and "Rounds: 1" are shown; the conversation holds the person's message (who alice) and the participant's (who drafter-a) and the input is emptied; the second request's text holds "alice: split this use case" and "drafter-a: Split it in two." (the conversation so far), and the strategy was given a two-message conversation; the tab's conversation holds four messages of the subject "use-case:UC-007"
 test("Send — the destinations are named before the request, the page and the person's words go with it, the answer is shown, the conversation goes on", async () => {
@@ -251,12 +279,12 @@ test("Send — the destinations are named before the request, the page and the p
 
 // TST-600023 · level: component · module: MOD-prompt-bar
 // guards: UC-049; UC-019; ONE CLICK PER DECISION
-// given: two participants — the chosen one with a context of 100 tokens, the other with 200000; and, in a second page, one participant that declares no capability to draft text; an endpoint that would answer
+// given: this browser's endpoints drafter-a, with a context of 100 tokens, chosen, and drafter-b with 200000; and, in a second page, the one CLI session mac:reader, which declares no capability to draft text; an endpoint that would answer
 // input: choose the first, press Send with "why is this step red?"; then, on the second page, press Send
 // expect: nothing is sent (no request) and nothing is written; the page says "Nothing was sent." and lists a reason "drafter-a does not hold this message" that names drafter-b as one whose context is larger; the conversation stays empty and the input keeps the words; for the second page, whose participant cannot draft text and is therefore not offered, Send sends nothing and the page says "Nothing was sent."
 test("Send — nothing is sent while the job does not fit or a finding keeps it from starting, and the page says why", async () => {
   endpointAnswers(answer("unused"));
-  const tiny = page({ rows: [row("drafter-a", "model endpoint", "endpoint ep1", { context: "100" }), OTHER], ep2: true });
+  const tiny = page({ offer: [endpoint("drafter-a", { context: 100 }), OTHER] });
   await drawn(tiny);
   one(tiny.target, "participant").value = "drafter-a";
   await sends(tiny, "why is this step red?");
@@ -270,7 +298,7 @@ test("Send — nothing is sent while the job does not fit or a finding keeps it 
   assert.equal(readTabValue(tiny.store, "prompt-bar:conversation"), null);
   assert.equal(one(tiny.target, "instruction").value, "why is this step red?");
   // A participant that cannot do the kind is not offered (UC-019 2), so it cannot be sent to: the second page offers none, and Send sends nothing.
-  const mute = page({ rows: [row("drafter-a", "model endpoint", "endpoint ep1", { capabilities: "read the repository" })] });
+  const mute = page({ offer: [session("reader", { capabilities: ["read the repository"] })] });
   await drawn(mute);
   await sends(mute, "plan the next sprint");
   assert.equal(requests.length, 0);
@@ -417,13 +445,12 @@ test("Send — a message that cannot be recorded is not sent, and the page says 
 
 // TST-600030 · level: component · module: MOD-prompt-bar
 // guards: UC-049; THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK; ONE CLICK PER DECISION
-// given: a register whose participant drafter-a is a model endpoint with the CI secret KEY_A in its route and "Anthropic, USA" as its place; an instance that holds Agent M's job workflow; an endpoint whose draft proposes a hand-over { kind: "implement", works_on: ["ITM-504"], task: "Add the bar." }
+// given: this browser's endpoint drafter-a, called through the Bridge mac, naming the CI secret KEY_A of its key, with "Anthropic, USA" as its place; an instance that holds Agent M's job workflow; an endpoint whose draft proposes a hand-over { kind: "implement", works_on: ["ITM-504"], task: "Add the bar." }
 // input: Send
-// expect: the page shows "Kind: implement", "Works on: ITM-504", "Task: Add the bar.", "Participant: drafter-a — Anthropic, USA" and "Route: ci hosted", and no button "Hand over": the hand-over goes
-//   on without a further click (UC-049 4a), and is refused at once — "Nothing was queued." — since drafter-a, which drafts text only, cannot do implement; no commit was attempted
+// expect: the page shows "Kind: implement", "Works on: ITM-504", "Task: Add the bar.", "Participant: drafter-a — Anthropic, USA" and "Route: ci hosted", and no button "Hand over": the hand-over goes on without a further click (UC-049 4a), and is refused at once — "Nothing was queued." — since drafter-a, which drafts text only, cannot do implement; no commit was attempted
 test("Send — a hand-over the participant proposes is shown with its kind, what it works on, its task, the participant and its route, and goes on without a click", async () => {
   endpointAnswers(answer("I can hand this on.", { handOver: { kind: "implement", works_on: ["ITM-504"], task: "Add the bar." } }));
-  const it = page({ rows: [DRAFTER_CI], instanceFiles: JOB_WORKFLOW });
+  const it = page({ offer: [DRAFTER_CI], instanceFiles: JOB_WORKFLOW });
   await drawn(it);
   await sends(it, "implement this");
   await until(() => !textOf(one(it.target, "hand-over")).includes("Checking"), "the hand-over is checked");
@@ -494,7 +521,7 @@ test("Send — the findings the loop left are shown with the rounds, each as the
 
 // TST-560001 · level: component · module: MOD-prompt-bar; MOD-job-runner
 // guards: UC-019; THE CORRECTION LOOP HAS A FIXED LIMIT; THE PAGE NAMES WHERE IT SENDS
-// given: one participant drafter-a on endpoint ep1 that answers "Split it in two."; the subject's kind converse, whose correction loop is limited to 5 rounds
+// given: one participant, this browser's endpoint drafter-a, that answers "Split it in two."; the subject's kind converse, whose correction loop is limited to 5 rounds
 // input: Send "split this use case"
 // expect: at the moment of the first (and only) request the page already says "at most 5 rounds", after the names of the destinations ("Sent to:" … "drafter-a — Anthropic, USA"); after the answer it still says so, and the rounds shown are "Rounds: 1"
 test("Send — the limit of correction rounds is named with the destinations, before the first round", async () => {
@@ -517,7 +544,7 @@ test("Send — the limit of correction rounds is named with the destinations, be
 // expect: nothing is sent and the page says "Nothing was sent."; it names no limit of rounds, since no round will run (the counter-proof of TST-560001: the same page with a participant that holds the message names it)
 test("Send — a message that is not sent names no limit of rounds", async () => {
   endpointAnswers(answer("unused"));
-  const tiny = page({ rows: [row("drafter-a", "model endpoint", "endpoint ep1", { context: "100" }), OTHER], ep2: true });
+  const tiny = page({ offer: [endpoint("drafter-a", { context: 100 }), OTHER] });
   await drawn(tiny);
   one(tiny.target, "participant").value = "drafter-a";
   await sends(tiny, "why is this step red?");
@@ -532,12 +559,12 @@ test("Send — a message that is not sent names no limit of rounds", async () =>
 
 // TST-560003 · level: component · module: MOD-prompt-bar; MOD-participant-list
 // guards: UC-019; A PARTICIPANT DECLARES ITS CAPABILITIES; THE PAGE NAMES WHERE IT SENDS
-// given: a register of drafter-a (endpoint ep1, draft text, "Anthropic, USA") and reader (endpoint ep2, read the repository only, "this machine"), both reached by this browser; the subject's kind converse, which needs draft text
+// given: this browser's endpoint drafter-a (draft text, "Anthropic, USA") and the CLI session mac:reader, which the Bridge mac offers and which declares read the repository only, "this machine"; the subject's kind converse, which needs draft text
 // input: startPromptBar; then Send "split this use case"
 // expect: the bar names "drafter-a — Anthropic, USA" and offers no <select> and no reader; Send makes one request, to https://models.example/v1/chat/completions, and the destinations are "drafter-a — Anthropic, USA" alone
 test("startPromptBar — of the participants reached it offers only each that can do the subject's kind", async () => {
   endpointAnswers(answer("Split it in two."));
-  const it = page({ rows: [DRAFTER, row("reader", "model endpoint", "endpoint ep2", { capabilities: "read the repository", place: "this machine" })], ep2: true });
+  const it = page({ offer: [DRAFTER, session("reader", { capabilities: ["read the repository"] })] });
   await drawn(it);
   assert.equal(textOf(one(it.target, "participant")), "drafter-a — Anthropic, USA");
   assert.equal(all(it.target, (node) => node.localName === "select").length, 0);
@@ -550,18 +577,19 @@ test("startPromptBar — of the participants reached it offers only each that ca
 
 // TST-560004 · level: component · module: MOD-prompt-bar; MOD-participant-list
 // guards: UC-019; A PARTICIPANT DECLARES ITS CAPABILITIES
-// given: a register whose only participant, reader, is reached by this browser but declares only "read the repository"; the subject's kind converse, which needs draft text
+// given: this browser's only offer, the CLI session mac:reader, which declares only "read the repository"; the subject's kind converse, which needs draft text
 // input: startPromptBar; press the link; write "split this use case" and press Send
-// expect: the bar draws, names no participant, and says "No participant of this instance can do converse: it needs draft text."; the link calls go with the route "participants" once; Send sends nothing (no request) and says "Nothing was sent."
-test("startPromptBar — where no participant reached can do the kind it says so, names the capability and links the participants", async () => {
+// expect: the bar draws, names no participant, and says "No endpoint or CLI session of this browser can do converse: it needs draft text."; the link "Set up endpoints" calls go with the route "endpoints" once (UC-019 3a); Send sends nothing (no request) and says "Nothing was sent."
+test("startPromptBar — where nothing offered can do the kind it says so, names the capability and links the endpoints", async () => {
   endpointAnswers(answer("unused"));
-  const it = page({ rows: [row("reader", "model endpoint", "endpoint ep1", { capabilities: "read the repository" })] });
+  const it = page({ offer: [session("reader", { capabilities: ["read the repository"] })] });
   await drawn(it);
   assert.equal(all(it.target, (node) => ["select", "option"].includes(node.localName)).length + byClass(it.target, "participant").length, 0);
-  assert.match(textOf(it.target), /No participant of this instance can do converse: it needs draft text\./);
+  assert.match(textOf(it.target), /No endpoint or CLI session of this browser can do converse: it needs draft text\./);
   assert.doesNotMatch(textOf(it.target), /reader/);
-  click(one(it.target, "participants-link"));
-  assert.deepEqual(it.gone, [{ route: "participants", params: undefined }]);
+  assert.equal(textOf(one(it.target, "endpoints-link")), "Set up endpoints");
+  click(one(it.target, "endpoints-link"));
+  assert.deepEqual(it.gone, [{ route: "endpoints", params: undefined }]);
   await sends(it, "split this use case");
   assert.equal(requests.length, 0);
   assert.ok(textOf(one(it.target, "status")).includes("Nothing was sent."));
@@ -569,20 +597,20 @@ test("startPromptBar — where no participant reached can do the kind it says so
 
 // TST-560005 · level: component · module: MOD-prompt-bar; MOD-job-catalogue
 // guards: UC-019; A PARTICIPANT DECLARES ITS CAPABILITIES
-// given: drafter-a (draft text) and runner (draft text, run code and tests), both reached; the bar's subject getter first gives one subject, then one that still names a kind of its own, run-tests (needs run code and tests)
+// given: this browser's endpoint drafter-a (draft text) and the CLI session mac:runner (draft text, run code and tests, "this machine"), which the Bridge mac offers; the bar's subject getter first gives one subject, then one that still names a kind of its own, run-tests (needs run code and tests)
 // input: startPromptBar; the getter now gives the new subject; nothing is announced; the person puts the cursor in the input (focus)
-// expect: the selector offers drafter-a and runner, before and after the input takes focus: the offer is that of the bar's one kind, converse, and no subject narrows it (UC-049 step 3)
+// expect: the selector offers "drafter-a — Anthropic, USA" and "mac:runner — this machine", before and after the input takes focus: the offer is that of the bar's one kind, converse, and no subject narrows it (UC-049 step 3)
 test("startPromptBar — the offer is the bar's one kind's, whatever kind a subject names", async () => {
   endpointAnswers(answer("unused"));
-  const it = page({ rows: [DRAFTER, row("runner", "model endpoint", "endpoint ep2", { capabilities: "draft text, run code and tests", place: "this machine" })], ep2: true });
+  const it = page({ offer: [DRAFTER, session("runner", { capabilities: ["draft text", "run code and tests"] })] });
   await drawn(it);
-  assert.deepEqual(all(it.target, (node) => node.localName === "option").map(textOf), ["drafter-a — Anthropic, USA", "runner — this machine"]);
+  assert.deepEqual(all(it.target, (node) => node.localName === "option").map(textOf), ["drafter-a — Anthropic, USA", "mac:runner — this machine"]);
   it.current.subject = subjectOf({ key: "tests:all", title: "The tests", kind: "run-tests" });
   await tick();
   assert.equal(all(it.target, (node) => node.localName === "option").length, 2, "nothing reads the getter before the bar is used");
   one(it.target, "instruction").dispatchEvent(new Event("focus"));
   for (let turn = 0; turn < 20; turn += 1) await tick();
-  assert.deepEqual(all(it.target, (node) => node.localName === "option").map(textOf), ["drafter-a — Anthropic, USA", "runner — this machine"], "the offer does not follow a subject's kind");
+  assert.deepEqual(all(it.target, (node) => node.localName === "option").map(textOf), ["drafter-a — Anthropic, USA", "mac:runner — this machine"], "the offer does not follow a subject's kind");
 });
 
 // TST-560006 · level: component · module: MOD-prompt-bar; MOD-job-catalogue
@@ -592,14 +620,14 @@ test("startPromptBar — the offer is the bar's one kind's, whatever kind a subj
 // expect: Send reads the getter, and sends the message as converse all the same: one request, whose text holds the new subject's page; the answer is shown; nothing says that no participant can do run-tests
 test("Send — reads the subject again, and sends converse whatever kind it names", async () => {
   endpointAnswers(answer("I hand the tests on."));
-  const it = page({ rows: [DRAFTER, OTHER], ep2: true });
+  const it = page({ offer: [DRAFTER, OTHER] });
   await drawn(it);
   it.current.subject = subjectOf({ key: "tests:all", title: "The tests", kind: "run-tests", paramsFor: () => ({ page: "The page lists the tests." }) });
   await sends(it, "run the tests");
   assert.equal(requests.length, 1);
   assert.ok(requests[0].body.includes("The page lists the tests."));
   assert.ok(textOf(one(it.target, "answer")).includes("I hand the tests on."));
-  assert.doesNotMatch(textOf(it.target), /No participant of this instance can do run-tests/);
+  assert.doesNotMatch(textOf(it.target), /can do run-tests/);
 });
 
 // TST-560007 · level: component · module: MOD-prompt-bar
@@ -609,7 +637,7 @@ test("Send — reads the subject again, and sends converse whatever kind it name
 // expect: the select the person clicked is still the one in the bar after the focus, and drafter-b stays chosen
 test("selector — taking focus keeps the same select, so the person's choice stays", async () => {
   endpointAnswers(answer("unused"));
-  const it = page({ rows: [DRAFTER, OTHER], ep2: true });
+  const it = page({ offer: [DRAFTER, OTHER] });
   await drawn(it);
   const clicked = one(it.target, "participant");
   assert.equal(clicked.localName, "select");
@@ -633,17 +661,17 @@ test("selector — taking focus keeps the same select, so the person's choice st
 test("selector — the participant chosen stays chosen when the page is loaded again in the tab", async () => {
   endpointAnswers(answer("unused"));
   const tab = new Storage();
-  const it = page({ rows: [DRAFTER, OTHER], ep2: true, tab });
+  const it = page({ offer: [DRAFTER, OTHER], tab });
   await drawn(it);
   const chooser = one(it.target, "participant");
   chooser.value = "drafter-b";
   chooser.dispatchEvent(new Event("change"));
   it.bar.stop();
-  const again = page({ rows: [DRAFTER, OTHER], ep2: true, tab });
+  const again = page({ offer: [DRAFTER, OTHER], tab });
   await drawn(again);
   assert.equal(one(again.target, "participant").value, "drafter-b");
   again.bar.stop();
-  const fresh = page({ rows: [DRAFTER, OTHER], ep2: true });
+  const fresh = page({ offer: [DRAFTER, OTHER] });
   await drawn(fresh);
   assert.equal(one(fresh.target, "participant").value, "drafter-a");
 });

@@ -3,7 +3,7 @@
 //
 // The app is the real module, imported fresh for every page load. Around it: a DOM that keeps what the app writes into its
 // elements, localStorage, the Cache Storage (shared between page loads when the test says so), and GitHub's REST API served
-// from a set of files and GitHub's batch request (POST /graphql) — every request counted by what it reads. The git-data endpoints a commit uses (ref, commit, tree, update
+// from a set of files, GitHub's batch request (POST /graphql) and its trees of named folders — every request counted by what it reads. The git-data endpoints a commit uses (ref, commit, tree, update
 // of the ref, fast-forward only) are served too, and a commit changes the files; a test adds the servers its view talks to as
 // request handlers of its own. A button the app wired is found by its
 // attribute and clicked with an event the test gives — trusted or not. No request leaves this process.
@@ -16,6 +16,13 @@ import { storedGraphBytes } from "./stored-graph-fake.mjs";
 const HEAD = "c0ffee".padEnd(40, "0");
 export const REPO = "akmaier/agent-m";
 export const TOKEN = "github_pat_HARNESS0123456789abcdefghij";
+
+// What one read of a snapshot with `folders` asks GitHub for, as `folders` lists it: a named path without an extension as itself (its tree),
+// a named path with one as its folder's entries, `<folder>/` — each once, sorted.
+export const askedFor = (named) => [...new Set(named.map((path) => {
+  const at = path.lastIndexOf("/"), name = path.slice(at + 1);
+  return name.includes(".") ? `${at < 0 ? "" : path.slice(0, at)}/` : path;
+}))].sort();
 
 // files: { path: text } — the repository at its default branch. history: texts of earlier commits, readable by their blob SHA.
 // dates: { path: ISO date } — when a record was committed. handlers: a test's own fakes, asked first and in order —
@@ -30,7 +37,7 @@ export async function repoServer({ files: given, history = [], dates = {}, repo 
   const shas = Object.fromEntries(await Promise.all(Object.entries(files).map(async ([p, t]) => [p, await blobSha(t)])));
   const bySha = Object.fromEntries(await Promise.all(history.map(async (t) => [await blobSha(t), t])));
   for (const [p, s] of Object.entries(shas)) bySha[s] = files[p];
-  const requests = [], writes = [], batches = [];
+  const requests = [], writes = [], batches = [], folderReads = [];
   let pending = 0, head = empty ? null : first, seq = 0;
   // The commit that added an approval record: the head, or, for a record that names a text its file no longer holds, an earlier commit
   // whose tree is the head's with that text at the file's path — the history that readHistory lists and the reads at that commit find
@@ -51,15 +58,52 @@ export async function repoServer({ files: given, history = [], dates = {}, repo 
   const api = `/repos/${repo}`;
   const blobShaOf = (text) => Object.keys(bySha).find((sha) => bySha[sha] === text) ?? "0".repeat(40);
   const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json" } });
+  // GitHub's trees of named folders and the entries of the folders of named files, sent together (MOD-repository-hosts' readSnapshot with
+  // `folders`): "<commit>:<path>" with recursive, or a folder's own entries without it. The requests sent together are one read of the
+  // tree's folders, counted once as `folders`; what they asked for is listed in `folders` — a folder's path, a listed folder as `<folder>/`.
+  // Requests are sent together while one of them is still in flight: a request sent after the last of the round has answered opens a round of its own.
+  let round = null;
+  const folderPart = (url, method) => {
+    const m = method === "GET" && url.origin === "https://api.github.com" && new RegExp(`^${api}/git/trees/([^/:]+)(?::(.*))?$`).exec(url.pathname);
+    return m && (m[2] !== undefined || !url.searchParams.has("recursive")) ? { commit: m[1], path: (m[2] ?? "").split("/").map(decodeURIComponent).join("/") } : null;
+  };
   const fetchMock = async (u, init = {}) => {
     const url = new URL(String(u)), p = url.pathname, method = (init.method || "GET").toUpperCase();
     let what = `other ${method} ${url.origin}${p}${url.search}`;
+    const part = folderPart(url, method);
+    let mine = null;
+    if (part) {
+      const asked = url.searchParams.has("recursive") ? part.path : `${part.path}/`;
+      if (round && round.commit === part.commit && round.inFlight > 0) { round.named.push(asked); what = null; }
+      else { round = { commit: part.commit, named: [asked], inFlight: 0 }; folderReads.push(round.named); what = "folders"; }
+      mine = round;
+      mine.inFlight += 1;
+    }
     pending += 1;
     try {
       await new Promise((r) => setTimeout(r, 0));
       for (const handle of handlers) {
         const answer = await handle(url, { ...init, method });
         if (answer) { what = `handler ${method} ${url.origin}${p}${url.search}`; return answer; }
+      }
+      if (part) {
+        const held = part.commit === head ? files : eras.get(part.commit)?.files;
+        if (!held) return new Response('{"message":"Not Found"}', { status: 404 });
+        const shaOf = (file) => (held === files ? shas[file] : blobShaOf(held[file]));
+        const folder = part.path, inside = (file) => folder === "" || file.startsWith(`${folder}/`), rest = (file) => (folder === "" ? file : file.slice(folder.length + 1));
+        if (folder in held) return json({ message: "Invalid object requested. SHA must identify a commit or a tree." }, 422);
+        const below = Object.keys(held).filter(inside).sort();
+        if (!below.length) return new Response('{"message":"Not Found"}', { status: 404 });
+        if (url.searchParams.has("recursive")) {
+          return json({ sha: "t".repeat(40), truncated: false, tree: below.map((file) => ({ path: rest(file), mode: "100644", type: "blob", sha: shaOf(file) })) });
+        }
+        const entries = new Map();
+        for (const file of below) {
+          const [name, ...deeper] = rest(file).split("/");
+          if (!entries.has(name)) entries.set(name, deeper.length ? { path: name, mode: "040000", type: "tree", sha: "t".repeat(40) }
+            : { path: name, mode: "100644", type: "blob", sha: shaOf(file) });
+        }
+        return json({ sha: "t".repeat(40), truncated: false, tree: [...entries.values()] });
       }
       // The branch trace-cache holds `<commit>.json.gz` for the head and each earlier commit, as the workflow "main changed" stores it
       // (tests/stored-graph-fake.mjs): read through the contents API with a token, from the raw host without. Counted as `stored graph <commit>`.
@@ -80,6 +124,12 @@ export async function repoServer({ files: given, history = [], dates = {}, repo 
         const sha = p.split("/")[3], at = eras.get(sha)?.files ?? files;
         what = at === files ? `file ${path}` : `era file ${path}`;
         return path in at ? new Response(at[path], { status: 200 }) : new Response("404: Not Found", { status: 404 });
+      }
+      // A read without a token of a file of another branch (raw host, /<repo>/<branch>/<path>) that the fake does not hold is answered 404, as GitHub answers it — such as
+      // the branch overview-cache, which the fake holds no file of.
+      if (url.origin === "https://raw.githubusercontent.com" && method === "GET" && p.startsWith(`/${repo}/`)) {
+        what = `raw ${p}`;
+        return new Response("404: Not Found", { status: 404 });
       }
       if (url.origin !== "https://api.github.com") return new Response("{}", { status: 500 });
       if (head === null && (p === `${api}/commits` || p.startsWith(`${api}/commits/`) || p.startsWith(`${api}/git/`))) {
@@ -177,13 +227,14 @@ export async function repoServer({ files: given, history = [], dates = {}, repo 
       if (p === api) { what = "repository"; return json({ private: false, default_branch: "main" }); }
       return new Response("{}", { status: 404 });
     } finally {
-      requests.push(what);
+      if (what !== null) requests.push(what);
+      if (mine) mine.inFlight -= 1;
       pending -= 1;
     }
   };
   // Another commit on the branch: `path` gets `text`, and the branch moves on.
   const change = async (path, text) => { await put(path, text); head = next("e"); };
-  return { files, shas, requests, writes, batches, change, fetch: fetchMock, get head() { return head; }, get pending() { return pending; } };
+  return { files, shas, requests, writes, batches, folders: folderReads, change, fetch: fetchMock, get head() { return head; }, get pending() { return pending; } };
 }
 
 // The Cache Storage of a browser, in memory.
@@ -369,6 +420,11 @@ export async function settle(server) {
     else { idle = 0; seen = server.requests.length; }
   }
 }
+
+// The requests of a fake server that are writes: every request that is not a GET, except the batch of reads, a POST to GitHub's
+// /graphql, which answers with file texts and changes nothing.
+const BATCH_OF_READS = /^(write|other|handler) POST https:\/\/api\.github\.com\/graphql(\?|$)/;
+export const writeRequests = (server) => server.requests.filter((request) => /^(write|other|handler) (?!GET )/.test(request) && !BATCH_OF_READS.test(request));
 
 // The app: the one place tests and the harness load it from.
 export const APP_FILE = new URL("../src/site-frame/dashboard-app.mjs", import.meta.url);

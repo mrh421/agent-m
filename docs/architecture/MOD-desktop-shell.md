@@ -39,7 +39,6 @@ uses:
   - MOD-resource-list.resourceStrategies
   - MOD-work-plans.workStrategies
   - MOD-run-planner.runStrategies
-  - MOD-product-process.processStrategies
   - MOD-test-schedule.scheduleStrategies
   - MOD-result-records.resultStrategies
   - MOD-issue-handling.issueStrategies
@@ -228,7 +227,7 @@ signature does not hold. Writes no repository file; the jobs it composes write t
   a Bridge may run: `MOD-approvals.approvalStrategies`, `MOD-spec-changes.specStrategies`,
   `MOD-artifact-edits.editStrategies`, `MOD-source-register.sourceStrategies`, `MOD-reuse-facts.reuseStrategies`,
   `MOD-resource-list.resourceStrategies`, `MOD-work-plans.workStrategies`, `MOD-run-planner.runStrategies`,
-  `MOD-product-process.processStrategies`, `MOD-test-schedule.scheduleStrategies`,
+  `MOD-test-schedule.scheduleStrategies`,
   `MOD-result-records.resultStrategies`, `MOD-issue-handling.issueStrategies`, `MOD-runtimes.routeStrategies`. The
   strategies of the mail kinds are not registered: a mail kind runs in the page, which asks an agent on the Bridge only
   to draft.

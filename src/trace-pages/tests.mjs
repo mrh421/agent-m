@@ -7,7 +7,7 @@
 //
 // Module: MOD-trace-pages
 
-import { isTestFile, testDeclarations } from "../test-document/index.mjs";
+import { isTestFile, testDeclarations, unidentifiedDeclarations } from "../test-document/index.mjs";
 import { resultsAt } from "../result-records/index.mjs";
 import { showTestDetail } from "./test-detail.mjs";
 
@@ -26,26 +26,26 @@ function el(name, className, ...children) {
 
 const guardsOf = (declaration) => [...new Set((declaration.guards ?? []).map((name) => String(name).trim()).filter(Boolean))];
 
-// What a declaration lacks of the level and the guards; the identifier is there, since testDeclarations yields none without it.
+// What a declaration lacks of the identifier, the level and the guards.
 function missingOf(declaration) {
-  return [...(LEVELS.includes(declaration.level) ? [] : ["level"]), ...(guardsOf(declaration).length ? [] : ["guards"])];
+  return [...(declaration.id === null ? ["identifier"] : []), ...(LEVELS.includes(declaration.level) ? [] : ["level"]), ...(guardsOf(declaration).length ? [] : ["guards"])];
 }
 
-// Every test declaration of the version, in the order of the paths of the test files and then of the lines.
-async function declarationsOf(snapshot) {
+// Every test declaration of the version, in the order of the paths of the test files and then of the lines; with `read` unidentifiedDeclarations, every block written as one that names no identifier.
+async function declarationsOf(snapshot, read = testDeclarations) {
   const paths = snapshot.paths.filter((path) => !path.startsWith(COUNTER_PROOFS) && isTestFile(path)).sort();
   if (paths.length) await snapshot.readMany?.(paths);
   const found = [];
-  for (const path of paths) found.push(...testDeclarations(path, (await snapshot.read(path)) ?? ""));
+  for (const path of paths) found.push(...read(path, (await snapshot.read(path)) ?? ""));
   return found;
 }
 
-// The outcome of each test on the commit of the version: resultsAt's, from the branch test-results; none where the branch cannot be read.
+// The outcome of each test on the commit of the version: resultsAt's, from the records of that commit on the branch test-results, read through a snapshot narrowed to their folder; none where the branch cannot be read.
 async function outcomesOf(host, snapshot, declarations) {
   const outcomes = new Map();
   let problem = null;
   try {
-    const results = await host.readSnapshot(RESULTS_BRANCH);
+    const results = await host.readSnapshot(RESULTS_BRANCH, { folders: [`runs/${snapshot.commit}`] });
     const asked = declarations.map((declaration) => ({ id: declaration.id, level: declaration.level ?? "none" }));
     for (const level of await resultsAt(results, snapshot.commit, asked)) for (const test of level.tests) outcomes.set(test.id, test);
   } catch (failure) {
@@ -79,6 +79,13 @@ function caseLine(test, withMissing, ref) {
     el("span", "tests-outcome", outcomeText(test)));
   if (withMissing) line.append(" ", el("span", "tests-missing", test.missing.join(", ")));
   return line;
+}
+
+// A test whose declaration names no identifier: no link opens it and no record names it, so it is shown by its title and its place, `<path>:<line>`.
+function unidentifiedLine(test) {
+  const { title, path, line } = test.declaration;
+  return el("div", "tests-unidentified", el("span", "tests-title", title ?? ""), " ", el("span", "tests-place", `${path}:${line}`), " ",
+    el("span", "tests-missing", test.missing.join(", ")));
 }
 
 // The groups of a grouping, each { name, broken, tests }: the names the version holds in their order, then the names only a test guards, marked broken.
@@ -180,9 +187,10 @@ async function compareReleases(host, shown, current, other) {
  */
 export async function showTests(place, shown, params = {}) {
   const { snapshot, spec, context } = shown;
-  let declarations, found;
+  let declarations, unidentified, found;
   try {
     declarations = await declarationsOf(snapshot);
+    unidentified = await declarationsOf(snapshot, unidentifiedDeclarations);
     found = await outcomesOf(context.product.host, snapshot, declarations);
   } catch (failure) {
     place.replaceChildren(el("p", "traces-problem", `The tests could not be read: ${failure?.message ?? failure}`));
@@ -194,6 +202,7 @@ export async function showTests(place, shown, params = {}) {
   }));
   const complete = tests.filter((test) => !test.missing.length);
   const incomplete = tests.filter((test) => test.missing.length);
+  const nameless = unidentified.map((declaration) => ({ declaration, missing: missingOf(declaration), counterProof: false, outcome: "not run", runs: null }));
   const idOf = (path) => /\/([^/]+)\.md$/.exec(path)?.[1];
   const names = {
     requirement: { known: [...spec.requirements.keys()] },
@@ -218,8 +227,8 @@ export async function showTests(place, shown, params = {}) {
   function draw() {
     const keep = KEEP[state.filter] ?? KEEP.all;
     const boxes = state.grouping === "level" ? treeBoxes(complete.filter(keep), shown.ref) : groupsOf(state.grouping, complete.filter(keep), names[state.grouping]).map((group) => groupBox(group, shown.ref));
-    const left = incomplete.filter(keep);
-    body.replaceChildren(...boxes, ...(left.length ? [el("section", "tests-incomplete", el("h3", null, "Incomplete"), ...left.map((test) => caseLine(test, true, shown.ref)))] : []));
+    const left = [...incomplete.filter(keep).map((test) => caseLine(test, true, shown.ref)), ...nameless.filter(keep).map(unidentifiedLine)];
+    body.replaceChildren(...boxes, ...(left.length ? [el("section", "tests-incomplete", el("h3", null, "Incomplete"), ...left)] : []));
     if (!boxes.length && !left.length) body.append(el("p", "none", "No test matches."));
   }
   draw();

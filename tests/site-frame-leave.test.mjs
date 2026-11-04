@@ -72,8 +72,7 @@ test("TST-603001 on the review page, a route that answers leave with false stays
 // guards: UC-018; EDITS ARE PREPARED ON THE DASHBOARD
 // given: the review page at #editing, whose route `editing` answers its leave with true, and the route `other`, which gives no leave
 // input: the fragment changes to #other, then back to #editing
-// expect: after the first change `editing` has been asked once and the route area reads "other" at the hash "#other"; after the second change the route area reads "editing" and
-//   `editing` has still been asked once, since it was not the route shown; the routes rendered are, in this order, editing, other, editing
+// expect: after the first change `editing` has been asked once and the route area reads "other" at the hash "#other"; after the second change the route area reads "editing" and `editing` has still been asked once, since it was not the route shown; the routes rendered are, in this order, editing, other, editing
 test("TST-603002 on the review page, a route that answers leave with true is left, and only the route shown is asked", async () => {
   const page = await start("review", [true]);
   changeFragment(page, "#other");

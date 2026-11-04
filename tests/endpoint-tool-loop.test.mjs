@@ -69,8 +69,7 @@ const send = (config, tools, options) => endpointDriver(config, PARTICIPANT).sen
 // guards: UC-049; ONE DEFINITION, THREE DRIVERS
 // given: an OpenAI-compatible endpoint that first calls read_file on one.md and two.md in one answer, then answers Final answer.
 // input: send a DriverInput carrying tools with limit 10 whose call returns "ONE" for one.md and "TWO" for two.md
-// expect: text Final answer.; calls in order one.md then two.md, each after request 1 and before request 2; exactly two requests;
-//   request 1 holds the user prompt, the read_file definition and max_tokens 32000; request 2 holds user, assistant with both calls, then tool ONE for call-a and tool TWO for call-b, and max_tokens 32000
+// expect: text Final answer.; calls in order one.md then two.md, each after request 1 and before request 2; exactly two requests; request 1 holds the user prompt, the read_file definition, max_tokens 32000 and stream false; request 2 holds user, assistant with both calls, then tool ONE for call-a and tool TWO for call-b, max_tokens 32000 and stream false
 test("TST-488001: OpenAI endpoint works in a tool loop, calls in order, results returned", async (t) => {
   const log = [];
   const bodies = provider(t, "openai", [
@@ -81,7 +80,7 @@ test("TST-488001: OpenAI endpoint works in a tool loop, calls in order, results 
   assert.equal(result.text, "Final answer.");
   assert.deepEqual(log, ["request 1", "call read_file one.md", "call read_file two.md", "request 2"]);
   assert.equal(bodies.length, 2);
-  assert.deepEqual(bodies[0], { model: "fixture-model", max_tokens: 32000, messages: [{ role: "user", content: "Inspect the fixture." }], tools: OPENAI_TOOLS });
+  assert.deepEqual(bodies[0], { model: "fixture-model", max_tokens: 32000, messages: [{ role: "user", content: "Inspect the fixture." }], tools: OPENAI_TOOLS, stream: false });
   assert.deepEqual(bodies[1], { model: "fixture-model", max_tokens: 32000, tools: OPENAI_TOOLS, messages: [
     { role: "user", content: "Inspect the fixture." },
     { role: "assistant", content: "Reading.", tool_calls: [
@@ -90,15 +89,14 @@ test("TST-488001: OpenAI endpoint works in a tool loop, calls in order, results 
     ] },
     { role: "tool", content: "ONE", tool_call_id: "call-a" },
     { role: "tool", content: "TWO", tool_call_id: "call-b" },
-  ] });
+  ], stream: false });
 });
 
 // TST-488002 · level: unit · module: MOD-endpoint-calls
 // guards: UC-049; ONE DEFINITION, THREE DRIVERS
 // given: an Anthropic endpoint that first calls read_file on one.md and two.md in one answer, then answers Final answer.
 // input: send a DriverInput carrying tools with limit 10 whose call returns "ONE" for one.md and "TWO" for two.md
-// expect: text Final answer.; calls in order one.md then two.md between request 1 and request 2; request 2 holds the user prompt,
-//   the assistant's text and both tool_use blocks, then one user turn with tool_result ONE for call-a and TWO for call-b; both requests carry max_tokens 32000
+// expect: text Final answer.; calls in order one.md then two.md between request 1 and request 2; request 2 holds the user prompt, the assistant's text and both tool_use blocks, then one user turn with tool_result ONE for call-a and TWO for call-b; both requests carry max_tokens 32000
 test("TST-488002: Anthropic endpoint works in a tool loop, calls in order, results returned", async (t) => {
   const log = [];
   const bodies = provider(t, "anthropic", [
@@ -173,8 +171,7 @@ test("TST-488005: usage is null when no request reported any", async (t) => {
 // guards: UC-049
 // given: an OpenAI-compatible endpoint that makes one call, then would answer; tools of limit 1
 // input: send with tools of limit 1
-// expect: the one call is carried out; request 2 is sent with no tools offered (no tools key in its body), its tool turn ONE followed by a user message of the
-//   maximum-steps text that begins "CRITICAL - MAXIMUM STEPS REACHED", and its text Limit answer. is the answer; two requests
+// expect: the one call is carried out; request 2 is sent with no tools offered (no tools key in its body), its tool turn ONE followed by a user message of the maximum-steps text that begins "CRITICAL - MAXIMUM STEPS REACHED", and its text Limit answer. is the answer; two requests
 test("TST-488006: at the limit one more request follows without tools", async (t) => {
   const log = [];
   const bodies = provider(t, "openai", [
@@ -195,8 +192,7 @@ test("TST-488006: at the limit one more request follows without tools", async (t
 // guards: UC-049
 // given: an OpenAI-compatible endpoint that makes one call in request 1 and two calls (b.md, c.md) in request 2; tools of limit 2
 // input: send with tools of limit 2
-// expect: a.md and b.md are carried out, in that order; c.md is not carried out and its tool turn reads
-//   "refused: the limit of 2 tool calls is reached" with its call id, followed by the maximum-steps text; request 3 offers no tools; the answer is Third answer.; three requests
+// expect: a.md and b.md are carried out, in that order; c.md is not carried out and its tool turn reads "refused: the limit of 2 tool calls is reached" with its call id, followed by the maximum-steps text; request 3 offers no tools; the answer is Third answer.; three requests
 test("TST-488007: a call beyond the limit is refused in its tool turn and the next request offers no tools", async (t) => {
   const log = [];
   const bodies = provider(t, "openai", [
@@ -271,8 +267,7 @@ test("TST-488010: a cancel after the last call of an answer sends no further req
 // guards: UC-049; AN UNSUPPORTED ENDPOINT SAYS SO
 // given: an OpenAI-compatible endpoint that makes one call in request 1 and answers every later request with HTTP 500 "Provider unavailable." and retry-after-ms 0
 // input: send with tools
-// expect: send rejects with EndpointFailed whose diagnosis is { reason: "endpoint error", message: "Provider unavailable.", routes: [] };
-//   seven requests — the failed one retried five times, then given up —; the one call was carried out once
+// expect: send rejects with EndpointFailed whose diagnosis is { reason: "endpoint error", message: "Provider unavailable.", routes: [] }; seven requests — the failed one retried five times, then given up —; the one call was carried out once
 test("TST-488011: a request that still fails after five retries ends send with its diagnosis", async (t) => {
   const log = [];
   const bodies = provider(t, "openai", [
@@ -303,18 +298,18 @@ async function withoutToolsCase(t, config, tools, expectedBody) {
 // guards: UC-049; ONE DEFINITION, THREE DRIVERS
 // given: an OpenAI-compatible endpoint answering Plain answer. with usage 4 in / 2 out; an input whose tools is null
 // input: send
-// expect: one request with body { model, messages: [user prompt] } and no tools key; { text: Plain answer., usage 4 in / 2 out }
+// expect: one request with body { model, messages: [user prompt], stream: false } and no tools key; { text: Plain answer., usage 4 in / 2 out }
 test("TST-488012: input with tools null makes the one request it made before", async (t) => {
-  await withoutToolsCase(t, OPENAI, null, { model: "fixture-model", messages: [{ role: "user", content: "Inspect the fixture." }] });
+  await withoutToolsCase(t, OPENAI, null, { model: "fixture-model", messages: [{ role: "user", content: "Inspect the fixture." }], stream: false });
 });
 
 // TST-488014 · level: unit · module: MOD-endpoint-calls
 // guards: UC-049; ONE DEFINITION, THREE DRIVERS
 // given: an OpenAI-compatible endpoint answering Plain answer. with usage 4 in / 2 out; an input that has no tools property
 // input: send
-// expect: one request with body { model, messages: [user prompt] } and no tools key; { text: Plain answer., usage 4 in / 2 out }
+// expect: one request with body { model, messages: [user prompt], stream: false } and no tools key; { text: Plain answer., usage 4 in / 2 out }
 test("TST-488014: input without a tools property makes the one request it made before", async (t) => {
-  await withoutToolsCase(t, OPENAI, undefined, { model: "fixture-model", messages: [{ role: "user", content: "Inspect the fixture." }] });
+  await withoutToolsCase(t, OPENAI, undefined, { model: "fixture-model", messages: [{ role: "user", content: "Inspect the fixture." }], stream: false });
 });
 
 // TST-488013 · level: unit · module: MOD-endpoint-calls
@@ -333,8 +328,7 @@ test("TST-488013: a ToolUse with no definitions makes the one request it made be
 // guards: UC-049
 // given: a participant whose context holds 2000 tokens; the model asks to read big.md, whose text has 30000 characters (about 10000 tokens), then answers
 // input: the driver's send with a read_file tool
-// expect: the second request carries, as the tool's result, a refusal naming about 10000 tokens and the tokens left — not the file's text; the answer is returned;
-// counter-proof: the same exchange for a participant without a declared context carries the file's text
+// expect: the second request carries, as the tool's result, a refusal naming about 10000 tokens and the tokens left — not the file's text; the answer is returned; counter-proof: the same exchange for a participant without a declared context carries the file's text
 test("TST-1206001: a tool result that would carry the conversation past the participant's context is refused, naming its size", async (t) => {
   const big = "x".repeat(30000);
   for (const [participant, refused] of [[{ name: "small", context: 2000 }, true], [PARTICIPANT, false]]) {

@@ -1,5 +1,5 @@
-// MOD-main-page's route `home` reads a product that has no stored facts for its head at a cost the module file states and accepts (ITM-842; UC-046 step 3): "Without a token and without facts
-// stored for the head (`storedFacts`), that reading costs one request per test file of the default branch (MOD-progress-measures' `stageShares`); that cost is accepted." This test pins that
+// MOD-main-page's route `home` reads a product that has no stored overview for its head at a cost the module file states and accepts (ITM-842; UC-046 step 3): "Without a token, that reading
+// costs one request per test file of the default branch (MOD-progress-measures' `stageShares`); that cost is accepted." This test pins that
 // cost as a formula over the files of the fixture: requests = backlog items + job records + test files + a fixed part, and names each request of the fixed part. GitHub's raw host takes no
 // batch, so without a token every file is a request of its own (`A PAGE LOAD READS THE REPOSITORY IN BATCHES` holds with a token); with one the files go in batches of at most a hundred.
 // The native route runs over the counting fake of GitHub (tests/progress-measures-load.mjs, through tests/main-page-home-harness.mjs), and every request is attributed to what it reads.
@@ -36,7 +36,7 @@ const fileOf = (who, path) => {
   if (who === "instance" && path === "docs/participants.md") return "instance: participants.md";
   return `unattributed: ${who} file ${path}`;
 };
-// What a read of the branch overview-cache reads: the overview or the stored facts of a commit, or latest.json, which names the commit of the overview stored last.
+// What a read of the branch overview-cache reads: the overview of a commit, or latest.json, which names the commit of the overview stored last; a read of a commit's facts file, which no page makes, is named too, so that one fails the counts.
 const storedOf = (who, file) => `${who}: ${file === "latest.json" ? "stored latest.json" : `stored ${file.endsWith(".facts.json") ? "facts" : "overview"}`}`;
 function labelOf({ url }) {
   const address = new URL(url), path = decodeURIComponent(address.pathname);
@@ -90,22 +90,20 @@ async function newPage(testFiles, token) {
 // The reads the old page and the route `home` make alike, and the reads of the fixed part that only the route makes.
 const SHARED = { "product: commit of main": 1, "product: tree of main": 1, "product: pull requests": 1, "product: SPEC.md": 1, "product: tags": 1 };
 const ONLY_THE_ROUTE = { "instance: repository": 1, "instance: commit of main": 1, "instance: tree of main": 1, "instance: participants.md": 1,
-  "product: repository": 1, "product: branch test-results": 1, "product: stored overview": 1, "product: stored latest.json": 1, "product: stored facts": 1, "product: CI runs of the head": 1 };
+  "product: repository": 1, "product: branch test-results": 1, "product: stored overview": 1, "product: stored latest.json": 1, "product: CI runs of the head": 1 };
 const FIXED = total(SHARED) + total(ONLY_THE_ROUTE);
 
 // TST-842001 · level: unit · module: MOD-main-page
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; UC-046
-// given: a product of 600 backlog items, 400 job records, SPEC.md and 701 test files, no facts stored for its head, no token stored for it or for the instance; an instance holding its participant list
+// given: a product of 600 backlog items, 400 job records, SPEC.md and 701 test files, no overview stored for its head, no token stored for it or for the instance; an instance holding its participant list
 // input: the route home drawn on a fresh fake of GitHub
-// expect: it makes 1,716 requests = 600 items + 400 job records + 701 test files + 15 more; the 15 are the product's commit, tree, pull requests, SPEC.md and tags (5), the instance's repository,
-//   commit, tree and participants.md (4), the product's repository, its branch test-results, the stored overview of its head, the file latest.json of its branch overview-cache and the stored facts of its head,
-//   which are not there (5), and the CI runs of its head (1); no request is unattributed
-test("TST-842001 without a token and without stored facts, the route home makes one request per backlog item, job record and test file, and 15 more", async () => {
+// expect: it makes 1,715 requests = 600 items + 400 job records + 701 test files + 14 more; the 14 are the product's commit, tree, pull requests, SPEC.md and tags (5), the instance's repository, commit, tree and participants.md (4), the product's repository, its branch test-results, the stored overview of its head and the file latest.json of its branch overview-cache, which are not there (4), and the CI runs of its head (1); no request is unattributed, and no facts file is asked for
+test("TST-842001 without a token and without a stored overview, the route home makes one request per backlog item, job record and test file, and 14 more", async () => {
   const { counts } = await newPage(TEST_FILES, null);
   assert.deepEqual(counts, { ...SHARED, ...ONLY_THE_ROUTE, "product: backlog item": ITEMS, "product: job record": JOBS, "product: test file": TEST_FILES + 1 });
-  assert.equal(FIXED, 15);
+  assert.equal(FIXED, 14);
   assert.equal(total(counts), ITEMS + JOBS + (TEST_FILES + 1) + FIXED);
-  assert.equal(total(counts), 1716);
+  assert.equal(total(counts), 1715);
 });
 
 // TST-842002 · level: unit · module: MOD-main-page
@@ -124,10 +122,10 @@ test("TST-842002 the route home's cost grows by one request per test file", asyn
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; UC-046
 // given: the product of TST-842001; no token, nothing stored
 // input: the route home drawn on a fresh fake
-// expect: it makes 1,716 requests: the 701 test files and the instance's 4 reads, the product's repository, branch test-results, stored overview, latest.json and stored facts (5) and the CI runs of the head (1), beside its product reads
-test("TST-842003 the route home's 1,716 requests include its test files and fixed instance and stored-facts reads", async () => {
+// expect: it makes 1,715 requests: the 701 test files and the instance's 4 reads, the product's repository, branch test-results, stored overview and latest.json (4) and the CI runs of the head (1), beside its product reads
+test("TST-842003 the route home's 1,715 requests include its test files and fixed instance and stored-overview reads", async () => {
   const now = await newPage(TEST_FILES, null);
-  assert.equal(total(now.counts), 1716);
+  assert.equal(total(now.counts), 1715);
   assert.deepEqual(Object.fromEntries(Object.entries(now.counts).filter(([label]) => label in ONLY_THE_ROUTE || label === "product: test file")),
     { ...ONLY_THE_ROUTE, "product: test file": TEST_FILES + 1 });
   for (const [label, count] of Object.entries({ ...SHARED, "product: backlog item": ITEMS, "product: job record": JOBS })) {
@@ -139,13 +137,13 @@ test("TST-842003 the route home's 1,716 requests include its test files and fixe
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; UC-046
 // given: the product of TST-842001 with a token stored for it
 // input: the route home drawn
-// expect: the route home makes 33 requests — 19 GraphQL batches of at most a hundred files, which hold the 600 items, 400 job records, 701 test files and SPEC.md, and 14 more: the 10 reads only the route makes, the product's commit, tree, pull requests and tags —,
-//   with no backlog item, job record or test file by itself
+// expect: the route home makes 33 requests — 20 POST /graphql: 19 batches of at most a hundred files, which hold the 600 items, 400 job records, 701 test files and SPEC.md, and greenToMerge's beside the product's repositoryInfo (ITM-1170), which holds none —, and 13 more: the 9 reads only the route makes, the product's commit, tree, pull requests and tags —, with no backlog item, job record or test file by itself
 test("TST-842004 with a token, the route home reads the files in batches of at most a hundred and makes 33 requests", async () => {
   const now = await newPage(TEST_FILES, PRODUCT_TOKEN);
   assert.equal(total(now.counts), 33);
-  assert.equal(now.counts["GraphQL batch of files"], 19);
-  assert.equal(now.batches.length, 19);
+  // ITM-1170: the label counts every POST /graphql; one of the 20 is greenToMerge's, beside the product's repositoryInfo, and holds no file.
+  assert.equal(now.counts["GraphQL batch of files"], 20);
+  assert.equal(now.batches.length, 20);
   assert.ok(now.batches.every((paths) => paths.length <= 100), "a batch holds at most a hundred files");
   const read = now.batches.flat();
   assert.equal(read.filter((path) => path.startsWith("docs/backlog/")).length, ITEMS);

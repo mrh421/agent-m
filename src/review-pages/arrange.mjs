@@ -11,15 +11,17 @@
 //   - The items of a kind are the nodes of that kind in MOD-trace-graph's graph of the snapshot: a requirement's name, a use case's, a decision's, a module's or a test's identifier.
 //   - The working tree is the group file as read; an item no group names is added to it, at the top level, when a move takes it, so that the file never lists an item the person did not place. A new group is put at the top level or in the group the
 //     person names; a moved item or group goes last into its target. Each move is applied alone, in order, to the tree as it stands: a refused one is listed with its reason and is no pending change.
+//   - A job record's `works_on` holds no test identifier (MOD-job-ledger, Data: "requirements, use cases, decisions, modules, items, sources —, an issue's address or a commit"), so *Propose groups* on the tests records the commit of the snapshot the page read; for the other kinds it records the items.
 //   - On `changed meanwhile` the pending changes are applied again, in order, to the newer file: those that still apply stay pending, the others are named with their reasons.
 
 import { fallbackEditLinks, saveGroupFile } from "../artifact-edits/index.mjs";
 import { applyMoves, groupFileText, hierarchy, parseGroupFile } from "../group-document/index.mjs";
 import { explain, readProblem } from "../site-frame/index.mjs";
 import { storedGraph } from "../trace-graph/index.mjs";
-import { button, el, link, openGithubEditor, parseServer, readPlace, tokenStep } from "./common.mjs";
+import { button, el, handedPlace, link, openGithubEditor, parseServer, readPlace, tokenStep } from "./common.mjs";
 import { fallbackPages } from "./file-edit.mjs";
 import { byClassChecked, loadStage, panelOf, participantList } from "./jobs.mjs";
+import { heads } from "./routes.mjs";
 
 const KINDS = {
   requirements: { title: "requirements" },
@@ -60,12 +62,21 @@ const placesOf = (tree) => {
   return ids;
 };
 
-function describe(move) {
+// The path of the group that holds an item, [] for the top level, where an item no group names stands too; a group's origin is the path of its parent.
+function originOf(tree, move) {
+  if (move.op === "move-group") return move.group.slice(0, -1);
+  let found = null;
+  walkGroups(tree.groups, [], (group, here) => { if (found === null && group.members.some((member) => member.id === move.item)) found = here; });
+  return tree.members.some((member) => member.id === move.item) ? [] : (found ?? []);
+}
+
+// A pending move names where the item or group came from, given as `origin` (UC-021 step 3); a refused move is described without one.
+function describe(move, origin) {
   const where = (path) => (path.length ? `“${path.join(" › ")}”` : "the top level");
   if (move.op === "create") return `Add the group “${move.title}”${move.in.length ? ` in ${where(move.in)}` : ""}`;
   if (move.op === "rename") return `Rename the group “${move.group.join(" › ")}” to “${move.title}”`;
-  if (move.op === "move") return `Move ${move.item} to ${where(move.to)}`;
-  if (move.op === "move-group") return `Move the group “${move.group.join(" › ")}” into ${where(move.to)}`;
+  if (move.op === "move") return `Move ${move.item}${origin ? ` from ${where(origin)}` : ""} to ${where(move.to)}`;
+  if (move.op === "move-group") return `Move the group “${move.group.join(" › ")}”${origin ? ` from ${where(origin)} to` : " into"} ${where(move.to)}`;
   if (move.op === "delete") return `Delete the empty group “${move.group.join(" › ")}”`;
   return `Move the content of “${move.group.join(" › ")}” up one level`;
 }
@@ -86,13 +97,16 @@ function replay(base, moves) {
 
 // ---------------------------------------------------------------- the page
 
+// The snapshot the frame hands the route's `reads` before it calls `render` (common.mjs handedPlace).
+const place = handedPlace();
+
 async function render(target, context, params) {
   const kind = params?.kind;
   if (!Object.hasOwn(KINDS, kind ?? "")) {
     target.replaceChildren(el("h2", null, "Arrange"), el("p", "problem", `Arrange which kind? Open the arrangement of ${Object.keys(KINDS).join(", ")}: #arrange/kind=<kind>.`));
     return;
   }
-  const where = await readPlace(target, context);
+  const where = await readPlace(target, context, place);
   if (where === null) return;
   try {
     await show(where, kind);
@@ -203,7 +217,9 @@ async function show(where, kind) {
     renameGo.addEventListener("click", () => { if (rename.value.trim() && rename.value !== group.title) applyOne({ op: "rename", group: here, title: rename.value.trim() }); });
     const lift = button("arrange-lift", "Move content up one level");
     lift.addEventListener("click", () => applyOne({ op: "lift", group: here }));
-    node.append(el("strong", "title", group.title), " ", rename, renameGo, " ", lift, " ", ...moveControls({ group: here }),
+    const remove = button("arrange-delete", "Delete");
+    remove.addEventListener("click", () => applyOne({ op: "delete", group: here }));
+    node.append(el("strong", "title", group.title), " ", rename, renameGo, " ", lift, " ", remove, " ", ...moveControls({ group: here }),
       el("ul", null, ...group.groups.map((child) => groupNode(child, [...here, child.title], m)), ...group.members.map((member) => itemNode(member, markOf(member.id, m)))));
     draggable(node, { group: here });
     dropTarget(node, here);
@@ -230,7 +246,14 @@ async function show(where, kind) {
   function drawSide() {
     const save = button("arrange-save", "Save arrangement");
     save.addEventListener("click", () => saveNow());
-    sideBox.replaceChildren(el("h3", null, "Pending changes"), el("ol", "arrange-pending", ...moves.map((move) => el("li", "arrange-pending-item", describe(move)))),
+    // Each pending move is described against the tree as it stood before it: the moves replayed on the base, in order.
+    let before = base;
+    const lines = moves.map((move) => {
+      const line = describe(move, originOf(before, move));
+      before = replay(before, [move]).tree;
+      return line;
+    });
+    sideBox.replaceChildren(el("h3", null, "Pending changes"), el("ol", "arrange-pending", ...lines.map((line) => el("li", "arrange-pending-item", line))),
       el("ul", "arrange-refused", ...refusedNow.map(({ move, reason }) => el("li", "arrange-refused-item", `${describe(move)}: ${reason}`))), el("p", null, save));
   }
 
@@ -307,7 +330,7 @@ async function show(where, kind) {
 // *Propose groups* (UC-021 1b): the participants that can draft text, and a button that shows the run panel of the kind propose-groups for the one chosen — what is sent where, and Run. The job
 // writes nothing; its moves are handed to `adopt`, which makes them pending changes.
 async function proposeGroups(where, kind, items, adopt) {
-  const { token, context } = where;
+  const { token, context, snapshot } = where;
   const box = el("section", "arrange-propose", el("h3", null, "Propose groups"), explain(PROPOSE.explain.draft.participant));
   const stage = el("div", "stage");
   let loaded;
@@ -331,10 +354,10 @@ async function proposeGroups(where, kind, items, adopt) {
     if (!token) { stage.append(el("p", "problem", "A job is recorded and its result written with your token. ", tokenStep(context))); return; }
     const chosen = drafters.find((participant) => byClassChecked(offered, participant.name));
     if (!chosen) { stage.append(el("p", "problem", "Choose the participant that drafts.")); return; }
-    await panelOf({ ...where, definition, kind: PROPOSE, jobKind: "propose-groups", params: { kind }, worksOn: items, present: presentMoves, chosen, participants, instanceSnapshot, product, needs, stage });
+    await panelOf({ ...where, definition, kind: PROPOSE, jobKind: "propose-groups", params: { kind }, worksOn: kind === "tests" ? [snapshot.commit] : items, present: presentMoves, chosen, participants, instanceSnapshot, product, needs, stage });
   });
   box.append(offered, show, stage);
   return box;
 }
 
-export const arrangeRoute = { name: "arrange", entry: null, title: "Arrange", render };
+export const arrangeRoute = { ...heads.arrangeRoute, render, reads: place.reads };

@@ -10,6 +10,7 @@
 // Module: MOD-mail-protocols
 // Guards: UC-039; A REPLY DRAFT IS KEPT IN THE MAILBOX'S DRAFTS FOLDER; EVERY OUTGOING MAIL IS RELEASED BY A PERSON
 // Guards: THE MAIL SERVER IS REACHED ONLY OVER TLS; THE BRIDGE HOLDS THE MAILBOX PASSWORD ONLY FOR ONE REQUEST
+// Guards: UC-037; A MAILBOX IS REACHED THROUGH ITS PROVIDER'S WEB API OR THROUGH THE BRIDGE (the SMTP account and the sender a connection names)
 // Level: unit
 
 import test from "node:test";
@@ -462,5 +463,95 @@ test("TST-823010: update-draft removes only the Bridge's own draft; a stale ref 
     }
     assert.ok(imap.logs.logins.length > 0, "positive: the Drafts were reached");
     assert.deepEqual(imap.folders.Drafts.map((message) => [message.uid, message.raw]), [[50, own]]);
+  });
+});
+
+// A connection that names the SMTP server's own login and a sender (MOD-mail-routes' MailConnection, MOD-mail-protocols' mailHandlers; UC-037 step 4.1,
+// UC-039 step 4): the fixture's connection with `account` changed and `smtpAccount` and `sender` added where given. The addresses are fixture values.
+const AUTHOR = "author@example.org";
+const withFields = (imap, smtp, fields) => {
+  const base = connection(imap, smtp);
+  return { ...base, imap: { ...base.imap, ...fields } };
+};
+const confirmedOn = async (c, draft = DRAFT) => {
+  const ref = await call("store-draft", c, { draft });
+  const shown = await call("show-draft", c, { ref });
+  const { confirmation } = await call("confirm-send", c, { ref, sha256: shown.sha256 });
+  return { ref, shown, confirmation };
+};
+
+// TST-1771001 · level: unit · module: MOD-mail-protocols
+// guards: UC-037; A MAILBOX IS REACHED THROUGH ITS PROVIDER'S WEB API OR THROUGH THE BRIDGE
+// given: the fixtures of TST-823001; a connection whose `account` is "shared-login@example.org" (the IMAP login of an Exchange shared mailbox) and whose `smtpAccount` is "author@example.org"
+// input: `test`, then `store-draft`, `show-draft`, `confirm-send` and `send` of the reply to a2
+// expect: every IMAP LOGIN names the user "shared-login@example.org" and every SMTP AUTH the user "author@example.org", and each was made at least once; the mail was sent
+test("TST-1771001: the IMAP server is logged in to with account, the SMTP server with smtpAccount", async () => {
+  await withMailbox(async (imap, smtp) => {
+    const c = withFields(imap, smtp, { account: "shared-login@example.org", smtpAccount: AUTHOR });
+    await call("test", c);
+    const { confirmation } = await confirmedOn(c);
+    await call("send", c, { confirmation });
+    assert.equal(smtp.messages.length, 1, "positive: the mail was sent");
+    assert.ok(imap.logs.logins.length > 0 && smtp.logs.auths.length > 0, "positive: both servers were logged in to");
+    assert.deepEqual([...new Set(imap.logs.logins.map((login) => login.user))], ["shared-login@example.org"]);
+    assert.deepEqual([...new Set(smtp.logs.auths.map((login) => login.user))], [AUTHOR]);
+  });
+});
+
+// TST-1771002 · level: unit · module: MOD-mail-protocols
+// guards: UC-037; UC-039; A MAILBOX IS REACHED THROUGH ITS PROVIDER'S WEB API OR THROUGH THE BRIDGE
+// given: the fixtures of TST-823001; a connection of the address reports@example.org whose `account` is "author@example.org" and whose `sender` is { name: "Reports Desk", address: "desk@example.org" }, an address other than the connection's
+// input: `store-draft`, `show-draft`, `confirm-send` and `send` of the reply to a2
+// expect: the draft in Drafts is From "Reports Desk" <desk@example.org> with Reply-To reports@example.org; show-draft gives from { name: "Reports Desk", address: "desk@example.org" }; the SMTP envelope's sender is desk@example.org, the recipient bo@example.net, and the bytes sent are the bytes shown
+test("TST-1771002: a sender of another address is the From and the envelope sender, with the connection's address as Reply-To", async () => {
+  await withMailbox(async (imap, smtp) => {
+    const c = withFields(imap, smtp, { account: AUTHOR, sender: { name: "Reports Desk", address: "desk@example.org" } });
+    const { shown, confirmation } = await confirmedOn(c);
+    const stored = imap.folders.Drafts[0].raw;
+    assert.match(header(stored, "From"), /^"?Reports Desk"? <desk@example\.org>$/);
+    assert.equal(header(stored, "Reply-To"), ACCOUNT);
+    assert.deepEqual(shown.from, { name: "Reports Desk", address: "desk@example.org" });
+    await call("send", c, { confirmation });
+    assert.equal(smtp.messages.length, 1);
+    assert.deepEqual([smtp.messages[0].from, smtp.messages[0].to], ["desk@example.org", ["bo@example.net"]]);
+    assert.equal(sha(smtp.messages[0].bytes), shown.sha256);
+  });
+});
+
+// TST-1771003 · level: unit · module: MOD-mail-protocols
+// guards: UC-037; UC-039; A MAILBOX IS REACHED THROUGH ITS PROVIDER'S WEB API OR THROUGH THE BRIDGE
+// given: the fixtures of TST-823001; a connection of the address reports@example.org whose `account` is "author@example.org" and whose `sender` is { name: null, address: "reports@example.org" }, the connection's own address
+// input: `store-draft`, `show-draft`, `confirm-send` and `send` of the reply to a2
+// expect: the draft in Drafts is From reports@example.org with no display name and has no Reply-To; the SMTP envelope's sender is reports@example.org
+test("TST-1771003: a sender of the connection's own address is the From and the envelope sender, without Reply-To", async () => {
+  await withMailbox(async (imap, smtp) => {
+    const c = withFields(imap, smtp, { account: AUTHOR, sender: { name: null, address: ACCOUNT } });
+    const { confirmation } = await confirmedOn(c);
+    const stored = imap.folders.Drafts[0].raw;
+    assert.equal(header(stored, "From"), ACCOUNT);
+    assert.equal(header(stored, "Reply-To"), null);
+    await call("send", c, { confirmation });
+    assert.equal(smtp.messages.length, 1);
+    assert.equal(smtp.messages[0].from, ACCOUNT);
+  });
+});
+
+// TST-1771004 · level: unit · module: MOD-mail-protocols
+// guards: UC-037; UC-039; A MAILBOX IS REACHED THROUGH ITS PROVIDER'S WEB API OR THROUGH THE BRIDGE
+// given: the fixtures of TST-823001; a connection of the address reports@example.org whose `account` is "author@example.org" and which names neither `smtpAccount` nor `sender` (the known positive: a connection as it was before these fields)
+// input: `store-draft`, `show-draft`, `confirm-send` and `send` of the reply to a2
+// expect: the draft in Drafts is From author@example.org and has no Reply-To; every IMAP LOGIN and every SMTP AUTH names the user author@example.org; the SMTP envelope's sender is author@example.org
+test("TST-1771004: a connection without smtpAccount and sender logs in and sends with account, as before", async () => {
+  await withMailbox(async (imap, smtp) => {
+    const c = withFields(imap, smtp, { account: AUTHOR });
+    const { confirmation } = await confirmedOn(c);
+    const stored = imap.folders.Drafts[0].raw;
+    assert.equal(header(stored, "From"), AUTHOR);
+    assert.equal(header(stored, "Reply-To"), null);
+    await call("send", c, { confirmation });
+    assert.equal(smtp.messages.length, 1);
+    assert.equal(smtp.messages[0].from, AUTHOR);
+    assert.deepEqual([...new Set(imap.logs.logins.map((login) => login.user))], [AUTHOR]);
+    assert.deepEqual([...new Set(smtp.logs.auths.map((login) => login.user))], [AUTHOR]);
   });
 });

@@ -26,8 +26,8 @@
 //
 // Not tested here: roleAssignmentSchema's documents, roleAssignmentFindings, holdsRole and mayDecide
 // (tests/product-process-role-assignments.test.mjs; a holder's capabilities and place,
-// tests/product-process-eligibility.test.mjs); gateSchema, gateStates, recordGateDecision, doneCheck and processStrategies,
-// which are not built yet. Explicit practice tables are covered; shipped practices whose Adds are prose still contribute no
+// tests/product-process-eligibility.test.mjs); gateSchema and gateStates (tests/product-process-gates.test.mjs), recordGateDecision
+// (tests/product-process-record-gate.test.mjs) and doneCheck (tests/product-process-done.test.mjs). Explicit practice tables are covered; shipped practices whose Adds are prose still contribute no
 // workflow data.
 //
 // The fixture product declares an instance model, docs/process-models/team-scrum.md — Scrum adapted so that its Product

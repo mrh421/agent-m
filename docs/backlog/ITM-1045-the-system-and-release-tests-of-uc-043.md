@@ -9,10 +9,6 @@ modules:
   - MOD-run-planner
   - MOD-workflow-entries
 builds_on:
-  - ITM-982
-  - ITM-984
-  - ITM-985
-  - ITM-1035
 tests:
   - system
   - release
@@ -26,10 +22,13 @@ origin:
 
 ## Outcome
 
-No test of level `release` names UC-043, and `tests/` holds neither `tests/test_process_run.py` — the check SPEC.md names for
+No test of level `release` names UC-043, and `tests/` holds no `tests/test_process_run.py` — the check SPEC.md names for
 `A RUN EXECUTES THE PROCESS MODEL OVER A SELECTION`, `A RUN CONTINUES WITHOUT A CLICK BETWEEN ITS JOBS`, `A RUN FOLLOWS THE
 MODULES' INTERFACES`, `A RUN SETS UP CI BEFORE IT IMPLEMENTS`, `A RUN HAS LIMITS FIXED AT ITS START` and `A RUN ENDS WITH THE
-VALIDATION OF ITS MODULES` — nor `tests/test_job_record.py`, the check of `A RUN IS A JOB THAT NAMES ITS JOBS`. The system
+VALIDATION OF ITS MODULES`. `tests/test_job_record.py`, the check of `A RUN IS A JOB THAT NAMES ITS JOBS`, exists since
+`eafa5fc5` and `ee533fe2` (ITM-1132), at level release; its header (`tests/test_job_record.py:15-16`) names as not testable
+yet that a run records the jobs it starts as it starts them, since `nextActions` and `finishRun` are not built. That case is added
+once they are. The system
 test walks UC-043's main flow and alternative flows as the dashboard and CI reach them. They are written by a participant
 who implements none of the items they test (`RELEASE TESTS ARE NOT WRITTEN BY THE IMPLEMENTER`).
 

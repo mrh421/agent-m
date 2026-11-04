@@ -66,8 +66,9 @@ sprint changes or uses, or uses one that it changes — so the teams' work does 
 
 ## Main flow
 
-1. The Product Owner opens **Backlog** for the product. Agent M shows the items, each after the items it builds on.
-   Each item has its identifier, title, what it realises, where it came from, and a derived state:
+1. The Product Owner opens **Backlog** for the product, from the product's progress (UC-035). Agent M shows the items,
+   each after the items it builds on.
+   Each item has its identifier, title, what it realises, and a derived state:
    - *waiting for acceptance*: it names a requirement that is not yet accepted;
    - *waiting for an item it builds on*: an item it builds on is not done;
    - *ready*;
@@ -75,7 +76,8 @@ sprint changes or uses, or uses one that it changes — so the teams' work does 
    - *blocked*: a job failed or waits for a person;
    - *done*: its pull request is merged, or its record names the commits that built it.
    An item that another team's sprint holds (step 5) names that sprint and its team.
-   The top of the page shows accepted requirements and use cases that no item realises yet.
+   The top of the page shows accepted requirements and use cases that no item realises yet. In a model with sprints,
+   the page shows for each team its last sprint that has ended, linked to its record, with its final burn-down.
 2. The Product Owner chooses **Propose items for uncovered requirements**. The run panel names the
    participant and what is sent: the requirements, the use cases, the architecture and the existing items.
    The Product Owner presses **Run**.
@@ -97,7 +99,8 @@ sprint changes or uses, or uses one that it changes — so the teams' work does 
    they use. It marks every item that cannot be selected because of one of them, naming the sprint, the held item and
    the module: an item another team's sprint holds; an item that changes a module that a held item changes or uses; an
    item whose modules use a module that a held item changes. With one team, there is nothing to list.
-6. **A model with sprints (Scrum):** the Product Owner chooses **Plan sprint** for their team. Agent M shows the
+6. **A model with sprints (Scrum):** the Product Owner chooses **Plan sprint** for their team, beside the team's sprint on
+   its progress (UC-035) or on the backlog. Agent M shows the
    ready items, each after the items it builds on, with the marks of step 5. Items that are *waiting for acceptance* or
    marked are shown but cannot be selected; an item is selected only together with, or after, the items it builds on,
    and its job starts once they are done (UC-034). The
@@ -161,7 +164,7 @@ sequenceDiagram
 - **6b. The sprint ends** — at the end of its time box or, in a sprint without one, when every selected
   item is done or the Product Owner presses **End sprint**, one click, which records the end with the
   sprint. The sprint is closed with the review of its increment and the
-  retrospective (UC-041); there the Product Owner also decides, for each unfinished item, whether it
+  retrospective (UC-041); there the closer also decides, for each unfinished item, whether it
   goes back to the backlog or into the next sprint.
 - **7a. The WIP limit is reached.** **Pull** is disabled for the next item, and the panel names the
   items in progress and which of them wait for review. Book ch. 7 §4: with agents, the limit guards

@@ -16,7 +16,7 @@ import { loadSchema, readDocument, writeDocument } from "../documents/index.mjs"
 
 const OWNER = "MOD-prompt-bar";
 const disk = globalThis.process?.getBuiltinModule?.("node:fs");
-const SWITCH = "docs/conversation-recording.md";
+export const SWITCH = "docs/conversation-recording.md";
 // A moved head is read again at most this often within one append, so that a host that always answers Moved is not asked forever.
 const ATTEMPTS = 10;
 

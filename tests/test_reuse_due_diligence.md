@@ -378,3 +378,56 @@ Product licence: MIT.
   ]
 }
 ```
+
+## written record passes the record check and an emptied fact fails it
+
+kind: step-record
+
+from: chosen candidate and alternative carry fetched facts
+
+### Precondition
+
+The step case named in `from` has written its due-diligence section into the draft; the record check reads that written
+text. Then one cell of the written table is emptied at a time: first the date read of the chosen candidate's row, then
+the address read of the alternative's row.
+
+### Input
+
+```json
+{
+  "mutations": [
+    { "row": 0, "column": "Read on" },
+    { "row": 1, "column": "Read from" }
+  ]
+}
+```
+
+### Expected Result
+
+```json
+{
+  "written_findings": [],
+  "mutated_findings": [
+    [
+      {
+        "artifact": "docs/architecture/ARC-910-reuse-helper.md",
+        "line": 31,
+        "kind": "error",
+        "rule": "DUE DILIGENCE IS FETCHED, NOT RECALLED",
+        "what": "left-pad (npm) - chosen has a due-diligence fact row without Read on",
+        "fix": "record the date the fact was read"
+      }
+    ],
+    [
+      {
+        "artifact": "docs/architecture/ARC-910-reuse-helper.md",
+        "line": 32,
+        "kind": "error",
+        "rule": "DUE DILIGENCE IS FETCHED, NOT RECALLED",
+        "what": "copyleft-lib (npm) has a due-diligence fact row without Read from",
+        "fix": "record the registry or repository address read"
+      }
+    ]
+  ]
+}
+```

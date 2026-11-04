@@ -58,7 +58,8 @@ const type = (field, text) => { field.value = text; field.dispatchEvent(new Even
 // The turn of the event loop in which a form answers what was done to it.
 const turn = () => new Promise((resolve) => setImmediate(resolve));
 // A person's click, and the turn in which the page answers it.
-const click = async (button) => { button.dispatchEvent(new Event("click")); await turn(); };
+// A person's click: a browser marks it trusted (`isTrusted`); node marks every Event untrusted, as a script's.
+const click = async (button) => { button.dispatchEvent(Object.defineProperty(new Event("click"), "isTrusted", { value: true })); await turn(); };
 
 const fieldsOf = (form) => byClass(form, "field");
 const nameOf = (field) => field.getAttribute("data-key") ?? field.getAttribute("data-section");

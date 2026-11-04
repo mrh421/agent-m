@@ -1,7 +1,7 @@
 // product.mjs — the entries of a product's job workflow (MOD-workflow-entries, Parts): ITM-365 builds onRecordsChanged and onDispatch, which take
 // and run the queued jobs of this CI route; ITM-498 adds to onDispatch the job whose task travels with a conversation's hand-over (UC-049 4a), which onRecordsChanged
-// leaves queued. ITM-791 adds to onRecordsChanged the resumption of the jobs of this route whose gate is recorded (A JOB STOPS AT EVERY GATE). The runs' next actions and onPullRequestClosed
-// are other items'. ITM-1032 builds onSchedule: the close of a sprint an agent closes. ITM-1209 adds onTestsFinished, ITM-1210 onDoneCheck and ITM-1215 runTests, which MOD-test-schedule's test configuration runs.
+// leaves queued. ITM-791 adds to onRecordsChanged the resumption of the jobs of this route whose gate is recorded (A JOB STOPS AT EVERY GATE). ITM-583 builds onPullRequestClosed's closing of the issues a merged fix names, ITM-1375 those of an item's job; the runs' next actions
+// are another item's. ITM-1032 builds onSchedule: the close of a sprint an agent closes. ITM-1209 adds onTestsFinished, ITM-1210 onDoneCheck and ITM-1215 runTests, which MOD-test-schedule's test configuration runs.
 //
 // Module: MOD-workflow-entries
 //
@@ -20,6 +20,7 @@ import { participantSchema, participantsOf } from "../participant-list/index.mjs
 import { readDocument } from "../documents/index.mjs";
 import { productFacts } from "../progress-measures/index.mjs";
 import { doneCheck, recordGateDecision } from "../product-process/index.mjs";
+import { closeWithLinks } from "../issue-handling/index.mjs";
 import { queueJob } from "../runtimes/index.mjs";
 import { sprintsToClose } from "../work-plans/index.mjs";
 import { appendResult, parseOutcomes, resultSchema } from "../result-records/index.mjs";
@@ -32,8 +33,7 @@ const fs = globalThis.process?.getBuiltinModule?.("node:fs");
 
 // The route of this CI service's jobs, as MOD-job-ledger writes a record's route, and the form of a CI agent's route in the register.
 const routeOf = (runner) => (runner === "hosted" ? "ci hosted" : `ci runner:${runner}`);
-const CI_ROUTE = /^ci (?:hosted|runner:\S+) secret (\S+)$/;
-// The secret a participant's route names, of any route that names one (`endpoint <name> secret <NAME>`, `ci hosted secret <NAME>`), and the words of a record whose task a hand-over brings.
+// The secret a participant's route names, of any route that names one (`endpoint <name> secret <NAME>`, `ci hosted secret <NAME>`), which is the key of its queued jobs, and the words of a record whose task a hand-over brings.
 const SECRET_OF = / secret (\S+)$/;
 const WITH_HAND_OVER = "with the hand-over";
 const NO_TASK = "the task travels with its hand-over, and this run was started without it";
@@ -48,6 +48,13 @@ function usageOf(usages) {
   if (reported.length === 0) return null;
   const sum = (field) => (reported.every((each) => each[field] == null) ? null : reported.reduce((total, each) => total + (each[field] ?? 0), 0));
   return { inputTokens: sum("inputTokens"), outputTokens: sum("outputTokens"), minutes: sum("minutes"), cost: reported.find((each) => each.cost)?.cost ?? null };
+}
+
+// The end of a job whose writer hands no draft back still names the tests its report lists as not written, each with its reason — what the page shows again for the person to sharpen or
+// drop (UC-026 8b): `draft: { notWritten: [{ identifier, reason }] }`, in the order of the report; null where the report lists none.
+function notWrittenOf(report) {
+  const listed = (Array.isArray(report?.tests) ? report.tests : []).filter((test) => typeof test?.notWritten === "string" && test.notWritten.trim() !== "");
+  return listed.length === 0 ? null : { notWritten: listed.map((test) => ({ identifier: test.identifier, reason: test.notWritten })) };
 }
 
 // The driver of a participant for a job: a model endpoint from the endpoint the job's record names, its key the participant's secret; or a coding
@@ -119,13 +126,11 @@ function bashWithheld(context, participant) {
 // What a writer's outcome lists in the job's end: its commits, files and pull request, and its notes.
 const resultsOf = (outcome) => (outcome ? [...outcome.commits, ...outcome.files, ...(outcome.pullRequest ? [outcome.pullRequest] : []), ...outcome.notes.map((note) => `note: ${note}`)] : []);
 
-// An item of the backlog or a step of the plan, by its identifier.
-const PLANNED = /^ITM-\d+$/;
-
-// The hand-over a job's draft holds (UC-049 4f), run in the same run with the same participant and driver where its kind's result waits for a person and it works on no item
-// of the backlog or step of the plan: its parameters the job's source, those handOverParams gives for what it works on, and its task as instruction; run unattended, so that its
-// writer writes at once. -> the lines the job's end lists: what its writer wrote, or `not run: <kind> — <why>`.
-async function handedOver(handOver, context, participant, driver, record) {
+// The hand-over a job's draft holds (UC-049 4f), run in the same run, by its kind's definition, where its kind is not the job's own: its parameters the job's source, those
+// handOverParams gives for what it works on, and its task as instruction; prepared with its kind's preconditions — no start rule of the product's process applies — and run
+// unattended, so that its writer writes at once. `handOn(kind, params)` gives the participant, the driver and the context it runs with, and the notes that go with them.
+// -> the lines the job's end lists: what its writer wrote, or `not run: <kind> — <why>`.
+async function handedOver(handOver, context, record, handOn) {
   const worksOn = [handOver.works_on].flat().filter(Boolean).map(String);
   // One line each, as the record's `results` holds them: a failure's own text may span several, as git's does.
   const notRun = (why) => [`not run: ${handOver.kind} — ${String(why).replace(/\s*\n\s*/g, " ")}`];
@@ -136,15 +141,12 @@ async function handedOver(handOver, context, participant, driver, record) {
     return notRun(error?.message ?? String(error));
   }
   if (kind.name === context.kind.name) return notRun("it is this conversation itself, which a hand-over does not start again");
-  if (kind.review !== "person") return notRun("its result does not wait for a person, so it is started from the dashboard, by its start rules, for a holder of its role");
   const dropped = String(handOver.task ?? "").trim() ? taskRefusal(kind) : null;
   if (dropped) return notRun(`${dropped.what} [${dropped.rule}]`);
-  const planned = worksOn.filter((name) => PLANNED.test(name));
-  if (planned.length > 0) return notRun(`it works on ${planned.join(", ")} of the plan, whose start rules are checked where a person starts it`);
   const params = { ...(typeof record.params?.source === "string" ? { source: record.params.source } : {}), ...handOverParams(worksOn, context.product.snapshot),
     instruction: String(handOver.task ?? "") };
-  const nested = { ...context, kind, params };
   try {
+    const { participant, driver, context: nested, notes } = await handOn(kind, params);
     const prepared = await prepareJob(kind.name, nested, { drafter: participant, reviewers: [], limit: record.limit });
     if (prepared.blocking.length > 0 || prepared.notFitting.length > 0) {
       return notRun(prepared.blocking.map((found) => `${found.what} [${found.rule}]`).join("; ") || "the job does not fit its participant");
@@ -152,8 +154,8 @@ async function handedOver(handOver, context, participant, driver, record) {
     const result = await runJob(prepared, { drafter: driver, reviewers: [] }, { attended: false, context: nested });
     const failed = failedBecause(result);
     if (failed) return [`failed: ${handOver.kind} — ${failed}`];
-    const lines = resultsOf(result.written);
-    return lines.length > 0 ? lines : [`${handOver.kind}: no change`];
+    const written = resultsOf(result.written);
+    return [...notes.map((note) => `note: ${note}`), ...(written.length > 0 ? written : [`${handOver.kind}: no change`])];
   } catch (error) {
     return notRun(error?.message ?? String(error));
   }
@@ -202,7 +204,7 @@ async function runJobOf(env, composed, participants, row, handOver = null) {
   const taking = await takeJob(product.host, path, job.runUrl ?? `ci ${job.runner}`, (await product.host.readSnapshot("HEAD")).commit);
   if (!taking.taken) return { id: record.id, state: "skipped", summary: `${record.id} was taken by ${taking.by}` };
   // A hand-over with an endpoint reads its key from the secret the input `secret` names, and no other; every other job from the secret its participant's route names.
-  const secretName = handOver?.endpoint ? (handOver.secret ?? undefined) : (handOver ? SECRET_OF : CI_ROUTE).exec(participant.route ?? "")?.[1];
+  const secretName = handOver?.endpoint ? (handOver.secret ?? undefined) : SECRET_OF.exec(participant.route ?? "")?.[1];
   const hidden = (value) => {
     let said = String(value);
     if (handOver) said = said.split(handOver.task.trim()).join("[the task]");
@@ -246,8 +248,20 @@ async function runJobOf(env, composed, participants, row, handOver = null) {
         : endpointDriver(config, participant);
     const result = await runJob(prepared, { drafter: driver, reviewers: [] }, { attended: false, context });
     outcome = result.written;
-    // What the participant handed on is run in the same run, and its results join the job's (UC-049 4f).
-    const passed = result.draft?.handOver ? await handedOver(result.draft.handOver, context, participant, driver, record) : [];
+    // What the participant handed on is run in the same run, and its results join the job's (UC-049 4f): with this job's participant and driver, except that a model
+    // endpoint's job of a kind that changes code or runs tests works in the job's checkout with the tools of MOD-checkout-tools and checkoutPrompt, as onDispatch's does,
+    // its participant, where the record declares it, built for that kind.
+    const handOn = async (kind, params) => {
+      const model = config ?? ((record.params ?? {}).endpoint ? { ...record.params.endpoint, key: job.keys[secretName] } : null);
+      if (!model || readsAndDrafts(kind)) return { participant, driver, context: { ...context, kind, params }, notes: [] };
+      const own = record.declares && handOver?.endpoint ? await declaredParticipant({ ...record, kind: kind.name }, { secret: handOver.secret }) : participant;
+      const nested = { ...context, kind, params, product: { ...context.product, checkout: job.productDir ?? instance.checkout } };
+      const why = bashWithheld(nested, own);
+      if (why) nested.params = { ...params, refuses: [...(Array.isArray(params.refuses) ? params.refuses : []), "bash"] };
+      return { participant: own, context: nested, notes: why ? [`bash is not offered: ${why}`] : [],
+        driver: endpointDriver(model, own, undefined, { system: await checkoutPrompt({ folder: nested.product.checkout, now: env.now }) }) };
+    };
+    const passed = result.draft?.handOver ? await handedOver(result.draft.handOver, context, record, handOn) : [];
     // On the agent's machine the branch is not on the server yet: the writing machine refuses a result whose commits or pull request hold the task (result.mjs).
     if (handOver && !composed.result) {
       const refused = await refusedBranch(product.host, outcome, handOver.task, context.product.snapshot.commit);
@@ -262,7 +276,7 @@ async function runJobOf(env, composed, participants, row, handOver = null) {
     // A result is one item of the end's list, in which a comma separates items: a comma of a note or a reason becomes a semicolon.
     const listed = [...made, ...[...[...notes, ...(outcome?.notes ?? [])].map((note) => `note: ${note}`), ...passed].map((line) => line.replaceAll(",", ";"))];
     ended = { state: failed ? "failed" : "done", results: failed ? [] : listed.length > 0 ? listed : handedBack ? [] : ["no change"],
-      draft: handOver || failed ? null : handedBack ? (outcome?.shown ?? result.draft) : null, rounds: result.rounds, usage: usageOf(result.usage),
+      draft: handOver || failed ? null : handedBack ? (outcome?.shown ?? result.draft) : notWrittenOf(outcome?.shown), rounds: result.rounds, usage: usageOf(result.usage),
       reason: failed && handOver ? hidden(failed) : failed, stoppedBecause: result.stoppedBecause, drafter: result.drafter };
   } catch (error) {
     let reason = error?.message ?? String(error);
@@ -290,8 +304,8 @@ async function queuedOf(env, snapshot, { handedOver = false } = {}) {
   return rows.reverse();
 }
 
-// The key secret a queued job's participant reads, as its route names it — `ci <runner> secret <NAME>` —, or null.
-const keyOfRow = (participants, { record }) => CI_ROUTE.exec(participants.find((each) => each.name === record.participant)?.route ?? "")?.[1] ?? null;
+// The key secret a queued job's participant reads, as its route names it — `ci <runner> secret <NAME>` or `endpoint <name> secret <NAME>` —, or null.
+const keyOfRow = (participants, { record }) => SECRET_OF.exec(participants.find((each) => each.name === record.participant)?.route ?? "")?.[1] ?? null;
 
 // The jobs this machine runs: on the agent's machine, those whose key is the one it was given, or none the job workflow reads; a job whose key is another of
 // those the file reads is left queued for the run its own key's machine makes. Elsewhere every job.
@@ -303,26 +317,32 @@ function ofThisMachine(env, participants, rows) {
   });
 }
 
-// The product's facts of the scope `work`, read once: the workflow, the jobs and the states of the gates (gateStates).
-async function workFacts(env, composed) {
+// The product's facts of the scope `work`, read once: the workflow, the jobs and the states of the gates (gateStates). `atHead`: read at the checkout's HEAD, for an event whose branch is no branch
+// of the clone — a pull request's, `<n>/merge` —: the repository's information is then refused, and productFacts reads the commit checked out.
+async function workFacts(env, composed, { atHead = false } = {}) {
   const { instance, product } = composed;
+  const refused = (what) => async () => { throw Object.assign(new Error(`${what} not read here`), { name: "NotSupported" }); };
   // The facts are read through the clone alone: the gates and jobs need no pull request, and the server's answer is not asked for (productFacts takes a refusal as `unknown`).
-  const clone = { ...product.host, listPullRequests: async () => { throw Object.assign(new Error("pull requests are not read here"), { name: "NotSupported" }); } };
+  const clone = { ...product.host, listPullRequests: refused("pull requests are"), ...(atHead ? { repositoryInfo: refused("the repository's information is") } : {}) };
   return productFacts(clone, await instance.host.readSnapshot("HEAD"), (commit) => instance.host.readSnapshot(commit), env.now, { scope: "work" });
 }
 
-// The jobs of this route waiting at a gate that is now passed, each with the gate record that passed it. A gate record whose decider is the job's own participant —
-// whose work the gate checks — does not resume the job.
+// The jobs of this route waiting at a gate that is now decided, each with the gate record that decided it: a passed gate resumes the job, a rejected one — by a record that names the job — ends it
+// (`rejected`: the record's reason). A gate record whose decider is the job's own participant — whose work the gate checks — decides nothing.
 async function resumable(env, composed) {
   const facts = await workFacts(env, composed);
   const wanted = routeOf(env.job.runner);
   const rows = [];
   for (const { record, state } of facts.jobs) {
     if (state !== "waiting at a gate" || record.route !== wanted) continue;
-    const reached = record.gates.at(-1)?.gate;
-    const passed = facts.gateStates.find((each) => each.gate === reached && each.state === "passed");
-    const decided = passed && facts.gates.find((each) => each.path === passed.record);
-    if (decided && decided.fields.decider !== record.participant) rows.push({ record, path: record.path, gateRecord: passed.record });
+    const verdict = facts.gateStates.find((each) => each.gate === record.gates.at(-1)?.gate);
+    const decided = verdict?.record && facts.gates.find((each) => each.path === verdict.record);
+    if (!decided || decided.fields.decider === record.participant) continue;
+    if (verdict.state === "passed") rows.push({ record, path: record.path, gateRecord: verdict.record });
+    else if (verdict.state === "rejected" && decided.fields.job === record.id) {
+      const why = decided.sections.find((section) => section.heading === "## Reason")?.text.replace(/\s+/g, " ").trim();
+      rows.push({ record, path: record.path, gateRecord: verdict.record, rejected: `the gate ${verdict.gate} was rejected by ${verdict.record}${why ? `: ${why}` : ""}` });
+    }
   }
   return rows;
 }
@@ -333,6 +353,13 @@ async function resume(host, branch, now, { record, path, gateRecord }) {
   await host.commitFiles({ branch, expectedHead: head.commit, files: [{ path, text: appendToRecord(await head.read(path), { part: "resumed", at: now, gateRecord }) }],
     message: `resume ${record.id}: ${gateRecord}` });
   return `${record.id} resumed by ${gateRecord}`;
+}
+
+// Ends a job whose gate was rejected: its End, `failed`, with the reason the rows give (the gate, the gate record and its reason), committed on the current head.
+async function endRejected(host, branch, now, participants, { record, path, gateRecord, rejected }) {
+  await endRecord(host, path, { branch, part: { part: "end", at: now, state: "failed", results: [], draft: null, rounds: [], usage: null,
+    cost: jobCost(null, participants.find((each) => each.name === record.participant)), reason: rejected, log: null } }, []);
+  return `${record.id} ended by ${gateRecord}`;
 }
 
 // The participants of the instance's register, read from its checkout.
@@ -346,7 +373,7 @@ function missingSecret(env, participants, rows) {
   if (!env.job.personToken && env.job.part !== "agent") return `${env.job.tokenName} is missing: the person's Agent M token is a secret of this repository, passed to the job as ${env.job.tokenName}. Nothing was written.`;
   for (const { record } of rows) {
     const participant = participants.find((each) => each.name === record.participant);
-    const secret = CI_ROUTE.exec(participant?.route ?? "")?.[1];
+    const secret = SECRET_OF.exec(participant?.route ?? "")?.[1];
     if (secret && !keyAvailable(env.job, secret)) return `${secret} is missing: the key of ${participant.name} is a secret of this repository, passed to the job as ${secret}. Nothing was written.`;
   }
   return null;
@@ -374,7 +401,9 @@ export async function onRecordsChanged(env) {
   const missing = missingSecret(env, participants, rows);
   if (missing) return notRun(missing);
   const resumed = [];
-  for (const row of await resumable(env, composed)) resumed.push(await resume(composed.product.host, env.branch, env.now, row));
+  for (const row of await resumable(env, composed)) {
+    resumed.push(row.rejected ? await endRejected(composed.product.host, env.branch, env.now, participants, row) : await resume(composed.product.host, env.branch, env.now, row));
+  }
   const status = await runRows(env, composed, participants, rows);
   if (resumed.length === 0) return status;
   return { ...status, outcome: status.outcome === "nothing to do" ? "done" : status.outcome, summary: [...resumed, ...(status.outcome === "nothing to do" ? [] : [status.summary])].join("; ") };
@@ -548,7 +577,7 @@ export async function chooseAgentKey(env) {
   else if (inputs) {
     const row = (await queuedOf(env, snapshot, { handedOver: true })).find(({ record }) => record.id === inputs.job);
     const participant = participants.find((each) => each.name === (row?.record.participant ?? inputs.participant));
-    key = (row?.record.task === WITH_HAND_OVER ? SECRET_OF : CI_ROUTE).exec(participant?.route ?? "")?.[1] ?? null;
+    key = SECRET_OF.exec(participant?.route ?? "")?.[1] ?? null;
   } else {
     const [first] = await queuedOf(env, snapshot);
     key = first ? keyOfRow(participants, first) : null;
@@ -897,6 +926,8 @@ function modulesOfJob(record, items) {
  * only when every shard AGENT_M_EXPECTED names left `done` or `nothing to do` and records.status is `done` (headCi); each job that is not green is a finding naming it. `done` when
  * the Definition of Done holds, `failed` with each condition it misses as a finding; the status and the findings stand in the check's log and in the run's summary. A pull request
  * that names no job, or a job of no implementing kind, is `nothing to do`; a missing token, pull request or AGENT_M_EXPECTED ends the entry `not run` before anything is read.
+ * Where the event's pull request holds its title — GitHub's payload does —, the job is read from its title and description first, and one that names none ends `nothing to do`
+ * before the pull request's facts are read, since those read every commit (ITM-1382).
  */
 export async function onDoneCheck(env) {
   if (!env.job.personToken) return notRun(`${env.job.tokenName} is missing: the person's Agent M token is a secret of this repository, passed to the step as ${env.job.tokenName}. Nothing was written.`);
@@ -904,10 +935,13 @@ export async function onDoneCheck(env) {
   if (!number) return notRun("The event names no pull request: the Definition of Done is checked on a pull request. Nothing was written.");
   const jobs = expectedJobs(env.tests.expected);
   if (!jobs) return notRun(`AGENT_M_EXPECTED ${env.tests.expected ? `names no job as <row>:<shards>: ${env.tests.expected}` : "is missing"}: without it the jobs of the run are not known. Nothing was read.`);
+  const namesNoJob = nothingToDo(`Pull request #${number} names no job: the Definition of Done is checked for an implementation job's pull request.`);
+  const event = env.event.payload?.pull_request;
+  if (typeof event?.title === "string" && !JOB_ID.test(`${event.title}\n${event.body ?? ""}`)) return namesNoJob;
   const { checkout, server, instance } = composeTestRun(env);
   const facts = await server.pullRequestFacts(number);
   const id = JOB_ID.exec(`${facts.pullRequest.title}\n${facts.pullRequest.body}`)?.[0];
-  if (!id) return nothingToDo(`Pull request #${number} names no job: the Definition of Done is checked for an implementation job's pull request.`);
+  if (!id) return namesNoJob;
   const product = await productFacts(checkout, await instance.readSnapshot("HEAD"), (commit) => instance.readSnapshot(commit), env.now, { scope: "work" });
   const row = product.jobs.find(({ record }) => record.id === id);
   if (!row) return failedStatus(`Pull request #${number} names the job ${id}, which has no record in docs/jobs/.`);
@@ -923,4 +957,76 @@ export async function onDoneCheck(env) {
     : `The Definition of Done of pull request #${number} (${id}) holds.`;
   if (env.job.summaryFile) fs.appendFileSync(env.job.summaryFile, `## agent-m done\n\n${summary}\n${findings.map((found) => `\n- ${findingLine(found)}`).join("")}\n`);
   return { outcome: failed ? "failed" : "done", summary, findings };
+}
+
+// The product's issue an address names, as MOD-job-ledger's `works_on` holds it — GitHub's /issues/<n>, GitLab's /-/issues/<n> — below the product's own address: its number, else null.
+function issueNumberOf(address, repository) {
+  const match = /^(.*?)\/(?:-\/)?issues\/(\d+)$/.exec(String(address));
+  return match && match[1].replace(/\/+$/, "") === String(repository).replace(/\/+$/, "") ? Number(match[2]) : null;
+}
+
+// The pull request an event of the job workflow names, as the host reads it, else null. GitHub's event names it (`pull_request.number`). GitLab starts no pipeline for a merge on the merge request itself, but one of the push that merged it, whose commit
+// the environment names (`commit`): it is the merged merge request whose merge commit that is, among the merged ones.
+async function eventPullRequest(env, host) {
+  const number = env.event.payload?.pull_request?.number;
+  if (Number.isInteger(number)) return (await host.pullRequestFacts(number)).pullRequest;
+  const commit = env.event.payload?.commit;
+  if (env.service !== "gitlab" || !commit?.sha) return null;
+  const merged = await host.listPullRequests({ state: "merged" });
+  return merged.find((each) => each.mergeCommit === commit.sha) ?? null;
+}
+
+// The kinds of a job that implements an item (AGILE IMPLEMENTATION STARTS FROM THE BACKLOG): its `works_on` names the item.
+const IMPLEMENTS_ITEM = ["implement", "refactor"];
+
+// The issues of this product a merged pull request's job closes, each with the item it is closed for (UC-033 step 6), once each: a bug fix's, the issues it works on, with no item; an item's job's,
+// the issues each item it works on names among its origins, with that item — the items as the product's facts read them at the commit checked out, where the job's record is read too, read only for such a job.
+async function issuesClosedBy(env, composed, record) {
+  const ofProduct = (addresses, item) => [].concat(addresses ?? []).map((address) => issueNumberOf(address, env.repository)).filter((issue) => issue !== null).map((issue) => ({ issue, item }));
+  let found = [];
+  if (record.kind === "fix-bug") found = ofProduct(record.worksOn, null);
+  else {
+    const ids = (record.worksOn ?? []).filter((id) => /^ITM-\d+$/.test(id));
+    const items = ids.length ? (await workFacts(env, composed, { atHead: true })).plan.items : [];
+    found = ids.flatMap((id) => items.filter((item) => item.fields?.id === id).flatMap((item) => ofProduct(item.fields.origin, id)));
+  }
+  const seen = new Set();
+  return found.filter(({ issue }) => !seen.has(issue) && seen.add(issue));
+}
+
+/**
+ * onPullRequestClosed(env: CiEnvironment) -> Promise<EntryStatus> — run by the job workflow when a pull request of a product is merged or closed (GitHub's event names it, `pull_request.number`; on GitLab the pipeline of the push that merged a merge request names the commit, which finds the merge request): on a merge, the pull request of a job — the job its title or description names,
+ * as onDoneCheck reads it — closes the issues it names, each with MOD-issue-handling's closeWithLinks, its note naming the pull request's address: a `fix-bug` job's, the issues it works on, with no item; the job of an item (`implement`, `refactor`), the issues each item it works on names
+ * among its origins, with that item (UC-033 step 6). A pull request closed without a merge, one that names no job, a job that has no record or is of another kind, and a job that names no issue of this product write nothing (`nothing to do`). The runs' next actions are another item's.
+ * A missing token ends the entry at once as `not run`; an issue that cannot be closed is named, the others are closed all the same, and the entry ends `failed`.
+ */
+export async function onPullRequestClosed(env) {
+  if (!env.job.personToken) return notRun(`${env.job.tokenName} is missing: the person's Agent M token is a secret of this repository, passed to the job as ${env.job.tokenName}. Nothing was written.`);
+  const composed = composeProduct(env);
+  const { host } = composed.product;
+  const pullRequest = await eventPullRequest(env, host);
+  if (!pullRequest) return nothingToDo(env.service === "gitlab" ? "No merge request was merged by the commit of this pipeline." : "The event names no pull request.");
+  const number = pullRequest.number;
+  if (pullRequest.state !== "merged") return nothingToDo(`Pull request #${number} was closed without a merge: no issue is closed.`);
+  const id = JOB_ID.exec(`${pullRequest.title}\n${pullRequest.body}`)?.[0];
+  if (!id) return nothingToDo(`Pull request #${number} names no job.`);
+  let record = null;
+  for await (const each of recordsNewestFirst(await host.readSnapshot("HEAD"))) if (each.id === id) { record = each; break; }
+  if (!record) return nothingToDo(`Pull request #${number} names the job ${id}, which has no record in docs/jobs/.`);
+  if (record.kind !== "fix-bug" && !IMPLEMENTS_ITEM.includes(record.kind)) return nothingToDo(`Pull request #${number} is of the job ${id} of kind ${record.kind}, which fixes no bug and implements no item: no issue is closed.`);
+  const issues = await issuesClosedBy(env, composed, record);
+  if (issues.length === 0) {
+    return nothingToDo(record.kind === "fix-bug" ? `The job ${id} works on no issue of this product.` : `The job ${id} of kind ${record.kind} fixes no bug, and no item it works on names an issue of this product among its origins.`);
+  }
+  const closed = [], refused = [];
+  for (const { issue, item } of issues) {
+    try {
+      await closeWithLinks(host, issue, { pullRequest: pullRequest.url, commit: pullRequest.mergeCommit ?? null, item });
+      closed.push(item ? `#${issue} (${item})` : `#${issue}`);
+    } catch (error) {
+      refused.push(`#${issue}: ${error?.message ?? error}`);
+    }
+  }
+  const summary = [...(closed.length ? [`Pull request #${number} merged: ${closed.join(", ")} closed with ${pullRequest.url}.`] : []), ...(refused.length ? [`Not closed — ${refused.join("; ")}.`] : [])].join(" ");
+  return { outcome: refused.length ? "failed" : "done", summary, findings: [] };
 }

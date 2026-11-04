@@ -18,7 +18,7 @@
 //   - `spec-with-queues` gives one part, or none where the product has no requirement at all. Its text is blocks separated by an empty
 //     line, one for each requirement: the state, the heading line of the section it stands in where it stands in one, and the
 //     requirement as the SPEC states it. The SPEC's requirements come first, in the order they stand, with the state `in SPEC`; then
-//     those of the entries that are not in SPEC, queues newest first as `queues` gives them, each queue's entries in the order of its
+//     those of the entries that are not in SPEC, queues in the order `queues` gives them, each queue's entries in the order of its
 //     index and each proposal's requirements in the order they stand, with the state of their entry: an entry that is not in SPEC is a
 //     proposal the product does not hold yet, and one that is in SPEC is the SPEC's already.
 

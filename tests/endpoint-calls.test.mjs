@@ -42,7 +42,7 @@ test("TST-260-001: an OpenAI-compatible test sends one short authorised chat req
   assert.equal(calls[0].init.headers["x-api-key"], undefined);
   assert.equal(calls[0].url.includes("secret-key"), false, "the key is never in the URL");
   assert.deepEqual(JSON.parse(calls[0].init.body), { model: "tiny-model", messages: [{ role: "user", content: "Call agent_m_probe once. It is a harmless capability check." }], max_tokens: 64,
-    tools: [{ type: "function", function: { name: "agent_m_probe", description: "Report that tool calling works without changing anything.", parameters: { type: "object", properties: {}, additionalProperties: false } } }] });
+    tools: [{ type: "function", function: { name: "agent_m_probe", description: "Report that tool calling works without changing anything.", parameters: { type: "object", properties: {}, additionalProperties: false } } }], stream: false });
 });
 
 // TST-260-002

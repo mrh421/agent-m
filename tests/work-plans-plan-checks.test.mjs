@@ -91,6 +91,47 @@ test("planFindings — a module ordered before one whose interface it uses is na
   assert.match(whats(findings), /MOD-writer.*MOD-reader|MOD-reader.*MOD-writer/s);
 });
 
+const ASSEMBLES = "AN IMPLEMENTATION PLAN ASSEMBLES THE SYSTEM FROM ITS MODULES";
+const assembles = (findings) => findings.filter((each) => each.rule === ASSEMBLES);
+
+// TST-1369001 · level: unit · module: MOD-work-plans
+// guards: UC-045; AN IMPLEMENTATION PLAN ASSEMBLES THE SYSTEM FROM ITS MODULES
+// given: the sound plan with ARC-002's integration ITM-012 ordered before ITM-011, the step of its module MOD-writer (ITM-010, ITM-012, ITM-011, ITM-013); known positive: the sound plan gives no finding under the rule; and a second subsystem ARC-003 designing MOD-mail, whose step ITM-014 and integration ITM-015 stand after ARC-002's integration and before the system
+// input: planFindings for each
+// expect: one error finding under AN IMPLEMENTATION PLAN ASSEMBLES THE SYSTEM FROM ITS MODULES on ITM-012, naming ITM-011; none under the rule for the sound plan; none for ARC-002's integration standing before the module of the other subsystem
+test("planFindings — a subsystem's integration ordered before a step of one of its modules is named", async () => {
+  assert.deepEqual(assembles(await found(setting())), [], "known positive: the sound plan");
+  const early = assembles(await found(setting({ rows: [["ITM-010", "Implementation"], ["ITM-012", "Testing"], ["ITM-011", "Implementation"], ["ITM-013", "Testing"]] })));
+  assert.equal(early.length, 1, whats(early));
+  assert.deepEqual([early[0].kind, early[0].artifact], ["error", "ITM-012"]);
+  assert.match(early[0].what, /ITM-012[^]*ITM-011/);
+  const two = setting({
+    architecture: { ...ARCHITECTURE(), "docs/architecture/ARC-003-mail.md": decision("ARC-003", ["refines: ARC-001", "forced_by:", "  - UC-001", "designs:", "  - MOD-mail"]), "docs/architecture/MOD-mail.md": module_("MOD-mail") },
+    steps: { ...STEPS, "docs/plan/ITM-014-mail.md": step("ITM-014", "module", ["MOD-mail"], ["unit"]), "docs/plan/ITM-015-mailing.md": step("ITM-015", "subsystem", ["MOD-mail"], ["component"]) },
+    rows: [["ITM-010", "Implementation"], ["ITM-011", "Implementation"], ["ITM-012", "Testing"], ["ITM-014", "Implementation"], ["ITM-015", "Testing"], ["ITM-013", "Testing"]],
+  });
+  assert.deepEqual(assembles(await found(two)), [], "an integration may stand before the modules of another subsystem");
+});
+
+// TST-1369002 · level: unit · module: MOD-work-plans
+// guards: UC-045; AN IMPLEMENTATION PLAN ASSEMBLES THE SYSTEM FROM ITS MODULES
+// given: the sound plan with the system's step ITM-013 first (ITM-013, ITM-010, ITM-011, ITM-012); then with ITM-013 only before ARC-002's integration (ITM-010, ITM-011, ITM-013, ITM-012); known positive: the sound plan, the system last, gives no finding under the rule
+// input: planFindings for each
+// expect: one error finding under AN IMPLEMENTATION PLAN ASSEMBLES THE SYSTEM FROM ITS MODULES on ITM-013, naming ITM-010, ITM-011 and ITM-012 for the first; for the second, one on ITM-013 naming ITM-012 and not ITM-010
+test("planFindings — the system's step ordered before any other step is named", async () => {
+  assert.deepEqual(assembles(await found(setting())), [], "known positive: the system last");
+  const first = assembles(await found(setting({ rows: [["ITM-013", "Testing"], ["ITM-010", "Implementation"], ["ITM-011", "Implementation"], ["ITM-012", "Testing"]] })));
+  const system = first.filter((each) => each.artifact === "ITM-013");
+  assert.equal(system.length, 1, whats(first));
+  assert.equal(system[0].kind, "error");
+  for (const id of ["ITM-010", "ITM-011", "ITM-012"]) assert.match(system[0].what, new RegExp(id));
+  const beforeOne = assembles(await found(setting({ rows: [["ITM-010", "Implementation"], ["ITM-011", "Implementation"], ["ITM-013", "Testing"], ["ITM-012", "Testing"]] })));
+  assert.equal(beforeOne.length, 1, whats(beforeOne));
+  assert.equal(beforeOne[0].artifact, "ITM-013");
+  assert.match(beforeOne[0].what, /ITM-012/);
+  assert.doesNotMatch(beforeOne[0].what, /ITM-010/);
+});
+
 // TST-613004 · level: unit · module: MOD-work-plans
 // guards: UC-045; THE MODEL DETERMINES THE PHASES AND THE GATES
 // given: the sound plan with ITM-012 in a phase the model lacks, then with ITM-013 left out of the order

@@ -36,6 +36,15 @@ export const classOf = (candidate, classes) => classes?.find((each) => each.refs
   refs: [candidate.name], from: [candidate.passage].filter(Boolean), class: candidate.class, of: candidate.of ?? null,
 };
 
+/**
+ * shownOnPanel(candidate, classes) -> boolean — whether the panel shows `candidate`: a class of the last round that merged candidates of one rule (CANDIDATES ARE DEDUPLICATED AMONG THEMSELVES) is shown
+ * as its first candidate, and the others it names are not.
+ */
+export const shownOnPanel = (candidate, classes) => classOf(candidate, classes).refs[0] === candidate.name;
+
+/** passagesLine(decided) -> Element | "" — the line that names every passage of a class that merged candidates; nothing for a class of one candidate. */
+export const passagesLine = (decided) => (decided.refs.length > 1 && decided.from.length ? el("p", "candidate-passages", `Passages: ${decided.from.join(", ")}.`) : "");
+
 const sourceText = (item, register) => {
   const id = item.split(",")[0].trim();
   const entry = register.find((each) => each.id === id);
@@ -54,7 +63,7 @@ export function showCurrent(current, held, register) {
 
 export function candidateRows(panel, outcome, parsed, source, register, onChange) {
   const candidates = Array.isArray(outcome.draft?.candidates) ? outcome.draft.candidates : [];
-  for (const candidate of candidates) {
+  for (const candidate of candidates.filter((each) => shownOnPanel(each, outcome.classes))) {
     const decided = classOf(candidate, outcome.classes);
     const select = classSelect(decided.class);
     const of = el("input", "of");
@@ -77,7 +86,7 @@ export function candidateRows(panel, outcome, parsed, source, register, onChange
     refresh();
     const item = el("li", "candidate", el("section", "candidate-draft", el("span", "candidate-name", candidate.name),
       el("label", null, " Class ", select), el("label", null, " of ", of), el("label", null, "Rule", rule),
-      el("label", null, "Check", check), el("p", "candidate-source", `Source: ${sourceText(candidate.source ?? source, register)}.`)), current, difference);
+      el("label", null, "Check", check), el("p", "candidate-source", `Source: ${sourceText(candidate.source ?? source, register)}.`), passagesLine(decided)), current, difference);
     item.setAttribute("data-name", candidate.name);
     panel.append(item);
   }
@@ -149,20 +158,20 @@ const fieldOf = (item, name, className, held) => inputsOf(item, name, className)
 export function editedResult(panel, outcome) {
   const items = inputsOf(panel, "li", "candidate");
   const candidates = [], classes = [];
-  const take = (candidate, item, from) => {
+  const take = (candidate, item, from, refs = [candidate.name]) => {
     const class_ = inputsOf(item, "select", "class")[0].value;
     const of = inputsOf(item, "input", "of")[0].value.trim();
     const edited = { ...candidate, rule: fieldOf(item, "textarea", "candidate-rule", candidate.rule), check: fieldOf(item, "textarea", "candidate-check", candidate.check), class: class_ };
     if (of) edited.of = of;
     else delete edited.of;
     candidates.push(edited);
-    classes.push({ refs: [edited.name], from, class: class_, of: of || null });
+    classes.push({ refs, from, class: class_, of: of || null });
     return edited;
   };
-  for (const candidate of outcome.draft?.candidates ?? []) {
+  for (const candidate of (outcome.draft?.candidates ?? []).filter((each) => shownOnPanel(each, outcome.classes))) {
     const item = items.find((node) => node.getAttribute("data-name") === candidate.name);
-    const from = classOf(candidate, outcome.classes).from ?? [];
-    const edited = take(candidate, item, from);
+    const { from = [], refs } = classOf(candidate, outcome.classes);
+    const edited = take(candidate, item, from, refs);
     for (const part of items.filter((node) => node.getAttribute("data-split-of") === candidate.name)) take({ ...edited, name: inputsOf(part, "input", "candidate-name")[0].value.trim() }, part, from);
   }
   return { draft: { candidates }, classes };

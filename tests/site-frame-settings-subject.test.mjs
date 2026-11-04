@@ -65,7 +65,8 @@ function installNetwork() {
 }
 test.afterEach(() => { globalThis.fetch = realFetch; });
 
-// The review page at #settings, in a browser that keeps the endpoint ep1 and the instance's token SECRET.
+// The review page at #settings, in a browser that declares the endpoint drafter-a — its place, context and model, as the bar offers it (UC-049 1) — and the
+// instance's token SECRET.
 async function start() {
   installNetwork();
   seen.length = 0;
@@ -73,7 +74,7 @@ async function start() {
   Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: fixtureStorage() });
   globalThis.setInterval = () => 1;
   const store = openStore("acme/instance");
-  writeSetting(store, "endpoint:ep1", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture" });
+  writeSetting(store, "endpoint:drafter-a", { kind: "openai-compatible", url: "https://models.example/v1", model: "model-drafter-a", key: "sk-fixture", place: "Anthropic, USA", context: 200000 });
   writeSetting(store, "github-token", { value: SECRET, name: "alice", expires: "2030-01-01" });
   await startPage({ page: "review", views: [view], menuViews: [] });
   const body = fixture.document.body;
@@ -120,8 +121,7 @@ test("the Settings routes keep the frame's default subject: the settings and the
 // guards: EVERY STEP EXPLAINS ITSELF; UC-042
 // given: the review page at #settings (the real Settings route), an instance without a switch file, and explanations.md (the data under test, read only to find the topic)
 // input: the Settings page is drawn
-// expect: the line Recording conversations holds one folded explanation — a details of class explain, without the open attribute, with the summary "What is this?" — whose body is
-//   the rendered Markdown of the topic recording-conversations, and not that of the topic prompt-bar (known positive: the two renderings differ)
+// expect: the line Recording conversations holds one folded explanation — a details of class explain, without the open attribute, with the summary "What is this?" — whose body is the rendered Markdown of the topic recording-conversations, and not that of the topic prompt-bar (known positive: the two renderings differ)
 test("the line Recording conversations holds the folded explanation of the topic recording-conversations", async () => {
   const page = await start();
   const line = one(page.body, "settings-recording");

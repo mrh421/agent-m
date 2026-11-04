@@ -65,13 +65,13 @@ for (const route of [["spec-entry", "requirements"], ["decision", "the architect
   // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
   // given: a product on GitHub with the links file docs/sources.md; an instance alice/agent-m whose register docs/sources/ holds SRC-alice and SRC-bob; the reviewer's token is stored
   // input: open the page that starts the derivation of requirements, or of the architecture, of the product
-  // expect: the instance receives 4 requests in all: its repository, its default branch's commit and its tree once each, and the 1 batch of GitHub's GraphQL API that reads its register; nothing is read on the raw host
+  // expect: the instance receives 5 requests in all: its repository, its default branch's commit and its tree once each, the 1 batch of GitHub's GraphQL API that reads its register, and the GraphQL request of greenToMerge beside its repository (ITM-1170); nothing is read on the raw host
   test(`TST-852201: the derivation of ${route[1]} sends the instance one repository, one commit and one tree request, with a token`, async () => {
     const seen = await startPage(route[0], true);
     assert.deepEqual({ repository: seen.repository, commit: seen.commit, tree: seen.tree }, ONE_SNAPSHOT, JSON.stringify(seen));
-    assert.equal(seen.batch, 1, JSON.stringify(seen));
+    assert.equal(seen.batch, 2, JSON.stringify(seen));
     assert.equal(seen.raw, 0, JSON.stringify(seen));
-    assert.equal(seen.total, 4, JSON.stringify(seen));
+    assert.equal(seen.total, 5, JSON.stringify(seen));
   });
 
   // TST-852202 · level: system · module: MOD-review-pages
@@ -93,10 +93,10 @@ for (const token of [true, false]) {
   // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
   // given: the same product and instance; the token is stored, or none (the page that already reads the instance once)
   // input: open the page that starts the derivation of use cases, which reads the instance's register of participants and no source
-  // expect: the instance receives 3 requests in all: its repository, its default branch's commit and its tree once each; the count is the same as before this item
+  // expect: the instance receives 3 requests in all: its repository, its default branch's commit and its tree once each — with a token 4, the GraphQL request of greenToMerge beside its repository (ITM-1170); the count is otherwise the same as before this item
   test(`TST-852203: the derivation of use cases still sends the instance three requests, ${token ? "with" : "without"} a token`, async () => {
     const seen = await startPage("use-case", token);
     assert.deepEqual({ repository: seen.repository, commit: seen.commit, tree: seen.tree }, ONE_SNAPSHOT, JSON.stringify(seen));
-    assert.equal(seen.total, 3, JSON.stringify(seen));
+    assert.equal(seen.total, token ? 4 : 3, JSON.stringify(seen));
   });
 }

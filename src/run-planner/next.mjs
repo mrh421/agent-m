@@ -1,7 +1,6 @@
 // Next — a run's next actions (MOD-run-planner, Interfaces: Action, nextActions; A RUN SETS UP CI BEFORE IT IMPLEMENTS, A RUN FOLLOWS THE MODULES' INTERFACES, A JOB STOPS AT EVERY GATE,
 // A RUN CONTINUES WITHOUT A CLICK BETWEEN ITS JOBS, A JOB GOES ONLY TO A HOLDER OF ITS ROLE, NO JOB STARTS ABOVE THE WORK-IN-PROGRESS LIMIT; UC-043). Of the function's text this file has
-// what ITM-977 builds: the CI setup, the implementation jobs in the order of the modules' interfaces, the resumption of a job whose gate has been decided, and the refusal of a cycle. The
-// tests and `finish` (ITM-978) and the holds at a limit (ITM-979) are not built.
+// what ITM-977 builds: the CI setup, the implementation jobs in the order of the modules' interfaces, the resumption of a job whose gate has been decided, and the refusal of a cycle.
 //
 // Module: MOD-run-planner
 //

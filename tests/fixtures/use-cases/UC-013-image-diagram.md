@@ -30,6 +30,14 @@ realises:
 
 ![The flow](flow.png)
 
+```mermaid
+sequenceDiagram
+    actor A as Author
+    participant D as Dashboard
+    A->>D: Export
+    D-->>A: file
+```
+
 ## Alternative flows
 
 - **1a. The list is empty.** Nothing is written.

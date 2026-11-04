@@ -20,6 +20,7 @@
 // Each test states its input and its expected result before it runs (given / input / expect). The counter-proofs are recorded in the pull request.
 
 import "./review-pages-harness.mjs";
+import { until } from "./review-pages-wait.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -90,7 +91,10 @@ async function fakeHost() {
         const next = { ...commits.get("main") };
         for (const file of change.files) next[file.path] = file.text;
         commits.set("main", next);
-        return { commit: `write-${++serial}` };
+        // The commit the write made is served by its name too, as a host serves a commit (MOD-repository-hosts' readSnapshot at a commit).
+        const commit = `write-${++serial}`;
+        commits.set(commit, next);
+        return { commit };
       },
       async createTag(name, commit) { calls.push({ fn: "createTag", name, commit }); tags.set(name, commit); },
     },
@@ -119,13 +123,6 @@ function find(root, match) {
 }
 const byClass = (root, name, className) => find(root, (node) => node.localName === name && node.className.split(" ").includes(className));
 const click = (node) => node.dispatchEvent(new Event("click"));
-async function until(condition, what) {
-  for (let turn = 0; turn < 400; turn++) {
-    if (condition()) return;
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  assert.fail(`waited for ${what}`);
-}
 const rowsOf = (target) => find(target, (node) => node.localName === "tr" && node.getAttribute("data-id"));
 const sections = (target) => byClass(target, "section", "review-file");
 
@@ -135,7 +132,7 @@ const sections = (target) => byClass(target, "section", "review-file");
 // guards: STATUS IS DERIVED FROM THE RECORDS; THE RELEASE TEST REPORT IS ACCEPTED BY A PERSON; UC-030
 // given: a product with two release test reports — v2026.3.0, which an approval record names, and v2026.4.0, which none names — and a token stored
 // input: the route release-report rendered with no id
-// expect: both reports listed, release-v2026.3.0 with the status accepted and release-v2026.4.0 with the status open, each row linking to its page; the link "Review all 1 not accepted"; nothing written
+// expect: both reports listed, release-v2026.3.0 with the status accepted and release-v2026.4.0 with the status open, each row linking to its page with the product in the address ("#release-report/id=<id>/product=<the product's address, encoded>"); the link "Review all 1 not accepted"; nothing written
 test("MOD-review-pages release-report — the list gives both reports with their status", async () => {
   const fake = await fakeHost();
   const target = await show(fake);
@@ -147,7 +144,7 @@ test("MOD-review-pages release-report — the list gives both reports with their
     for (const row of rows.filter((each) => each.getAttribute("data-id") === id)) assert.match(row.textContent, status, `${id} is ${status}`);
   }
   const links = find(target, (node) => node.localName === "a" && /^#release-report\/id=release-v/.test(node.getAttribute("href") ?? "")).map((link) => link.getAttribute("href"));
-  assert.ok(links.includes("#release-report/id=release-v2026.3.0") && links.includes("#release-report/id=release-v2026.4.0"), "each report links to its page");
+  assert.ok(links.includes(`#release-report/id=release-v2026.3.0/product=${encodeURIComponent(ON_GITHUB.web)}`) && links.includes(`#release-report/id=release-v2026.4.0/product=${encodeURIComponent(ON_GITHUB.web)}`), "each report links to its page with the product in the address");
   assert.ok(byClass(target, "a", "review-all")[0]?.textContent.includes("Review all 1 not accepted"), "Review all counts the open report");
   assert.equal(fake.writes().length, 0, "nothing written");
 });
@@ -192,7 +189,7 @@ test("MOD-review-pages release-report/all — shows only the open report, and Ac
   assert.equal(all?.textContent, "Accept all 1 shown");
   assert.equal(fake.writes().length, 0, "nothing written before the click");
   click(all);
-  await until(() => fake.writes().length === 1, "the commit");
+  await until(target, () => fake.writes().length === 1, "the commit");
 
   const blob = blobOf(fake.report);
   const [{ change }] = fake.writes();
@@ -202,7 +199,7 @@ test("MOD-review-pages release-report/all — shows only the open report, and Ac
   assert.match(record.text, new RegExp(`^file: ${OPEN.replaceAll(".", "\\.")}$`, "m"));
   assert.match(record.text, new RegExp(`^blob: ${blob}$`, "m"));
   assert.deepEqual(change.files.map((file) => file.path).filter((path) => path.startsWith("docs/approvals/")), [record.path], "one record");
-  await until(() => fake.calls.some((call) => call.fn === "createTag"), "the tag");
+  await until(target, () => fake.calls.some((call) => call.fn === "createTag"), "the tag");
   assert.deepEqual(fake.calls.filter((call) => call.fn === "createTag").map(({ name, commit }) => [name, commit]), [["v2026.4.0", CANDIDATE]], "the tag on the tested commit");
-  await until(() => sections(target).length === 0 && /Nothing to review/.test(target.textContent), "the page to show nothing left to review");
+  await until(target, () => sections(target).length === 0 && /Nothing to review/.test(target.textContent), "the page to show nothing left to review");
 });

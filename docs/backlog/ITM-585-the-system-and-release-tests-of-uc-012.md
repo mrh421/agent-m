@@ -12,7 +12,7 @@ builds_on:
   - ITM-583
   - ITM-584
   - ITM-1250
-  - ITM-1252
+  - ITM-1256
 tests:
   - system
   - release
@@ -25,7 +25,8 @@ origin:
 
 ## Outcome
 
-No item realises UC-012, and it has no system test and no release test.
+UC-012 has no system test and no release test: `tests/system-uc-012*` and `tests/release-uc-012*` do not exist. The
+items that build it are ITM-581 to ITM-584, ITM-1245, ITM-1247, ITM-1248, ITM-1250 and ITM-1256.
 
 ## Acceptance
 

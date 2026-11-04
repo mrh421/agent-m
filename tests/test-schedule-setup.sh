@@ -1,14 +1,16 @@
 #!/bin/sh
 # Agent M's own test setup — the `setup` of Agent M's schedule, as docs/architecture/MOD-test-schedule.md names it (Parts,
 # *Agent M's own `command` and `setup`*): run in every test job before its tests, in the checkout's root, it installs xvfb and
-# openbox, so that the tests that start Electron find openbox installed and install nothing (their own install stays the
-# local fallback), and the Bridge app's packages.
+# openbox, and Electron 44.5.1 into $HOME/agent-m-electron-44, so that the tests that start Electron find both installed and
+# install nothing (their own install stays the local fallback), and the Bridge app's packages.
 #
 #   sh tests/test-schedule-setup.sh
 #
 # apt keeps the archives and package lists it fetches in $HOME/apt-archives and $HOME/apt-lists, the paths the schedule's
 # `cache` names: with them restored nothing is fetched and no index is read from a mirror; without them they are fetched and
-# left readable for the CI service's cache.
+# left readable for the CI service's cache. Electron's package, $HOME/agent-m-electron-44/node_modules/electron with its
+# executable, is a path of the `cache` too: with it restored, npm is not called for Electron, so that no test job asks the npm
+# registry for it.
 #
 # Module: MOD-test-schedule
 # Level: unit
@@ -60,3 +62,11 @@ if [ "${AGENT_M_ROW:-}" = "component" ] && [ -n "${GITHUB_ACTIONS:-}" ]; then
 fi
 
 npm install --prefix src/bridge-build --omit=dev --ignore-scripts
+
+# npm installs Electron's package without its executable; the package's install.js downloads it into dist/, as the tests' own
+# install does in its step "binary acquisition".
+electron="$HOME/agent-m-electron-44"
+if [ ! -x "$electron/node_modules/electron/dist/electron" ]; then
+  npm install --no-save --prefix "$electron" electron@44.5.1
+  node "$electron/node_modules/electron/install.js"
+fi

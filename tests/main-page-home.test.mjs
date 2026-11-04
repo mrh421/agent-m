@@ -1,7 +1,8 @@
-// MOD-main-page's route `home` — the stages, what waits for a person and what is being built (ITM-827), as the accepted text of docs/architecture/MOD-main-page.md (Interfaces: `view`, `home`)
+// MOD-main-page's route `home` — the stages, what is being built (ITM-827) and the link Jobs (ITM-1190), as the accepted text of docs/architecture/MOD-main-page.md (Interfaces: `view`, `home`)
 // and UC-046 (steps 3 to 5) state it: "one card per product this browser keeps, each with its name, its process model, its bar of six stages each filled by its share, the stage it is in
 // marked, … and its build — the steps or items in progress, each with the job working on it, its participant, state and elapsed time; without a product, Agent M's own card from the
-// instance repository; … below the cards, what waits for a person across the instance".
+// instance repository; … below the cards, the link *Jobs* to the route `jobs`"; UC-046 step 5: "The main page itself does not list what waits." What waits is listed on the route `jobs`
+// (tests/main-page-jobs-waits.test.mjs).
 // Run: node --test tests/main-page-home.test.mjs
 //
 // Module: MOD-main-page
@@ -17,11 +18,10 @@
 //     is chosen when implementation starts", and <ol class="stages"> of six <li class="stage" data-stage="<name>"> each with a .stage-share ("75 %", or "?" for a stage without a share) and a
 //     .stage-detail; the stage the product is in is also <li class="stage is-current">. The build is <li class="build-row"> with .build-item, .build-job, .build-participant, .build-state and
 //     .build-elapsed ("2h 0m 0s", as the route `jobs` writes it).
-//   - What waits is <li class="wait"> reading "<kind>: <id>", and " · <product>" where the page holds more than one card; without an item, "Nothing waits for a person.".
+//   - The page holds no list of what waits: no <section class="waits"> and no <li class="wait">.
 //   - A card whose repository cannot be read is <article class="card is-error"> with the reason its host gives; the other cards are drawn.
-//   - A link is a <button type="button"> that calls the ViewContext's go(route, params): "Open" at the end of an item that waits (.wait-link), "+ Add product" (.add-product, only beside Agent M's
-//     own card) and "Open the token's setting" (.token-setting, in a card that could not be read). The routes are use-case, spec-entry, job (a failed job, or a gate waiting at a job's record),
-//     process (a gate waiting at the declaration), add-product and settings; an item of a product also hands `product: <its address>`. No address is written by the page.
+//   - A link is a <button type="button"> that calls the ViewContext's go(route, params): "Jobs" below the cards (.jobs-link, the link *Jobs*), "+ Add product" (.add-product, only beside Agent M's
+//     own card) and "Open the token's setting" (.token-setting, in a card that could not be read). The routes are jobs, add-product and settings. No address is written by the page.
 //   - The page draws a greeting with its folded explanation and a link from each stage (ITM-829; TST-829001, TST-829002), and *Get your own Agent M* (ITM-655; tests/main-page-get-your-own.test.mjs).
 //   - While the page is open it reads the jobs' states again once a minute (MOD-main-page, Data: "at an interval the repository servers' rate limits allow"): the timer is a setTimeout of 60,000 milliseconds,
 //     set when the cards are drawn and again after each reading, and a test fires it itself at a clock it names. A reading is made for each card that was read and whose repository this browser keeps a token
@@ -40,7 +40,7 @@ import { productCard } from "../src/main-page/cards.mjs";
 import { chosenProduct } from "../src/site-frame/index.mjs";
 import {
   INSTANCE, OTHER, PRODUCT, INSTANCE_TOKEN, INSTANCE_URL, MISSING_URL, OTHER_TOKEN, OTHER_URL, PRODUCT_TOKEN, PRODUCT_URL, RATE_RESET,
-  browser, buildOf, byClass, cardsOf, click, countReads, currentOf, draw, endedJob, failedJob, find, headOf, instanceFiles, network, productFiles, runningJob, smallProduct, stagesOf, timers, visibility, waitsOf, withEnd,
+  browser, buildOf, byClass, cardsOf, click, countReads, currentOf, draw, endedJob, find, headOf, instanceFiles, network, productFiles, runningJob, smallProduct, stagesOf, timers, visibility, waitsOf, withEnd,
 } from "./main-page-home-harness.mjs";
 
 const home = view.routes.find((candidate) => candidate.name === "home");
@@ -122,24 +122,31 @@ test("TST-827003 the build lists the item in progress with its job, participant,
 
 // TST-827004 · level: unit · module: MOD-main-page
 // guards: THE MAIN PAGE SHOWS WHAT GOES ON IN THE INSTANCE; UC-046
-// given: the product of TST-827002 (UC-001 accepted, UC-002 open), and a second kept product bob/other that holds one open use case UC-001 and one accepted use case UC-002
-// input: the route home drawn with the first product only; with both; and with the first product's UC-002 accepted
-// expect: with one card the list reads "use case: UC-002"; with both cards it reads "use case: UC-002 · alice/product" and "use case: UC-001 · bob/other"; counter-proof: once UC-002 of the first product is accepted too, the first product's line is gone, and where nothing at all waits the page says "Nothing waits for a person."
-test("TST-827004 what waits for a person across the cards, each with its kind and identifier and its product where there are several", async () => {
-  const other = smallProduct({ accepted: ["UC-002"] });
-  net = network({ [PRODUCT]: smallProduct(), [OTHER]: other, [INSTANCE]: instanceFiles() });
+// given: the kept products alice/product (UC-001 accepted, UC-002 open) and bob/other (UC-002 accepted, UC-001 open), so that something waits in each; the browser's ViewContext records every call of go(route, params); and, for the counter-proof, a browser that keeps no product
+// input: the route home drawn with both products; the button "Jobs" pressed; the route drawn with no product kept
+// expect: the page holds no list of what waits — no section of the class waits and no item of the class wait —; below the two cards stands one button "Jobs" (type button, class jobs-link), the last control of the page, which calls nothing before the press and go("jobs", {}) once when pressed; counter-proof: with no product kept, the button "Jobs" stands below Agent M's card and + Add product, and there is still no list of what waits
+test("TST-827004 the route home draws the link Jobs below the cards, which opens the route jobs, and no list of what waits", async () => {
+  net = network({ [PRODUCT]: smallProduct(), [OTHER]: smallProduct({ accepted: ["UC-002"] }), [INSTANCE]: instanceFiles() });
   net.install();
-  assert.deepEqual(waitsOf(await draw(home, browser({ products: [PRODUCT_URL] }))), ["use case: UC-002"]);
-  const both = await draw(home, browser({ products: [PRODUCT_URL, OTHER_URL], tokens: { [PRODUCT]: PRODUCT_TOKEN } }));
-  assert.deepEqual(waitsOf(both), ["use case: UC-002 · alice/product", "use case: UC-001 · bob/other"]);
-  assert.equal(cardsOf(both).length, 2);
+  const context = browser({ products: [PRODUCT_URL, OTHER_URL], tokens: { [PRODUCT]: PRODUCT_TOKEN, [OTHER]: OTHER_TOKEN } });
+  const target = await draw(home, context);
+  assert.equal(cardsOf(target).length, 2);
+  assert.deepEqual(byClass(target, "waits"), []);
+  assert.deepEqual(waitsOf(target), []);
+  const [link, ...more] = byClass(target, "jobs-link");
+  assert.equal(more.length, 0);
+  assert.equal(link.textContent, "Jobs");
+  assert.equal(link.getAttribute("type"), "button");
+  const controls = find(target, (node) => node.localName === "button" || node.localName === "a");
+  assert.equal(controls.at(-1), link, "the link Jobs stands below the cards");
+  assert.deepEqual(context.went, []);
+  click(link);
+  assert.deepEqual(context.went, [["jobs", {}]]);
 
-  net.restore();
-  net = network({ [PRODUCT]: smallProduct({ accepted: ["UC-001", "UC-002"] }), [OTHER]: smallProduct({ accepted: ["UC-001", "UC-002"] }), [INSTANCE]: instanceFiles() });
-  net.install();
-  const none = await draw(home, browser({ products: [PRODUCT_URL] }));
-  assert.deepEqual(waitsOf(none), []);
-  assert.equal(byClass(none, "waits").at(-1).textContent.includes("Nothing waits for a person."), true);
+  const own = await draw(home, browser({ products: [] }));
+  const ownControls = find(own, (node) => node.localName === "button");
+  assert.deepEqual(ownControls.slice(-2).map((node) => node.textContent), ["+ Add product", "Jobs"]);
+  assert.deepEqual(byClass(own, "waits"), []);
 });
 
 // TST-827005 · level: unit · module: MOD-main-page
@@ -164,8 +171,8 @@ test("TST-827005 while this browser keeps no product, the one card is Agent M's 
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; UC-046
 // given: this browser keeps the product alice/product of 600 backlog items, 400 job records, SPEC.md and one test file, with a token for it and one for the instance, whose repository holds its participant list
 // input: the route home drawn; the fake's requests counted
-// expect: 26 requests in all — the repository 2 (the instance's and the product's), the commits 3 (the instance's main, the product's main and test-results), the trees 2, the pull requests 1, the tags 1, the CI runs of the product's head 1, the overview of the product's head, the file latest.json of its branch overview-cache and the stored facts of its head 1 each (it holds none of them; with a token they are read from the branch, not by the fake's file log) and 13 batch requests of at most a hundred files; not one file is read by a request of its own; every request carries an Authorization header
-test("TST-827006 with a token, the route home reads 600 items and 400 job records in 13 batches, 26 requests in all", async () => {
+// expect: 27 requests in all — the repository 2 (the instance's and the product's), each with the GraphQL request of greenToMerge beside it (ITM-1170) 2, the commits 3 (the instance's main, the product's main and test-results), the trees 2, the pull requests 1, the tags 1, the CI runs of the product's head 1, the overview of the product's head and the file latest.json of its branch overview-cache 1 each (it holds neither; with a token they are read from the branch, not by the fake's file log) and 13 batch requests of at most a hundred files; not one file is read by a request of its own; no facts file is asked for; every request carries an Authorization header
+test("TST-827006 with a token, the route home reads 600 items and 400 job records in 13 batches, 27 requests in all", async () => {
   net = network({ [PRODUCT]: productFiles({ items: 600, jobs: 400 }), [INSTANCE]: instanceFiles() });
   net.install();
   const target = await draw(home, browser());
@@ -173,8 +180,10 @@ test("TST-827006 with a token, the route home reads 600 items and 400 job record
   for (const { kind } of net.server.log) kinds[kind] = (kinds[kind] ?? 0) + 1;
   assert.equal(cardsOf(target).length, 1);
   assert.equal(byClass(target, "is-error").length, 0);
-  assert.equal(net.requests.length, 26);
-  assert.deepEqual(kinds, { repository: 2, commit: 3, tree: 2, "pull requests": 1, tags: 1, "ci runs": 1, batch: 13 });
+  assert.equal(net.requests.length, 27);
+  // ITM-1170: the fake logs every POST /graphql as a batch; 2 of the 15 are the GraphQL requests of greenToMerge beside the two repositoryInfo calls.
+  assert.deepEqual(kinds, { repository: 2, commit: 3, tree: 2, "pull requests": 1, tags: 1, "ci runs": 1, batch: 15 });
+  assert.deepEqual(net.requests.filter((request) => request.url.includes(".facts.json")), []);
   assert.deepEqual(net.server.log.filter((entry) => entry.kind === "file"), []);
   assert.deepEqual(net.requests.filter((request) => request.authorization === null), []);
 });
@@ -183,16 +192,17 @@ test("TST-827006 with a token, the route home reads 600 items and 400 job record
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; UC-046
 // given: the product, the instance and the browser of TST-827006, with no token stored for the instance or the product, so that the host has no batch request and every file is read by a request of its own
 // input: the route home drawn; the fake's requests counted
-// expect: 1,016 requests in all — the repository 2, the commits 3, the trees 2, the pull requests 1, the tags 1, the CI runs of the product's head 1, the overview of the product's head, the file latest.json of its branch overview-cache and the stored facts of its head 1 each (it holds none of them; from the raw host, the 1,004th to 1,006th file read) and 1,003 files each by a request of its own (the 600 items, the 400 job records, SPEC.md, the test file and the instance's participant list); no batch request; no request carries an Authorization header
-test("TST-827007 without a token, the route home reads every file by a request of its own, 1,016 requests in all", async () => {
+// expect: 1,015 requests in all — the repository 2, the commits 3, the trees 2, the pull requests 1, the tags 1, the CI runs of the product's head 1, the overview of the product's head and the file latest.json of its branch overview-cache 1 each (it holds neither; from the raw host, the 1,004th and 1,005th file read) and 1,003 files each by a request of its own (the 600 items, the 400 job records, SPEC.md, the test file and the instance's participant list); no batch request; no facts file is asked for; no request carries an Authorization header
+test("TST-827007 without a token, the route home reads every file by a request of its own, 1,015 requests in all", async () => {
   net = network({ [PRODUCT]: productFiles({ items: 600, jobs: 400 }), [INSTANCE]: instanceFiles() });
   net.install();
   const target = await draw(home, browser({ tokens: {}, instanceToken: null }));
   const kinds = {};
   for (const { kind } of net.server.log) kinds[kind] = (kinds[kind] ?? 0) + 1;
   assert.equal(byClass(target, "is-error").length, 0);
-  assert.equal(net.requests.length, 1016);
-  assert.deepEqual(kinds, { repository: 2, commit: 3, tree: 2, "pull requests": 1, tags: 1, "ci runs": 1, file: 1006 });
+  assert.equal(net.requests.length, 1015);
+  assert.deepEqual(kinds, { repository: 2, commit: 3, tree: 2, "pull requests": 1, tags: 1, "ci runs": 1, file: 1005 });
+  assert.deepEqual(net.requests.filter((request) => request.url.includes(".facts.json")), []);
   assert.deepEqual(net.requests.filter((request) => request.authorization !== null), []);
 });
 
@@ -217,7 +227,7 @@ test("TST-827008 each repository is read with the token this browser keeps for i
 // guards: THE MAIN PAGE SHOWS WHAT GOES ON IN THE INSTANCE; UC-046
 // given: this browser keeps the product alice/product and a product carol/missing that the server does not find
 // input: the route home drawn
-// expect: two cards; the first is alice/product's with its six stages; the second is <article class="card is-error"> named "carol/missing" with its address and the reason its host gives, "https://github.com/carol/missing was not found — a private repository is found only with a token that reaches it."; what waits is still the first product's, "use case: UC-002 · alice/product"; counter-proof: with carol/missing left out, no card is an error
+// expect: two cards; the first is alice/product's with its six stages; the second is <article class="card is-error"> named "carol/missing" with its address and the reason its host gives, "https://github.com/carol/missing was not found — a private repository is found only with a token that reaches it."; the page holds no list of what waits (the route jobs lists it, TST-1190004); counter-proof: with carol/missing left out, no card is an error
 test("TST-827009 a product whose repository cannot be read has a card that says so, and the other cards are drawn", async () => {
   net = network({ [PRODUCT]: smallProduct(), [INSTANCE]: instanceFiles() });
   net.install();
@@ -229,7 +239,7 @@ test("TST-827009 a product whose repository cannot be read has a card that says 
   assert.equal(bad.className.includes("is-error"), true);
   assert.equal(byClass(bad, "card-head")[0].children[0].textContent, "carol/missing");
   assert.equal(byClass(bad, "warn")[0].textContent, `${MISSING_URL} was not found — a private repository is found only with a token that reaches it.`);
-  assert.deepEqual(waitsOf(target), ["use case: UC-002 · alice/product"]);
+  assert.deepEqual(byClass(target, "waits"), []);
   assert.equal(byClass(await draw(home, browser({ products: [PRODUCT_URL] })), "is-error").length, 0);
 });
 
@@ -247,33 +257,6 @@ test("TST-827010 a build row whose runtime does not answer is marked as not reac
   assert.deepEqual(byClass(answering, "not-reachable"), []);
   assert.deepEqual(buildOf(missing), [["ITM-0900", JOB, "dev-cli", "running", "2h 0m 0s"]]);
   assert.equal(byClass(missing, "card-model")[0].textContent, "Developed with Kanban");
-});
-
-// TST-827011 · level: unit · module: MOD-main-page
-// guards: THE MAIN PAGE SHOWS WHAT GOES ON IN THE INSTANCE; UC-046
-// given: the product alice/product with the open use case UC-002, an open SPEC change entry (queue 2026-10-01a_fixture, entry 1) and a failed job JOB-20261016-1000-ffff; the browser's ViewContext records every call of go(route, params)
-// input: the route home drawn; the "Open" button of each of the three items pressed in turn
-// expect: three items wait, each with one button; pressing them calls go exactly as ["use-case", { id: "UC-002", product: "https://github.com/alice/product" }], ["spec-entry", { id: "spec-2026-10-01a_fixture-01", product: … }] and ["job", { id: "JOB-20261016-1000-ffff", product: … }], in the order of the list, and nothing before the press; counter-proof: with Agent M's own card (no product kept) the call for its open use case is ["use-case", { id: "UC-002" }] with no product
-test("TST-827011 each item that waits for a person opens the page where it is decided, through the ViewContext's go", async () => {
-  net = network({ [PRODUCT]: smallProduct({ queue: true, jobs: [failedJob({ id: JOB, by: "lab-pc-4" })] }), [INSTANCE]: instanceFiles() });
-  net.install();
-  const context = browser();
-  const target = await draw(home, context);
-  assert.equal(waitsOf(target).length, 3);
-  assert.deepEqual(context.went, []);
-  const buttons = byClass(target, "wait-link");
-  assert.equal(buttons.length, 3);
-  for (const button of buttons) click(button);
-  const product = { product: PRODUCT_URL };
-  assert.deepEqual(context.went, [["use-case", { id: "UC-002", ...product }], ["spec-entry", { id: "spec-2026-10-01a_fixture-01", ...product }], ["job", { id: JOB, ...product }]]);
-
-  net.restore();
-  net = network({ [INSTANCE]: smallProduct(), [PRODUCT]: smallProduct() });
-  net.install();
-  const own = browser({ products: [] });
-  const ownTarget = await draw(home, own);
-  click(byClass(ownTarget, "wait-link")[0]);
-  assert.deepEqual(own.went, [["use-case", { id: "UC-002" }]]);
 });
 
 // TST-827012 · level: unit · module: MOD-main-page
@@ -341,16 +324,14 @@ test("TST-847001 the page reads the jobs' states again once a minute, and sets n
 
 // TST-847002 · level: unit · module: MOD-main-page
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; A TOKEN GOES ONLY TO THE SERVER THAT ISSUED IT; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED; UC-046
-// given: this browser keeps the product alice/product of 600 backlog items and 400 job records, none of them taken or ended, with a token for it and one for the instance (the page of TST-827006 read it in 25 requests)
+// given: this browser keeps the product alice/product of 600 backlog items and 400 job records, none of them taken or ended, with a token for it and one for the instance (the page of TST-827006 read it in 27 requests)
 // input: the route home drawn; the timer fired at 12:01 UTC, the requests since the draw counted; then one job record, JOB-20261014-0900-0001, given its end on the server and the timer fired at 12:02
-// expect: the first reading sends exactly 2 requests, both to alice/product and both with the product's token — the commit of main and the tree of that commit —, and not one file, batch, pull request, tag or repository
-// request, and none to alice/agent-m; counter-proof: the reading after the record changed sends 3 — the commit, the tree and one batch holding the changed record, docs/jobs/JOB-20261014-0900-0001.md —,
-// and the 399 records that did not change are not read again
+// expect: the first reading sends exactly 2 requests, both to alice/product and both with the product's token — the commit of main and the tree of that commit —, and not one file, batch, pull request, tag or repository request, and none to alice/agent-m; counter-proof: the reading after the record changed sends 3 — the commit, the tree and one batch holding the changed record, docs/jobs/JOB-20261014-0900-0001.md —, and the 399 records that did not change are not read again
 test("TST-847002 with a token, a reading of the jobs' states is the product's commit and tree, 2 requests, and a record that changed costs 1 more", async () => {
   net = network({ [PRODUCT]: productFiles({ items: 600, jobs: 400 }), [INSTANCE]: instanceFiles() });
   net.install();
   await draw(home, browser());
-  assert.equal(net.requests.length, 26);
+  assert.equal(net.requests.length, 27);
   const sent = net.requests.length, logged = net.server.log.length;
   await timers.fire(at("12:01"));
   assert.deepEqual(net.requests.slice(sent).map(addressOf), ["/repos/alice/product/commits/main", "/repos/alice/product/git/trees/<commit>"]);
@@ -376,7 +357,7 @@ test("TST-847003 a card whose repository this browser keeps no token for is not 
   net = network({ [PRODUCT]: productFiles({ items: 600, jobs: 400 }), [INSTANCE]: instanceFiles() });
   net.install();
   await draw(home, browser({ tokens: {}, instanceToken: null }));
-  assert.equal(net.requests.length, 1016);
+  assert.equal(net.requests.length, 1015);
   assert.deepEqual(waitingDelays(), []);
 
   net.restore();
@@ -391,9 +372,7 @@ test("TST-847003 a card whose repository this browser keeps no token for is not 
 // guards: THE BUILD IS SHOWN AS IT HAPPENS; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED; UC-046
 // given: the product of TST-827003 (UC-001 accepted, the item ITM-0900, the job JOB-20261016-1000-ffff of dev-cli taken by the Bridge lab-pc-4 and not ended, started at 10:00 UTC), which lab-pc-4 lists as running; the page drawn at 12:00 UTC
 // input: the timer fired at 12:01; the Bridge then listing no job and the timer fired at 12:02; the record then ended as done at 11:00 UTC on the server and the timer fired at 12:03
-// expect: the build holds one row throughout — after the draw ["ITM-0900", JOB, "dev-cli", "running", "2h 0m 0s"]; after 12:01 the same row at "2h 1m 0s", the Bridge asked once more (2 times in all); after 12:02
-// ["ITM-0900", JOB, "dev-cli", "ended without record", "0h 0m 0s"], the Bridge asked a third time; after 12:03 ["ITM-0900", JOB, "dev-cli", "done", "1h 0m 0s"] and the Bridge not asked again (3 in all), since a record
-// that has its end needs no runtime
+// expect: the build holds one row throughout — after the draw ["ITM-0900", JOB, "dev-cli", "running", "2h 0m 0s"]; after 12:01 the same row at "2h 1m 0s", the Bridge asked once more (2 times in all); after 12:02 ["ITM-0900", JOB, "dev-cli", "ended without record", "0h 0m 0s"], the Bridge asked a third time; after 12:03 ["ITM-0900", JOB, "dev-cli", "done", "1h 0m 0s"] and the Bridge not asked again (3 in all), since a record that has its end needs no runtime
 test("TST-847004 the build's row moves with the job's record and its runtime: running, ended without record, done", async () => {
   net = network({ [PRODUCT]: SMALL(), [INSTANCE]: instanceFiles() }, { bridgeLists: JOB });
   net.install();
@@ -418,30 +397,27 @@ test("TST-847004 the build's row moves with the job's record and its runtime: ru
 
 // TST-847005 · level: unit · module: MOD-main-page
 // guards: THE BUILD IS SHOWN AS IT HAPPENS; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED; UC-046
-// given: the product of TST-847004 drawn at 12:00 UTC (Use cases 50 % "1 of 2 accepted", "use case: UC-002" waiting); then, on the server, UC-002 accepted and the job ended as done
+// given: the product of TST-847004 drawn at 12:00 UTC (Use cases 50 % "1 of 2 accepted"); then, on the server, UC-002 accepted and the job ended as done
 // input: the timer fired at 12:01; and, for the counter-proof, the route drawn anew
-// expect: the build's row reads "done"; the six stages are exactly what they were (Use cases still 50 % "1 of 2 accepted") and what waits is still "use case: UC-002"; the reading sent 3 requests — the commit, the
-// tree and one batch holding the job's record, docs/jobs/JOB-20261016-1000-ffff.md — and read no use case and no approval record; counter-proof: the route drawn anew reads Use cases 100 % "2 of 2 accepted" and nothing waits,
-// so that the change was on the server and only the reading left it alone
-test("TST-847005 a reading moves the build's rows and nothing else: the stages and what waits stay as drawn", async () => {
+// expect: the build's row reads "done"; the six stages are exactly what they were (Use cases still 50 % "1 of 2 accepted"), and neither the draw nor the reading draws a list of what waits; the reading sent 3 requests — the commit, the tree and one batch holding the job's record, docs/jobs/JOB-20261016-1000-ffff.md — and read no use case and no approval record; counter-proof: the route drawn anew reads Use cases 100 % "2 of 2 accepted", so that the change was on the server and only the reading left it alone
+test("TST-847005 a reading moves the build's rows and nothing else: the stages stay as drawn", async () => {
   net = network({ [PRODUCT]: SMALL(), [INSTANCE]: instanceFiles() }, { bridgeLists: JOB });
   net.install();
   const target = await draw(home, browser());
   const stages = stagesOf(cardsOf(target)[0]);
   assert.deepEqual(stages[1], ["Use cases", "50 %", "1 of 2 accepted"]);
-  assert.deepEqual(waitsOf(target), ["use case: UC-002"]);
+  assert.deepEqual(byClass(target, "waits"), []);
 
   net.change(PRODUCT, smallProduct({ accepted: ["UC-001", "UC-002"], jobs: [endedJob({ id: JOB, by: "lab-pc-4", state: "done" })] }));
   const logged = net.server.log.length;
   await timers.fire(at("12:01"));
   assert.deepEqual(buildOf(cardsOf(target)[0]), [["ITM-0900", JOB, "dev-cli", "done", "1h 0m 0s"]]);
   assert.deepEqual(stagesOf(cardsOf(target)[0]), stages);
-  assert.deepEqual(waitsOf(target), ["use case: UC-002"]);
+  assert.deepEqual(byClass(target, "waits"), []);
   assert.deepEqual(net.server.log.slice(logged).map((entry) => [entry.kind, ...entry.files]), [["commit"], ["tree"], ["batch", `docs/jobs/${JOB}.md`]]);
 
   const anew = await draw(home, browser());
   assert.deepEqual(stagesOf(cardsOf(anew)[0])[1], ["Use cases", "100 %", "2 of 2 accepted"]);
-  assert.deepEqual(waitsOf(anew), []);
 });
 
 // TST-847006 · level: unit · module: MOD-main-page
@@ -474,8 +450,7 @@ test("TST-847006 a reading asks each card that was read, and has a token, for it
 // guards: THE BUILD IS SHOWN AS IT HAPPENS; UC-046
 // given: the page drawn into an element, with a job running; the timer fired once while the cards are in the element
 // input: the frame draws another route into the same element (the cards are no longer in it); the timer set after the first reading is fired
-// expect: the first firing sends 2 requests to GitHub and 1 to the Bridge lab-pc-4 (the job has not ended) and sets the next timer; the second sends none and sets none, so that no reading is made once the route is
-// no longer shown
+// expect: the first firing sends 2 requests to GitHub and 1 to the Bridge lab-pc-4 (the job has not ended) and sets the next timer; the second sends none and sets none, so that no reading is made once the route is no longer shown
 test("TST-847007 the readings stop once the route is no longer the one shown", async () => {
   net = network({ [PRODUCT]: SMALL(), [INSTANCE]: instanceFiles() }, { bridgeLists: JOB });
   net.install();
@@ -497,8 +472,7 @@ test("TST-847007 the readings stop once the route is no longer the one shown", a
 // guards: THE BUILD IS SHOWN AS IT HAPPENS; UC-046
 // given: the page drawn at 12:00 UTC with a job running (row "2h 0m 0s"); GitHub then answers every request of its API with a server error, 500
 // input: the timer fired at 12:01; GitHub then answering again and the timer fired at 12:02
-// expect: after the failure the row still reads ["ITM-0900", JOB, "dev-cli", "running", "2h 0m 0s"], one paragraph reads "The jobs' states could not be read again. alice/product: GitHub answered 500", and one timer
-// waits, of 60000 milliseconds (a failure that is no used-up limit is tried again at the next interval); after the answer the row reads "2h 2m 0s" and no such paragraph is left
+// expect: after the failure the row still reads ["ITM-0900", JOB, "dev-cli", "running", "2h 0m 0s"], one paragraph reads "The jobs' states could not be read again. alice/product: GitHub answered 500", and one timer waits, of 60000 milliseconds (a failure that is no used-up limit is tried again at the next interval); after the answer the row reads "2h 2m 0s" and no such paragraph is left
 test("TST-847008 a reading that fails leaves the cards as drawn, says why, and the next reading is made at the next interval", async () => {
   net = network({ [PRODUCT]: SMALL(), [INSTANCE]: instanceFiles() }, { bridgeLists: JOB });
   net.install();
@@ -519,8 +493,7 @@ test("TST-847008 a reading that fails leaves the cards as drawn, says why, and t
 // guards: WITHOUT A PRODUCT, THE MAIN PAGE SHOWS AGENT M'S OWN PROGRESS; A TOKEN GOES ONLY TO THE SERVER THAT ISSUED IT; UC-046
 // given: this browser keeps no product; the instance alice/agent-m holds the files of the product of TST-847004, whose job lab-pc-4 lists as running; the page drawn at 12:00 UTC
 // input: the timer fired at 12:01 UTC, the requests since the draw listed
-// expect: exactly 2 requests, the commit of main and its tree of alice/agent-m, both with "Bearer <the instance's token>", and none to alice/product; the Bridge lab-pc-4 is asked once more (2 times in all); the row reads
-// ["ITM-0900", JOB, "dev-cli", "running", "2h 1m 0s"]
+// expect: exactly 2 requests, the commit of main and its tree of alice/agent-m, both with "Bearer <the instance's token>", and none to alice/product; the Bridge lab-pc-4 is asked once more (2 times in all); the row reads ["ITM-0900", JOB, "dev-cli", "running", "2h 1m 0s"]
 test("TST-847009 Agent M's own card is read again through the instance's host, 2 requests with the instance's token", async () => {
   net = network({ [INSTANCE]: SMALL(), [PRODUCT]: smallProduct() }, { bridgeLists: JOB });
   net.install();
@@ -540,8 +513,8 @@ test("TST-847009 Agent M's own card is read again through the instance's host, 2
 // guards: THE BUILD IS SHOWN AS IT HAPPENS; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED; UC-046
 // given: the product with two jobs, JOB-20261016-1000-aaaa and JOB-20261016-1000-bbbb, taken by CI runs (https://github.com/alice/product/actions/runs/101 and …/102) and not ended; the job workflow's run list, one page, holds run 101 in progress and run 102 completed with success
 // input: the route home drawn; the timer fired at 12:01 UTC, the requests since the draw listed
-// expect: 4 requests in all — the commit, the tree and, for each of the two jobs, one request of the job workflow's run list (/repos/alice/product/actions/workflows/agent-m-jobs.yml/runs); where no job is taken by a CI run (TST-847002), the reading sends no such request
-test("TST-847010 a job taken by a CI run that has not ended costs one request of the run list for each job, in each reading", async () => {
+// expect: 3 requests in all — the commit, the tree and, for the two jobs together, one request of the job workflow's run list (/repos/alice/product/actions/workflows/agent-m-jobs.yml/runs), since MOD-runtimes' liveStates lists a repository's runs once (ITM-1280); where no job is taken by a CI run (TST-847002), the reading sends no such request
+test("TST-847010 the jobs taken by CI runs that have not ended cost one request of the run list for their repository, in each reading", async () => {
   const run = (id, status, conclusion) => ({ id, status, conclusion, html_url: `https://github.com/alice/product/actions/runs/${id}`, path: ".github/workflows/agent-m-jobs.yml", head_sha: "a".repeat(40), event: "push" });
   const jobs = [runningJob({ id: "JOB-20261016-1000-aaaa", by: "https://github.com/alice/product/actions/runs/101" }), runningJob({ id: "JOB-20261016-1000-bbbb", by: "https://github.com/alice/product/actions/runs/102" })];
   net = network({ [PRODUCT]: smallProduct({ jobs }), [INSTANCE]: instanceFiles() });
@@ -551,16 +524,14 @@ test("TST-847010 a job taken by a CI run that has not ended costs one request of
   const sent = net.requests.length;
   await timers.fire(at("12:01"));
   assert.deepEqual(net.requests.slice(sent).map(addressOf), ["/repos/alice/product/commits/main", "/repos/alice/product/git/trees/<commit>",
-    "/repos/alice/product/actions/workflows/agent-m-jobs.yml/runs", "/repos/alice/product/actions/workflows/agent-m-jobs.yml/runs"]);
+    "/repos/alice/product/actions/workflows/agent-m-jobs.yml/runs"]);
 });
 
 // TST-847011 · level: unit · module: MOD-main-page
 // guards: A USED-UP RATE LIMIT IS NAMED, NOT BLAMED ON THE TOKEN; UC-046
 // given: the page drawn at 12:00 UTC with a job running (row "2h 0m 0s"); GitHub then refuses its API with a used-up limit of the account, which resets at 13:00 UTC (X-RateLimit-Reset 2026-10-16T13:00:00Z)
 // input: the timer fired at 12:01; the limit then given back and the timer fired at 13:00
-// expect: after the refusal the row still reads ["ITM-0900", JOB, "dev-cli", "running", "2h 0m 0s"], one paragraph reads "The jobs' states could not be read again. alice/product: GitHub's request limit for the
-// account these requests are made with is used up; it resets at 2026-10-16T13:00:00.000Z.", and one timer waits, of 3540000 milliseconds — the 59 minutes from 12:01 to the reset at 13:00, not the 60000 of an
-// ordinary interval; the reading at 13:00 sends 2 requests, the row reads "3h 0m 0s", no such paragraph is left, and the next timer is of 60000 milliseconds
+// expect: after the refusal the row still reads ["ITM-0900", JOB, "dev-cli", "running", "2h 0m 0s"], one paragraph reads "The jobs' states could not be read again. alice/product: GitHub's request limit for the account these requests are made with is used up; it resets at 2026-10-16T13:00:00.000Z.", and one timer waits, of 3540000 milliseconds — the 59 minutes from 12:01 to the reset at 13:00, not the 60000 of an ordinary interval; the reading at 13:00 sends 2 requests, the row reads "3h 0m 0s", no such paragraph is left, and the next timer is of 60000 milliseconds
 test("TST-847011 a used-up limit makes the next reading wait until the limit resets, 3,540,000 milliseconds from 12:01 to 13:00", async () => {
   assert.equal(RATE_RESET, Date.parse("2026-10-16T13:00:00Z"));
   net = network({ [PRODUCT]: SMALL(), [INSTANCE]: instanceFiles() }, { bridgeLists: JOB });
@@ -585,9 +556,7 @@ test("TST-847011 a used-up limit makes the next reading wait until the limit res
 // guards: A USED-UP RATE LIMIT IS NAMED, NOT BLAMED ON THE TOKEN; A TOKEN GOES ONLY TO THE SERVER THAT ISSUED IT; UC-046
 // given: this browser keeps alice/product and bob/other, each with a token of its own; the page drawn at 12:00 UTC; GitHub then refuses requests to alice/product only, with a used-up limit that resets at 13:00 UTC
 // input: the timer fired at 12:01; the timer fired at 12:02, the requests since each firing listed
-// expect: the firing at 12:01 sends 3 requests — the commit of main of alice/product, which is refused, and the commit and the tree of bob/other —, and one timer waits, of 60000 milliseconds, since bob/other's
-// card is due at 12:02 while alice/product's waits for 13:00; the firing at 12:02 sends exactly 2 requests, the commit and the tree of bob/other, none to alice/product; the paragraph naming alice/product's limit is
-// still shown after it
+// expect: the firing at 12:01 sends 3 requests — the commit of main of alice/product, which is refused, and the commit and the tree of bob/other —, and one timer waits, of 60000 milliseconds, since bob/other's card is due at 12:02 while alice/product's waits for 13:00; the firing at 12:02 sends exactly 2 requests, the commit and the tree of bob/other, none to alice/product; the paragraph naming alice/product's limit is still shown after it
 test("TST-847012 a limit used up by one card's token holds back only that card; the other card is read at the ordinary interval", async () => {
   net = network({ [PRODUCT]: smallProduct(), [OTHER]: smallProduct({ accepted: ["UC-002"] }), [INSTANCE]: instanceFiles() });
   net.install();
@@ -609,8 +578,7 @@ test("TST-847012 a limit used up by one card's token holds back only that card; 
 // guards: A USED-UP RATE LIMIT IS NAMED, NOT BLAMED ON THE TOKEN; UC-046
 // given: the page drawn at 12:00 UTC with a job running; GitHub then refuses its API with a used-up limit of the account and sends no time at which it resets (no X-RateLimit-Reset)
 // input: the timer fired at 12:01
-// expect: one paragraph reads "The jobs' states could not be read again. alice/product: GitHub's request limit for the account these requests are made with is used up; GitHub does not tell this page when it
-// resets.", and one timer waits, of 60000 milliseconds, since no time is known to wait until
+// expect: one paragraph reads "The jobs' states could not be read again. alice/product: GitHub's request limit for the account these requests are made with is used up; GitHub does not tell this page when it resets.", and one timer waits, of 60000 milliseconds, since no time is known to wait until
 test("TST-847013 a used-up limit with no reset time given is tried again at the ordinary interval", async () => {
   net = network({ [PRODUCT]: SMALL(), [INSTANCE]: instanceFiles() }, { bridgeLists: JOB });
   net.install();
@@ -647,8 +615,7 @@ test("TST-858001 while the tab is hidden the page starts no reading and sets no 
 // guards: THE BUILD IS SHOWN AS IT HAPPENS; UC-046
 // given: the page of TST-858001, hidden at 12:00, its timer fired at 12:01 while hidden; the job still running
 // input: the tab shown again at 12:05 UTC (visibilitychange)
-// expect: at once, and with no timer fired, exactly one reading: 2 requests to GitHub — the commit and the tree of alice/product — and 1 to the Bridge; the row reads
-// ["ITM-0900", JOB, "dev-cli", "running", "2h 5m 0s"]; one timer waits again, of 60000 milliseconds
+// expect: at once, and with no timer fired, exactly one reading: 2 requests to GitHub — the commit and the tree of alice/product — and 1 to the Bridge; the row reads ["ITM-0900", JOB, "dev-cli", "running", "2h 5m 0s"]; one timer waits again, of 60000 milliseconds
 test("TST-858002 when the tab is shown again the card whose reading fell due is read at once, once", async () => {
   net = network({ [PRODUCT]: SMALL(), [INSTANCE]: instanceFiles() }, { bridgeLists: JOB });
   net.install();
@@ -754,15 +721,14 @@ const STORED_STAGES = [["Requirements", "100 %", "stored requirements"], ["Use c
   ["Implementation", "50 %", "stored implementation"], ["Tests", "?", "stored tests"], ["Release", "0 %", "stored release"]];
 const REVIEWED = /^(docs\/use-cases\/|docs\/architecture\/|tests\/)/;
 const filesRead = () => net.server.log.flatMap((entry) => entry.files);
-const overviewReads = () => net.requests.filter((request) => request.url.includes("ref=overview-cache") && !request.url.includes(".facts.json"));
+const overviewReads = () => net.requests.filter((request) => request.url.includes("ref=overview-cache"));
 
 // TST-943001 · level: unit · module: MOD-main-page
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; THE MAIN PAGE SHOWS EACH PRODUCT'S PROGRESS BY STAGE; UC-049
 // given: this browser keeps alice/product, whose branch overview-cache holds the overview of its head (six stored stages, UC-077 waiting) and whose backlog holds ITM-0900 with a job running on the Bridge lab-pc-4
 // input: the route home drawn
-// expect: the card's six stages are the stored ones — "Requirements 100 % stored requirements" … "Tests ? stored tests" — and the stage it is in is "Use cases"; what waits reads "use case: UC-077", the stored entry, and not UC-002 that the files hold open;
-// the build row is ["ITM-0900", the job, "dev-cli", "running", "2h 0m 0s"] — the stored record with the live state the Bridge reports; the overview was asked for once, as one request for <head>.json on overview-cache
-test("TST-943001 a card with a stored overview shows its stages, what waits and its build from it", async () => {
+// expect: the card's six stages are the stored ones — "Requirements 100 % stored requirements" … "Tests ? stored tests" — and the stage it is in is "Use cases"; the page holds no list of what waits (the route jobs lists the stored entry, TST-1190002); the build row is ["ITM-0900", the job, "dev-cli", "running", "2h 0m 0s"] — the stored record with the live state the Bridge reports; the overview was asked for once, as one request for <head>.json on overview-cache
+test("TST-943001 a card with a stored overview shows its stages and its build from it", async () => {
   const head = headOf(PRODUCT);
   net = network({ [PRODUCT]: SMALL(), [INSTANCE]: instanceFiles() }, { bridgeLists: JOB });
   net.overviews[PRODUCT] = { [head]: STORED(head) };
@@ -771,7 +737,7 @@ test("TST-943001 a card with a stored overview shows its stages, what waits and 
   const [card] = cardsOf(target);
   assert.deepEqual(stagesOf(card), STORED_STAGES);
   assert.deepEqual(currentOf(card), ["Use cases"]);
-  assert.deepEqual(waitsOf(target), ["use case: UC-077"]);
+  assert.deepEqual(byClass(target, "waits"), []);
   assert.deepEqual(buildOf(card), [["ITM-0900", JOB, "dev-cli", "running", "2h 0m 0s"]]);
   assert.equal(overviewReads().length, 1);
   assert.equal(overviewReads()[0].url.includes(`/contents/${head}.json`), true);
@@ -781,8 +747,7 @@ test("TST-943001 a card with a stored overview shows its stages, what waits and 
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED
 // given: the product of TST-943001 (a use case, an architecture-less tree and a test file among its files); once with the overview of its head stored, once with none
 // input: the route home drawn; the files the fake GitHub served counted
-// expect: with the overview, no file of the product is read at all — not the backlog, not the job record, no use case, decision or test file and not SPEC.md; without one, the card reads the scope all: tests/unit.test.mjs
-// and the backlog are read (known positive: the count sees the files read) and the stages are those the files give ("Use cases 50 % 1 of 2 accepted")
+// expect: with the overview, no file of the product is read at all — not the backlog, not the job record, no use case, decision or test file and not SPEC.md; without one, the card reads the scope all: tests/unit.test.mjs and the backlog are read (known positive: the count sees the files read) and the stages are those the files give ("Use cases 50 % 1 of 2 accepted")
 test("TST-943002 with a stored overview no file of the product is read, and without one the card reads the scope all", async () => {
   const head = headOf(PRODUCT);
   net = network({ [PRODUCT]: SMALL(), [INSTANCE]: instanceFiles() }, { bridgeLists: JOB });
@@ -843,7 +808,7 @@ test("TST-943004 each card reads its own head's overview, and an overview stored
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; THE BUILD IS SHOWN AS IT HAPPENS; UC-046
 // given: this browser keeps alice/product, whose branch overview-cache holds the overview of its head (ITM-0900 in progress, its running job's record), the job running on the Bridge lab-pc-4; and, for the counter-proof, the same product without an overview
 // input: the route home drawn; every request counted
-// expect: with the overview, no request lists the pull requests (no …/pulls), none is a batch (POST /graphql) and none reads a file of the product other than the overview: the requests to alice/product are exactly its repository, its head's commit, its tree and the overview — 4 —, those to the instance its repository, commit and tree — 3 —, and the Bridge is asked once for the live state of the one job in progress; counter-proof: without the overview the card lists the pull requests (known positive: the count sees …/pulls)
+// expect: with the overview, no request lists the pull requests (no …/pulls), none is a batch — the one POST /graphql is greenToMerge's, with the product's token (ITM-1170) — and none reads a file of the product other than the overview: the requests to alice/product are exactly its repository, its head's commit, its tree and the overview — 4 —, none goes to the instance, since its one card has an overview (ITM-1281), and the Bridge is asked once for the live state of the one job in progress; counter-proof: without the overview the card lists the pull requests (known positive: the count sees …/pulls)
 test("TST-943005 with a stored overview the route home lists no pull request and reads no file: four requests for the card, the live state asked once", async () => {
   const head = headOf(PRODUCT);
   const pulls = () => net.requests.filter((request) => /\/pulls(\?|$)/.test(new URL(request.url).pathname + new URL(request.url).search));
@@ -853,9 +818,9 @@ test("TST-943005 with a stored overview the route home lists no pull request and
   await draw(home, browser());
   const of = (repository) => net.requests.filter((request) => new URL(request.url).pathname.startsWith(`/repos/${repository}`)).map((request) => new URL(request.url).pathname.replace(`/repos/${repository}`, ""));
   assert.deepEqual(pulls(), []);
-  assert.deepEqual(net.requests.filter((request) => request.url.endsWith("/graphql")), []);
+  assert.deepEqual(net.requests.filter((request) => request.url.endsWith("/graphql")).map((request) => request.authorization), [`Bearer ${PRODUCT_TOKEN}`], "the one POST /graphql is greenToMerge's (ITM-1170)");
   assert.deepEqual(of(PRODUCT), ["", "/commits/main", `/git/trees/${head}`, `/contents/${head}.json`]);
-  assert.deepEqual(of(INSTANCE), ["", "/commits/main", `/git/trees/${headOf(INSTANCE)}`]);
+  assert.deepEqual(of(INSTANCE), []);
   assert.equal(net.bridgeAsked(), 1);
 
   net.restore();
@@ -884,9 +849,7 @@ test("TST-943006 an overview of the format before the build was stored is none: 
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; THE MAIN PAGE SHOWS EACH PRODUCT'S PROGRESS BY STAGE; PROGRESS AND JOB STATE ARE DERIVED, NOT STORED
 // given: alice/product, whose branch overview-cache holds no overview for its head but the overview of an older commit eee…e, and latest.json naming eee…e; the job running on the Bridge lab-pc-4; and, for the counter-proof, the same branch without latest.json
 // input: the route home drawn; every request counted
-// expect: the card's six stages are the stored ones of eee…e, what waits reads "use case: UC-077", the build row is ["ITM-0900", the job, "dev-cli", "running", "2h 0m 0s"], and the card says "As of eeeeeee: the overview of the newest commit is being stored.";
-//   the overview-cache reads are the head's overview, latest.json and eee…e.json in that order; no request lists the pull requests (no …/pulls) and none is a batch (POST /graphql); counter-proof: without latest.json the card has no such note and
-//   lists the pull requests (known positive: the count sees …/pulls)
+// expect: the card's six stages are the stored ones of eee…e, the page holds no list of what waits (the route jobs lists the stored entry, TST-1190002), the build row is ["ITM-0900", the job, "dev-cli", "running", "2h 0m 0s"], and the card says "As of eeeeeee: the overview of the newest commit is being stored."; the overview-cache reads are the head's overview, latest.json and eee…e.json in that order; no request lists the pull requests (no …/pulls) and none is a batch — the one POST /graphql is greenToMerge's, with the product's token (ITM-1170) —; counter-proof: without latest.json the card has no such note and lists the pull requests (known positive: the count sees …/pulls)
 test("TST-943007 while the head's overview is not stored, the card shows the overview latest.json names, says of which commit, and lists no pull request", async () => {
   const head = headOf(PRODUCT), older = "e".repeat(40);
   const pulls = () => net.requests.filter((request) => /\/pulls$/.test(new URL(request.url).pathname));
@@ -897,12 +860,12 @@ test("TST-943007 while the head's overview is not stored, the card shows the ove
   const target = await draw(home, browser());
   const [card] = cardsOf(target);
   assert.deepEqual(stagesOf(card), STORED_STAGES);
-  assert.deepEqual(waitsOf(target), ["use case: UC-077"]);
+  assert.deepEqual(byClass(target, "waits"), []);
   assert.deepEqual(buildOf(card), [["ITM-0900", JOB, "dev-cli", "running", "2h 0m 0s"]]);
   assert.deepEqual(asOf(card), ["As of eeeeeee: the overview of the newest commit is being stored."]);
   assert.deepEqual(overviewReads().map((request) => new URL(request.url).pathname.replace(`/repos/${PRODUCT}/contents/`, "")), [`${head}.json`, "latest.json", `${older}.json`]);
   assert.deepEqual(pulls(), []);
-  assert.deepEqual(net.requests.filter((request) => request.url.endsWith("/graphql")), []);
+  assert.deepEqual(net.requests.filter((request) => request.url.endsWith("/graphql")).map((request) => request.authorization), [`Bearer ${PRODUCT_TOKEN}`], "the one POST /graphql is greenToMerge's (ITM-1170)");
 
   net.restore();
   net = network({ [PRODUCT]: SMALL(), [INSTANCE]: instanceFiles() }, { bridgeLists: JOB });

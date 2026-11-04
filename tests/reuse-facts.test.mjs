@@ -132,7 +132,7 @@ const npmCandidate = Object.freeze({ name: "left-pad", ecosystem: "npm", reposit
 const pypiCandidate = Object.freeze({ name: "report-helper", ecosystem: "pypi",
   repository: "https://gitlab.example.org/acme/report-helper" });
 
-// TST-435001 - level: unit - module: MOD-reuse-facts
+// TST-435001 · level: unit · module: MOD-reuse-facts
 // guards: UC-022; DUE DILIGENCE IS FETCHED, NOT RECALLED; A REUSE DECISION RECORDS ITS DUE DILIGENCE; A REUSED LICENCE IS SHOWN AGAINST THE PRODUCT'S
 // given: npm holds left-pad with licence MIT, two releases, latest 1.2.0, 1234 downloads last month; its GitHub repository holds three open and seven closed issues
 // input: registryFacts({ name: "left-pad", ecosystem: "npm", repository: "https://github.com/acme/left-pad" }, "MIT")
@@ -177,7 +177,7 @@ test("MOD-reuse-facts registryFacts - npm candidate facts include registry, lice
   assert.deepEqual(host.connected, ["https://github.com/acme/left-pad"]);
 });
 
-// TST-435002 - level: unit - module: MOD-reuse-facts
+// TST-435002 · level: unit · module: MOD-reuse-facts
 // guards: UC-022; DUE DILIGENCE IS FETCHED, NOT RECALLED; A REUSED LICENCE IS SHOWN AGAINST THE PRODUCT'S
 // given: PyPI holds report-helper with licence BSD-3-Clause, two releases, latest 2.0.0, 321 downloads last month; its GitLab repository holds one open and four closed issues
 // input: registryFacts({ name: "report-helper", ecosystem: "pypi", repository: "https://gitlab.example.org/acme/report-helper" }, "MIT")
@@ -217,7 +217,7 @@ test("MOD-reuse-facts registryFacts - PyPI candidate facts include registry, lic
   assert.deepEqual(host.connected, ["https://gitlab.example.org/acme/report-helper"]);
 });
 
-// TST-435003 - level: unit - module: MOD-reuse-facts
+// TST-435003 · level: unit · module: MOD-reuse-facts
 // guards: UC-022; DUE DILIGENCE IS FETCHED, NOT RECALLED
 // given: npm answers 404 for missing-lib
 // input: registryFacts({ name: "missing-lib", ecosystem: "npm", repository: null }, "MIT")
@@ -241,7 +241,7 @@ test("MOD-reuse-facts registryFacts - an unknown registry candidate is not found
   assert.deepEqual(registry.requests, [NPM_MISSING]);
 });
 
-// TST-435004 - level: unit - module: MOD-reuse-facts
+// TST-435004 · level: unit · module: MOD-reuse-facts
 // guards: UC-022; DUE DILIGENCE IS FETCHED, NOT RECALLED; A REUSE DECISION RECORDS ITS DUE DILIGENCE
 // given: npm refuses a browser's request for blocked-lib with TypeError("Failed to fetch")
 // input: registryFacts({ name: "blocked-lib", ecosystem: "npm", repository: null }, "MIT")
@@ -262,7 +262,7 @@ test("MOD-reuse-facts registryFacts - a registry refused by the browser returns 
   assert.deepEqual(registry.requests, [NPM_BLOCKED]);
 });
 
-// TST-435005 - level: unit - module: MOD-reuse-facts
+// TST-435005 · level: unit · module: MOD-reuse-facts
 // guards: A REUSED LICENCE IS SHOWN AGAINST THE PRODUCT'S
 // given: licences.md lists MIT as compatible with MIT but does not list GPL-3.0 as compatible with MIT, and a product may have no licence
 // input: licenceVerdict("MIT", "MIT"), licenceVerdict("GPL-3.0", "MIT"), licenceVerdict("MIT", null)
@@ -273,7 +273,7 @@ test("MOD-reuse-facts licenceVerdict - compatible, not known and not checked are
   assert.equal(licenceVerdict("MIT", null), "not checked");
 });
 
-// TST-436001 - level: unit - module: MOD-reuse-facts
+// TST-436001 · level: unit · module: MOD-reuse-facts
 // guards: UC-022; A REUSE DECISION RECORDS ITS DUE DILIGENCE; DUE DILIGENCE IS FETCHED, NOT RECALLED; A REUSED LICENCE IS SHOWN AGAINST THE PRODUCT'S
 // given: a drafted architecture decision with a chosen npm candidate left-pad and an alternative npm candidate copyleft-lib; the product LICENSE is MIT; fake registries return every fact with read date 2026-10-13 and fake source repositories return two open and five closed issues
 // input: reuseStrategies.steps["due-diligence"](draft, context)
@@ -306,7 +306,7 @@ test("MOD-reuse-facts due-diligence step - a decision with two candidates gains 
   assert.match(withDiligence, /\| copyleft-lib \(npm\) \| GPL-3\.0 \| not known to be compatible \| 0\.1\.0 on 2022-01-01 \| 0\.2\.0 on 2024-01-01 \| 2 \| 2 \/ 5 \| 11 downloads last month \| .*https:\/\/registry\.npmjs\.org\/copyleft-lib.*https:\/\/github\.com\/acme\/copyleft-lib.*https:\/\/api\.npmjs\.org\/downloads\/point\/last-month\/copyleft-lib.* \| 2026-10-13 \|/);
 });
 
-// TST-436002 - level: unit - module: MOD-reuse-facts
+// TST-436002 · level: unit · module: MOD-reuse-facts
 // guards: UC-022; DUE DILIGENCE IS FETCHED, NOT RECALLED
 // given: a drafted architecture decision with an npm candidate missing-lib; the fake registry answers 404
 // input: due-diligence step over the draft
@@ -329,7 +329,7 @@ test("MOD-reuse-facts due-diligence step - an unknown candidate leaves a not-fou
   }]);
 });
 
-// TST-436003 - level: unit - module: MOD-reuse-facts
+// TST-436003 · level: unit · module: MOD-reuse-facts
 // guards: UC-022; A REUSE DECISION RECORDS ITS DUE DILIGENCE
 // given: a drafted architecture decision with an npm candidate blocked-lib; the fake registry refuses the browser call
 // input: due-diligence step over the draft
@@ -353,7 +353,7 @@ test("MOD-reuse-facts due-diligence step - a blocked registry leaves the decisio
   }]);
 });
 
-// TST-436004 - level: unit - module: MOD-reuse-facts
+// TST-436004 · level: unit · module: MOD-reuse-facts
 // guards: UC-022; A REUSED LICENCE IS SHOWN AGAINST THE PRODUCT'S; A PRODUCT DECLARES ITS LICENCE
 // given: a drafted architecture decision with one MIT npm candidate, but the product snapshot has no LICENSE
 // input: due-diligence step over the draft
@@ -427,8 +427,7 @@ function fakeHub(routes) {
 // guards: UC-040; DUE DILIGENCE IS FETCHED, NOT RECALLED
 // given: a Hub (a fake of fetch) that holds the model acme/small-model, public, not gated, licence apache-2.0 in its card, at revision 0123…4567
 // input: hubFacts("acme/small-model")
-// expect: exactly three facts, in this order — revision "0123456789abcdef0123456789abcdef01234567", licence "apache-2.0", access "public" —, each with candidate "acme/small-model", ecosystem
-// "huggingface", the address https://huggingface.co/api/models/acme/small-model and the date read (today); one request, to that address, with no Authorization header
+// expect: exactly three facts, in this order — revision "0123456789abcdef0123456789abcdef01234567", licence "apache-2.0", access "public" —, each with candidate "acme/small-model", ecosystem "huggingface", the address https://huggingface.co/api/models/acme/small-model and the date read (today); one request, to that address, with no Authorization header
 test("TST-996001 hubFacts gives a model's revision, licence and access, each with its address and the date read", async () => {
   const hub = fakeHub({ [`${HUB}/api/models/acme/small-model`]: { id: "acme/small-model", sha: SHA, private: false, gated: false, cardData: { license: "apache-2.0" }, tags: ["license:apache-2.0"] } });
   const { answer, days } = await reading(hub.fetch, () => hubFacts("acme/small-model"));
@@ -444,8 +443,7 @@ test("TST-996001 hubFacts gives a model's revision, licence and access, each wit
 // guards: UC-040; DUE DILIGENCE IS FETCHED, NOT RECALLED
 // given: a Hub that holds the dataset acme/corpus, gated by manual approval, whose card declares no licence but whose tags hold license:cc-by-4.0; and the dataset acme/unlicensed, public, with neither
 // input: hubFacts("datasets/acme/corpus"); hubFacts("datasets/acme/unlicensed")
-// expect: the first gives revision, licence "cc-by-4.0" (from the tag) and access "gated (manual)", with the address https://huggingface.co/api/datasets/acme/corpus; the second gives revision and access
-// "public" only — no licence fact, since the Hub declared none and none is filled in
+// expect: the first gives revision, licence "cc-by-4.0" (from the tag) and access "gated (manual)", with the address https://huggingface.co/api/datasets/acme/corpus; the second gives revision and access "public" only — no licence fact, since the Hub declared none and none is filled in
 test("TST-996002 hubFacts reads a dataset from the datasets address, the licence from the tag where the card has none, and invents none", async () => {
   const hub = fakeHub({
     [`${HUB}/api/datasets/acme/corpus`]: { id: "acme/corpus", sha: SHA, private: false, gated: "manual", tags: ["task:x", "license:cc-by-4.0"] },
@@ -487,8 +485,7 @@ test("TST-996004 an identifier the Hub does not know is NotFound with the addres
 // guards: UC-040
 // given: a Hub the browser cannot reach (fetch rejects with "Failed to fetch"); a Hub that answers 500; one that answers 401 for a private resource asked without its key; one that answers 200 with text that is no JSON
 // input: hubFacts("acme/blocked") against each; and, with the key "hf_secret_key", against the unreachable one
-// expect: each rejects with an error named HubBlocked whose reason is a text: "Failed to fetch" for the first, containing 500 for the second, containing 401 for the third, naming the invalid JSON for the fourth;
-// the reason of the keyed call holds the failure and not the key
+// expect: each rejects with an error named HubBlocked whose reason is a text: "Failed to fetch" for the first, containing 500 for the second, containing 401 for the third, naming the invalid JSON for the fourth; the reason of the keyed call holds the failure and not the key
 test("TST-996005 a Hub that does not answer the browser, or answers no success, is HubBlocked with its reason, never with the key", async () => {
   const href = `${HUB}/api/models/acme/blocked`;
   await assert.rejects(usingFetch(fakeHub({ [href]: new TypeError("Failed to fetch") }).fetch, () => hubFacts("acme/blocked")), (error) => error.name === "HubBlocked" && error.reason === "Failed to fetch");

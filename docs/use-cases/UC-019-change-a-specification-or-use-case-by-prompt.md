@@ -148,7 +148,7 @@ sequenceDiagram
   bridge; the agent returns the draft to the dashboard and the flow continues at step 7.
 - **6b. The work is handed to GitHub Actions** (UC-049, 4a). The workflow runs the correction loop of step 7 from
   the same definition, then commits the draft to the default branch — a use case as open, a change to
-  requirements as an entry of a new queue under `docs/spec-freigaben/`; `SPEC.md` is not touched. The
+  requirements as an entry of its section's queue under `docs/spec-freigaben/`; `SPEC.md` is not touched. The
   commit records what step 9 records, and its job record names no message of the conversation. Instead of step 8, the author reviews it on the dashboard: a use
   case in UC-008, shown against its last accepted text (UC-008, 2a); a queue entry in UC-006, beside the
   current SPEC section, where a conflict with an existing requirement is decided. Nothing counts before

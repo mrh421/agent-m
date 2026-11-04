@@ -57,7 +57,7 @@ const EARLIER_TEXT = `---\ncommit: ${CANDIDATE}\nlevels:\n  - user\noccasion: re
 // The product's host: the branch test-results is `branch`, a Map from path to text, which commitFiles adds to; `writes` records each commitFiles call.
 function productHost({ schedule = null, branch = new Map([[EARLIER_PATH, EARLIER_TEXT]]), writes = [] } = {}) {
   const files = { "SPEC.md": "# Fixture\n", "tests/manual.md": MANUAL, ...(schedule ? { "docs/tests/schedule.md": schedule } : {}) };
-  const snapshotOf = (commit, held) => ({ commit, paths: [...held.keys()], blob: () => "b".repeat(40), read: async (path) => held.get(path) ?? null });
+  const snapshotOf = (commit, held) => ({ commit, paths: [...held.keys()], blob: () => "b".repeat(40), read: async (path) => held.get(path) ?? null, readMany: async () => {} });
   let head = "1".repeat(40);
   return {
     repositoryInfo: async () => ({ defaultBranch: "main", visibility: "private", canWrite: true, archived: false, description: "" }),

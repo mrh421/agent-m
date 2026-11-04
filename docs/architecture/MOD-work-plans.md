@@ -14,6 +14,7 @@ uses:
   - MOD-approvals.statuses
   - MOD-spec-changes.Queue
   - MOD-spec-changes.queues
+  - MOD-spec-changes.proposeSection
   - MOD-spec-document.parseSpec
   - MOD-trace-graph.traceGraph
   - MOD-trace-graph.graphFindings
@@ -107,7 +108,7 @@ in the browser and in Node.
 - `checks.mjs` — the findings of a plan and of a backlog.
 - `sprints.mjs` — the facts of a sprint, the items the sprints hold, and what keeps an item from a team's selection.
 - `saves.mjs` — the commits of a plan, of items and of a sprint.
-- `strategies.mjs` — the recipes, checks and writers of `workStrategies`.
+- `strategies.mjs` — the recipes, checks, step and writers of `workStrategies`.
 
 ## Data
 
@@ -122,14 +123,16 @@ item schema of MOD-documents (`artifactSchemas().item`).
 An item's state, `ItemState`, is derived from the approval records, the queues, the job records and the pull requests:
 `waiting for acceptance`, `waiting for an item it builds on`, `ready`, `in progress` (a job runs, or its pull request is
 open; and once its newest job has ended as done, until a pull request of it opened after that job's `start` is merged or
-closed without merge), `blocked` (a job failed, or waits for a person), `done` (its pull request is merged, or — for an item built
+closed without merge), `blocked` (a job failed other than at a rejected gate, or waits for a person), `done` (its pull request is merged, or — for an item built
 without a pull request naming it — its record names the commits that built it, `built_by`). A merged
 pull request decides first: an item whose pull request is merged is `done` whatever else holds, including a job of
 it started, or a pull request of it opened, after the merge, and stays `done`; an item whose record names `built_by`
 is `done` in the same way, from its record alone, with no request. A
 requirement or use case it realises that is withdrawn, changed or not accepted, or an item it builds on that is not done,
 marks a `done` item: its `reason` names that. A plan step that waits for the gate before its phase is `waiting` with
-that gate named.
+that gate named. A step or item whose newest job a rejected gate ended — its End `failed`, with the reason `the gate
+<gate> was rejected by <gate record>`, followed by `: <the record's reason>` where the record gives one — is `ready`,
+with that reason, unless it is `done`, `waiting for acceptance`, `waiting for an item it builds on` or `waiting`.
 
 An item is held by a team's sprint from its selection until a pull request with its change is merged into the default
 branch, or until its sprint's close sends it back to the backlog or into the team's next sprint: once the close is recorded
@@ -234,7 +237,9 @@ assignment is the one of the team whose sprint holds it, and the product's one i
   from `start`, empty without one; `branch` the one the declaration gives the time box, its placeholders `<team>` and
   `<nn>` filled with the team and its next number, created from the head where it does not exist yet; `docs/backlog/sprints/<team>/<nn>.md` committed with the team's next
   number. `held` is read at the head the commit is written on, and each selected item is checked with `conflicts` (UC-032
-  6c). While a sprint runs, a new start decision is appended to its file as `## Selection`, and `added` and `removed` name
+  6c). Where the host refuses the commit with `Moved { head }`, `held` is read again at that head — `heldItems` of its
+  sprint records, items and module files and of the product's pull requests —, and an item `conflicts` names there refuses
+  the start with `SprintRefused`; otherwise `Moved` stands. While a sprint runs, a new start decision is appended to its file as `## Selection`, and `added` and `removed` name
   what it changes (UC-032 6a). Errors: `SprintRefused { reasons }` — an item waiting for acceptance, one selected without
   the items it builds on that are not done, or one that `conflicts` names, with the sprint, the held item and the module
   —, and the host's.
@@ -248,13 +253,18 @@ assignment is the one of the team whose sprint holds it, and the product's one i
   not go well" | "change", goes: "process model" | "Definition of Done" | "a participant's instructions" | "team
   agreement" | null }>, newItems: Document[] }, context: { facts: ReturnType<typeof sprintFacts>, architecture:
   Document[], head: string, trailers: string[] }) -> Promise<{ commit: string, written: string[] }>` —
-  **Close sprint** (UC-041 step 6): appends `## Review` — the increment and the items not done from `facts`, the feedback,
+  the close of a sprint by its agent, through the writer `sprint-record` (UC-041 step 6): appends `## Review` — the increment and the items not done from `facts`, the feedback,
   who took part, for an agent the sources of its feedback —, `## Unfinished items` and `## Retrospective` to the sprint's
   file; adds the feedback's new items to the backlog as `saveItems` does, and records for each unfinished item whether it
-  goes back to the backlog or into the team's next sprint; all in one commit. Errors: `NotFound { path }` for a sprint with no record, `RetrospectiveMissing` (UC-041 6a), `Undecided { items }` for an unfinished item
+  goes back to the backlog or into the team's next sprint; all in one commit. Then each change of the retrospective that
+  `goes` to the process model, the Definition of Done or a participant's instructions is written through MOD-spec-changes'
+  `proposeSection` as an open entry of the instance's SPEC: a new requirement whose rule is the change, appended to the
+  section that holds the requirement governing what it changes — `THE PROCESS MODEL IS DECLARED PER PRODUCT` for the
+  process model, `A PRODUCT DECLARES ITS DEFINITION OF DONE` for the Definition of Done, `AN AGENT'S RETROSPECTIVE CHANGES
+  NO PROCESS BY ITSELF` for a participant's instructions —, that section found by the requirement's name. Errors: `NotFound { path }` for a sprint with no record, `RetrospectiveMissing` (UC-041 6a), `Undecided { items }` for an unfinished item
   without a decision, `AlreadyClosed`, `ItemsRefused { findings }`, and the host's.
 - `giveUpIncrement(host: Host, sprint: string, reason: string, context: { head: string, trailers: string[] }) -> Promise<{
-  commit: string }>` — the Product Owner's *Give up increment* for a closed sprint whose branch was not merged: appends
+  commit: string }>` — the Product Owner giving up the increment of a closed sprint whose branch was not merged: appends
   `## Increment given up` with the date, the person and the reason, in one commit; the sprint then holds none of its items
   (UC-041 7b). Errors: `NotFound { path }`, `NotClosed` for a sprint without `## Review`, `Merged` for a sprint whose
   branch's pull request is merged, and the host's.
@@ -273,6 +283,8 @@ assignment is the one of the team whose sprint holds it, and the product's one i
   - check `plan-checks` — `planFindings` on a drafted plan, with the product's workflow and no `graph`, since its steps
     are drafted; where the product has no workflow, one error finding naming the declared model and its commit;
   - check `backlog-checks` — `backlogFindings` on drafted items;
+  - step `leave-out-named-modules` — leaves out of the drafted items each item for a module that an item not yet done
+    names — one whose state `itemStates` gives is not `done` —, with a finding naming that item and the module;
   - check `sprint-record-checks` — an agent's review that does not name the sources of its feedback, or does not say that
     no stakeholder took part when none did (`AN AGENT'S REVIEW NAMES WHERE ITS FEEDBACK CAME FROM`); a retrospective
     without an entry; a change to the process written as applied rather than proposed (`AN AGENT'S RETROSPECTIVE CHANGES
@@ -293,7 +305,8 @@ assignment is the one of the team whose sprint holds it, and the product's one i
   under `docs/architecture/`, `SPEC.md`, the approval records, the change queues, `docs/jobs/`, the branch `test-results`,
   the pull requests and the issues of the product, and the history of `docs/plan/` and `docs/backlog/`.
 - Writes, through its saves, `docs/plan/ITM-*.md`, `docs/plan/order.md`, `docs/backlog/ITM-*.md` and
-  `docs/backlog/sprints/<team>/<nn>.md`, and creates a sprint's own branch.
+  `docs/backlog/sprints/<team>/<nn>.md`, and creates a sprint's own branch; through MOD-spec-changes' `proposeSection`, an
+  entry of the instance's SPEC change queues for each change a retrospective makes to the process.
 
 ## Uses
 
@@ -304,6 +317,8 @@ assignment is the one of the team whose sprint holds it, and the product's one i
 - MOD-model-catalogue.Model — the phases a plan's steps belong to.
 - MOD-approvals.statuses, MOD-spec-changes.Queue, queues, MOD-spec-document.parseSpec — whether what an item names is
   accepted.
+- MOD-spec-changes.proposeSection — a retrospective's change to the process, written as an open entry of the instance's
+  SPEC.
 - MOD-trace-graph.systemDecisions — the decisions of the system and of its subsystems, for `architecture-and-model`.
 - MOD-trace-graph.graphFindings, TextSource — the findings of a drafted plan's steps that the graph's checks give, on a
   source of the product's files with the drafted steps in place.

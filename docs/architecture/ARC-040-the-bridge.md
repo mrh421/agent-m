@@ -35,7 +35,6 @@ forced_by:
   - A REPLY IS THREADED ON THE REPORTER'S MAIL
   - A MAIL IS FOUND AGAIN BY ITS IDENTIFIER
   - A COMPUTE RESOURCE IS REACHED THROUGH THE BRIDGE OR A SELF-HOSTED RUNNER
-  - A RUN CONTINUES WITHOUT A CLICK BETWEEN ITS JOBS
   - A SPRINT CLOSED BY AN AGENT STARTS BY ITSELF
   - UC-003
   - UC-011
@@ -84,7 +83,7 @@ the site's frame and renderer (ARC-038), so its look, explanations and texts are
 
 Offering the page and the Bridge client a token-guarded API on loopback; running the jobs of the agents it offers —
 those of its computer's agents the person chose in its window, each in its working folder; those handed over by the page
-and those it takes itself from the repositories of runs it serves —; calling a model endpoint for a job of the page;
+and those it takes itself from the product repositories it serves —; calling a model endpoint for a job of the page;
 speaking IMAP and SMTP over TLS for one request at a time; opening and keeping its SSH tunnels with its own key; showing
 its pairing token, agents, tunnels and updates in its window; and being released as one signed file per platform. A
 person may run Bridges on several computers; each has its own name, which the page, its settings and the participants'
@@ -109,7 +108,7 @@ the web server checks first.
 | Module | Folder | Responsibility |
 |---|---|---|
 | MOD-bridge-http | `src/bridge-http/` | the API's protocol and the server: binding to `127.0.0.1`, `::1` or `localhost` only; the token on every request; the pairing token kept across restarts in a file outside every repository that only its user can read, renewed by *pair anew*; cross-origin answers for the instance's Pages origin only; routes dispatched to the handlers the app hands it; no request body ever logged |
-| MOD-bridge-jobs | `src/bridge-jobs/` | the Bridge as a route: jobs handed over by the page — a conversation's with its task, held in memory only —, and queued jobs of the agents it offers that it takes itself from the product repositories through Access's local clone with the computer's own git login; running them with the job runner and the agent processes, each in its agent's working folder with the clones of the instance and the products, the agent in the enclosure of MOD-agent-enclosure; pushing the branches the agent made and opening their pull requests itself; their records; advancing the runs it serves from the run planner's next actions; starting an agent's sprint close when the sprint ends; the asks of an agent or a model endpoint; the probes; the test of the computer's git login |
+| MOD-bridge-jobs | `src/bridge-jobs/` | the Bridge as a route: jobs handed over by the page — a conversation's with its task, held in memory only —, and queued jobs of the agents it offers that it takes itself from the product repositories through Access's local clone with the computer's own git login; running them with the job runner and the agent processes, each in its agent's working folder with the clones of the instance and the products, the agent in the enclosure of MOD-agent-enclosure; pushing the branches the agent made and opening their pull requests itself; their records; starting an agent's sprint close when the sprint ends; the asks of an agent or a model endpoint; the probes; the test of the computer's git login |
 | MOD-mail-protocols | `src/mail-protocols/` | IMAP and SMTP for the mail routes: a login only over implicit TLS or STARTTLS; folders opened read-only, no flag changed; finding a mail by the identifier of its `Message-ID`; Drafts and Sent by their markings; storing a draft; sending only with a valid single-use confirmation of the mail's hash, and a copy to Sent; the password held only for the request |
 | MOD-tunnels | `src/tunnels/` | the Bridge's own SSH key pair, made on first use, its private key readable only by its owner and never exported; the reverse tunnel bound to the jump host's loopback, or the forward on the person's computer, opened from the tunnel plan in the Bridge's settings, kept open and reopened after sleep or network changes; their state |
 | MOD-desktop-shell | `src/desktop-shell/` | the app: icon in the menu bar or tray, or its window open where there is no tray; the window, rendered with the site's frame and renderer — agents with versions, how to install a missing one and *Check again*, the agents it offers with their working folders and *Test access*, the pairing token with *Copy* and *Pair anew*, the jump host and the public key, tunnel state, importing the dashboard's settings export —; pause and quit; offering a newer release and installing it only after the click, only with a valid signature; composing the other modules |
@@ -138,9 +137,7 @@ flowchart BT
 ```
 
 MOD-bridge-jobs uses Participants and jobs — the runner, the catalogue, the agent processes, the job ledger —, Process's
-run planner and progress facts, and Access's repository hosts; on a Bridge the facts that need a server are unknown, so
-it advances a run only as far as the records allow, and merges and CI results are advanced by the CI entries and the
-page. MOD-tunnels reads the tunnel plan whose format Access's Bridge client defines. MOD-mail-protocols answers in the
+run planner and progress facts, and Access's repository hosts; on a Bridge the facts that need a server are unknown. MOD-tunnels reads the tunnel plan whose format Access's Bridge client defines. MOD-mail-protocols answers in the
 mailbox types of MOD-mail-routes and names mails with MOD-mail-records' identifier. MOD-desktop-shell, which composes the
 app, uses the Site's frame and renderer, Access's reading of a settings export and its tunnel commands, the agent
 processes' list of installed agents, and registers the strategies of the services with the job runner.
@@ -164,4 +161,4 @@ The Bridge API (MOD-bridge-http); the Bridge's settings file, the part of the da
 
 - Without the Bridge, Agent M still works at level 1; with it, local agents use the person's subscription and logins.
 - Each release costs a build on three platforms and the publisher's signing certificates.
-- A Bridge that is quit ends its running jobs as cancelled; runs it served wait until it runs again or the tab is open.
+- A Bridge that is quit ends its running jobs as cancelled; the jobs queued for its agents wait until it runs again.

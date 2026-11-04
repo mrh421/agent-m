@@ -471,7 +471,7 @@ test("PullRequest.body on GitLab — the description as written, \"\" where ther
 
 const MERGED = "5".repeat(40), SQUASHED = "6".repeat(40), TEST_MERGE = "7".repeat(40);
 
-// TST-1110001 · level: unit · module: MOD-repository-hosts
+// TST-1302008 · level: unit · module: MOD-repository-hosts
 // guards: UC-039
 // given: a GitHub repository whose pull requests are one merged with merge_commit_sha 5…5 (a squash: its head is C2), one closed unmerged and one open, each naming a merge_commit_sha (GitHub names a test merge commit for an open one), and one merged naming none
 // input: listPullRequests({})
@@ -486,7 +486,7 @@ test("listPullRequests on GitHub — a merged pull request names the commit its 
   assert.equal(result[0].head, C2);
 });
 
-// TST-1110002 · level: unit · module: MOD-repository-hosts
+// TST-1302009 · level: unit · module: MOD-repository-hosts
 // guards: UC-039
 // given: a GitLab project whose merge requests are one merged with merge_commit_sha 5…5, one merged by a squash (merge_commit_sha null, squash_commit_sha 6…6), one merged by a fast-forward (both null; its sha C2 has landed on the target), one closed and one opened that name a merge_commit_sha
 // input: listPullRequests({})

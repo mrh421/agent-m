@@ -9,19 +9,23 @@
 //     (its file name carries the first twelve digits of the blob it names) or a SPEC section that is no longer the section as
 //     the target holds it (its text names the section's blob, which is the git blob SHA of the section's exact bytes,
 //     MOD-spec-document's sectionText; a record that names no section names another); and approved when it names both.
-//   - An entry without a record waits for its anchor when the target does not hold the anchor and an earlier entry of the
-//     queue, one above it in the index with another anchor, holds it in its proposal; createdBy is that entry's number, and
-//     is set for every undecided entry whose anchor is missing and created.
+//   - An entry without a record waits for its anchor when the target does not hold the anchor and an entry of any queue, with
+//     another anchor and no decision row, holds it in its proposal; createdBy is that entry, { queue, entry }, the first such in the
+//     order of the queues' folders and of each index, and is set for every undecided entry whose anchor is missing and created. Where
+//     only some queues are read (queueAt), the other queues' indexes and decisions are read for it, and only for an entry whose
+//     anchor its target lacks.
 //   - What the snapshot cannot read gives no evidence: without the target's text, or a record's, the entry keeps the state
 //     its files give. The target of an entry is the file its own row names (Datei).
+//   - The issue of an entry is the one its rationale's line `**Issue:**` names, null without that line or that rationale.
 //
 // The files are read ahead through the snapshot's readMany, which reads in batches where the snapshot has a batch request and
-// does nothing otherwise: first every queue's index.md and entscheidungen.md, then the targets and records the entries name.
+// does nothing otherwise: first every queue's index.md and entscheidungen.md, then the targets and records the entries name and the
+// rationales.
 //
-// openQueueOf, proposeSection, saveEntry, entrySections and requirementHistory are not built yet (index.mjs); entryView, which reads
-// an entry through this file, is accept.mjs's, and specStrategies' recipe spec-with-queues, which reads every queue through it,
-// strategies.mjs's. Its own data files, the two schemas below, are read once, when the module is loaded: from the disk in Node, from the
-// module's own address in a browser — as MOD-approvals' index.mjs reads its own.
+// requirementHistory is not built yet (index.mjs); entryView, which reads an entry through this file, is accept.mjs's, and
+// specStrategies' recipe spec-with-queues, which reads every queue through it, strategies.mjs's. Its own data files, the two schemas
+// below, are read once, when the module is loaded: from the disk in Node, from the module's own address in a browser — as
+// MOD-approvals' index.mjs reads its own.
 //
 // Module: MOD-spec-changes
 
@@ -52,8 +56,8 @@ export const queueRationaleSchema = loadSchema(
 const queueDecisionsSchema = loadSchema(
   disk ? disk.readFileSync(DECISIONS_SCHEMA_FILE, "utf8") : await ownFile(DECISIONS_SCHEMA_FILE), OWNER);
 
-// A queue is a folder docs/spec-freigaben/<YYYY-MM-DD><letter>_<slug>/ (MOD-spec-changes, Data); every queue has
-// exactly one index.md, so its folder is found from the snapshot's own paths, without a request.
+// A queue is a folder docs/spec-freigaben/<package>/ (MOD-spec-changes, Data); every queue has exactly one index.md, so its
+// folder is found from the snapshot's own paths, without a request.
 const QUEUE_INDEX = /^docs\/spec-freigaben\/([^/]+)\/index\.md$/;
 
 // A spec approval record's file name, docs/approvals/spec-<queue folder>-<NN>-<blob12>.md (MOD-spec-changes, Files).
@@ -70,15 +74,15 @@ const COMMIT_REF = /^[0-9a-f]{7,40}$/;
 // schema's language cannot say, read from the underTitle section's own text.
 const TARGET_LINE = /\*\*Zieldatei aller Einträge:\*\*\s*(.+)/;
 
-// The line of a queue drafted from an issue, `**Issue:** #<number> of <product address>` (MOD-spec-changes, Data): what the
-// schema's language cannot say either, read from the same section's text. issueLine writes it, for the writer of classified
+// The line of an entry's rationale drafted from an issue, `**Issue:** #<number> of <product address>` (MOD-spec-changes, Data):
+// what the schema's language cannot say, read from the rationale's text. issueLine writes it, for the writer of classified
 // candidates (propose.mjs), so that the line has one form.
 const ISSUE_LINE = /^\*\*Issue:\*\*\s*#(\d+) of (\S+)\s*$/m;
 export const issueLine = (issue) => `**Issue:** #${issue.number} of ${issue.product}`;
 
-// The issue the line names, or null when the section holds no such line.
-function issueOf(sectionText) {
-  const m = ISSUE_LINE.exec(sectionText ?? "");
+// The issue the line names, or null when the text holds no such line.
+function issueOf(text) {
+  const m = ISSUE_LINE.exec(text ?? "");
   return m ? { number: Number(m[1]), product: unbacktick(m[2]) } : null;
 }
 
@@ -89,7 +93,7 @@ function unbacktick(text) {
   return t.length >= 2 && t.startsWith("`") && t.endsWith("`") ? t.slice(1, -1) : t;
 }
 
-// The <title> of a queue's title line "# SPEC approvals — queue <folder date> · <title>" (MOD-spec-changes, Data):
+// The <heading> of a queue's title line "# SPEC approvals — queue <package> · <heading>" (MOD-spec-changes, Data):
 // document.title is that line without its leading "# " (MOD-documents); this item reads the part after "·".
 function titleOf(heading) {
   const m = /·\s*(.+)$/.exec(heading ?? "");
@@ -169,6 +173,7 @@ function entryOf(row, folder, base, files, snapshot, records, decisions) {
     decision: decided ? decisionRecord ?? decided.commit : null,
     state: decided ? "in SPEC" : approved ? "approved" : "open",
     createdBy: null,
+    issue: null,
   };
 }
 
@@ -185,11 +190,20 @@ async function namesOtherSection(snapshot, path, section) {
   return named !== await blobSha(section);
 }
 
+// The text an anchor names: MOD-spec-document's sectionText of it, or, for the preamble, whose anchor is the title line (MOD-spec-changes, Data), the
+// text from the title line up to the first section. null where the target has neither.
+export function anchorText(spec, anchor) {
+  const section = sectionText(spec, anchor);
+  if (section !== null || !spec.startsWith(`${anchor}\n`)) return section;
+  const first = parseSpec(spec).sections[0];
+  return spec.slice(0, first ? first.start : spec.length);
+}
+
 // The span of an entry in its target: the section of its anchor and every section after it up to, not including, the section of its `until` (MOD-spec-changes, Queue: "`anchor`, `until`"). The
 // one reading of an entry's span, which entryView, acceptEntries, proposeSection and saveEntry share. An `until` that is no later heading of the target — none, or a heading the target lacks — gives
 // the anchor's section alone; so does one that no section of the target ends before. null where the target lacks the anchor.
 export function spanText(spec, anchor, until) {
-  const first = sectionText(spec, anchor);
+  const first = anchorText(spec, anchor);
   if (first === null || !until) return first;
   const headings = parseSpec(spec).sections.map((section) => section.heading);
   const at = headings.indexOf(anchor), ends = headings.indexOf(until, at + 1);
@@ -208,18 +222,20 @@ export function spanText(spec, anchor, until) {
 export function replaceSpan(spec, anchor, until, proposal) {
   const span = spanText(spec, anchor, until);
   const first = sectionText(spec, anchor);
+  if (span !== null && first === null) return proposal + spec.slice(span.length);
   if (span === null || span === first) return replaceSection(spec, anchor, proposal);
   const start = spec.indexOf(first);
   return spec.slice(0, start) + proposal + spec.slice(start + span.length);
 }
 
-// The number of the earlier entry whose proposal holds `entry`'s anchor as a section, or null. An earlier entry is one above it in
-// the index; an entry with the same anchor replaces the same section and creates nothing for it.
-async function creatorOf(snapshot, entry, earlier) {
-  for (const other of earlier) {
-    if (other.anchor === entry.anchor || !other.proposal.path) continue;
+// The entry, { queue, entry }, whose proposal holds `entry`'s anchor as a section, or null: the first of `candidates`, the entries of every queue
+// in the order of the queues' folders and of each index, that no decision row decides. An entry with the same anchor replaces the same section and
+// creates nothing for it.
+async function creatorOf(snapshot, entry, candidates) {
+  for (const { queue, entry: other } of candidates) {
+    if (other.anchor === entry.anchor || other.state === "in SPEC" || !other.proposal.path) continue;
     const proposal = await snapshot.read(other.proposal.path);
-    if (typeof proposal === "string" && sectionText(proposal, entry.anchor) !== null) return other.number;
+    if (typeof proposal === "string" && sectionText(proposal, entry.anchor) !== null) return { queue, entry: other.number };
   }
   return null;
 }
@@ -227,8 +243,8 @@ async function creatorOf(snapshot, entry, earlier) {
 // The queue with the states and createdBy that need the target's text, entry by entry in the index's order. The target of
 // an entry is the file its own Datei cell names; the queue's line "Zieldatei aller Einträge", which a queue written in another
 // repository gives as products/<name>/SPEC.md, stays Queue.target and finds no section. An entry a decision row names needs no text,
-// and one whose target the snapshot cannot read keeps the state its files give.
-async function withEvidence(snapshot, queue, folder, records) {
+// and one whose target the snapshot cannot read keeps the state its files give. `candidates()` gives the entries of every queue, for createdBy.
+async function withEvidence(snapshot, queue, folder, records, candidates) {
   const entries = [];
   for (const entry of queue.entries) {
     const targetText = entry.state === "in SPEC" ? null : await snapshot.read(entry.file);
@@ -236,8 +252,8 @@ async function withEvidence(snapshot, queue, folder, records) {
       entries.push(entry);
       continue;
     }
-    const section = sectionText(targetText, entry.anchor);
-    const createdBy = section === null ? await creatorOf(snapshot, entry, entries) : null;
+    const section = anchorText(targetText, entry.anchor);
+    const createdBy = section === null ? await creatorOf(snapshot, entry, await candidates()) : null;
     const named = records.get(recordKey(folder, entry.number)) ?? [];
     let { state } = entry;
     if (named.length > 0) {
@@ -251,10 +267,10 @@ async function withEvidence(snapshot, queue, folder, records) {
   return { ...queue, entries };
 }
 
-// The two files every queue is read from.
+// The two files every queue is read from: its index and its decisions.
 const queueFiles = (folder) => [`docs/spec-freigaben/${folder}/index.md`, `docs/spec-freigaben/${folder}/entscheidungen.md`];
 
-// One queue, with every entry of its index table and the state its own files give, before the evidence of the target's text.
+// One queue, with every entry of its index table and the state its own files give, before the evidence of the target's text and the issue of its rationale.
 async function bareQueue(snapshot, folder, records) {
   const base = `docs/spec-freigaben/${folder}`;
   const files = filesOf(snapshot.paths, base);
@@ -263,23 +279,46 @@ async function bareQueue(snapshot, folder, records) {
   const { document, rows } = readRegister(queueIndexSchema, indexPath, indexText ?? "");
   const decisions = await decisionsOf(snapshot, base);
   const entries = rows.map((row) => entryOf(row, folder, base, files, snapshot, records, decisions));
-  return { folder: base, title: titleOf(document.title), target: targetOf(document.sections[0]?.text), issue: issueOf(document.sections[0]?.text), entries };
+  return { folder: base, title: titleOf(document.title), target: targetOf(document.sections[0]?.text), entries };
 }
+
+// The rationales of a queue's entries that the snapshot holds, whose line `**Issue:**` gives each entry's issue.
+const rationaleFiles = (snapshot, queue) => queue.entries.map((entry) => entry.rationale).filter((path) => path && snapshot.paths.includes(path));
 
 // The files withEvidence reads for a queue: the target of every entry no decision row decides, and the record of every approved one.
 const evidenceFiles = (queue) => queue.entries.filter((entry) => entry.state !== "in SPEC")
   .flatMap((entry) => (entry.state === "approved" ? [entry.file, entry.record] : [entry.file]));
 
-// The queues of these folders, newest first as given, each with every entry of its index table and its state. The files are read
+// Every queue's folder of a snapshot, in the order of the folders' names.
+const foldersOf = (snapshot) => snapshot.paths.map((p) => QUEUE_INDEX.exec(p)?.[1]).filter(Boolean).sort();
+
+// The queues of these folders, in the order given, each with every entry of its index table and its state. The files are read
 // ahead in two rounds, so that a snapshot with a batch request reads them in batches: every queue's two files, then what the
-// entries name.
-async function readQueues(snapshot, folders, records) {
+// entries name — and, where `issues` asks for the entries' issues, their rationales; without it every entry's issue is null and no rationale is read. The other
+// queues of the snapshot are read only where an entry's anchor is missing from its target, for createdBy.
+async function readQueues(snapshot, folders, records, issues = true) {
   await snapshot.readMany?.(folders.flatMap(queueFiles));
-  const bare = [];
-  for (const folder of folders) bare.push(await bareQueue(snapshot, folder, records));
-  await snapshot.readMany?.(bare.flatMap(evidenceFiles));
+  const bare = new Map();
+  for (const folder of folders) bare.set(folder, await bareQueue(snapshot, folder, records));
+  let every = null;
+  const candidates = async () => {
+    if (every === null) {
+      const rest = foldersOf(snapshot).filter((folder) => !bare.has(folder));
+      await snapshot.readMany?.(rest.flatMap(queueFiles));
+      for (const folder of rest) bare.set(folder, await bareQueue(snapshot, folder, records));
+      every = foldersOf(snapshot).flatMap((folder) => bare.get(folder).entries.map((entry) => ({ queue: bare.get(folder).folder, entry })));
+    }
+    return every;
+  };
+  await snapshot.readMany?.(folders.flatMap((folder) => [...evidenceFiles(bare.get(folder)), ...(issues ? rationaleFiles(snapshot, bare.get(folder)) : [])]));
   const out = [];
-  for (const [at, folder] of folders.entries()) out.push(await withEvidence(snapshot, bare[at], folder, records));
+  for (const folder of folders) {
+    const queue = await withEvidence(snapshot, bare.get(folder), folder, records, candidates);
+    const held = issues ? rationaleFiles(snapshot, queue) : [];
+    const entries = [];
+    for (const entry of queue.entries) entries.push({ ...entry, issue: held.includes(entry.rationale) ? issueOf(await snapshot.read(entry.rationale)) : null });
+    out.push({ ...queue, entries });
+  }
   return out;
 }
 
@@ -287,39 +326,51 @@ async function readQueues(snapshot, folders, records) {
  * @typedef {{ path: string, blob: string | null }} Proposal
  * @typedef {{ number: number, file: string, anchor: string, until: string | null, proposal: Proposal,
  *   rationale: string, record: string | null, decision: string | null,
- *   state: "open" | "approved" | "in SPEC" | "stale" | "waiting for its anchor", createdBy: number | null }} Entry
- * @typedef {{ folder: string, title: string, target: string, issue: { number: number, product: string } | null, entries: Entry[] }} Queue
+ *   state: "open" | "approved" | "in SPEC" | "stale" | "waiting for its anchor", createdBy: { queue: string, entry: number } | null,
+ *   issue: { number: number, product: string } | null }} Entry
+ * @typedef {{ folder: string, title: string, target: string, entries: Entry[] }} Queue
  */
 
 /**
- * queues(snapshot: Snapshot) -> Promise<Queue[]> — every queue of a snapshot with every entry and its state, newest
- * first (MOD-spec-changes, Interfaces).
+ * queues(snapshot: Snapshot) -> Promise<Queue[]> — every queue of a snapshot with every entry and its state, in the order of their
+ * folders' names (MOD-spec-changes, Interfaces).
  * @param {{ paths: string[], read: (path: string) => Promise<string | null>, blob: (path: string) => string | null }} snapshot
  * @returns {Promise<Queue[]>}
  */
 export async function queues(snapshot) {
-  const folders = snapshot.paths.map((p) => QUEUE_INDEX.exec(p)?.[1]).filter(Boolean).sort().reverse();
-  return readQueues(snapshot, folders, specRecordsOf(snapshot.paths));
+  return readQueues(snapshot, foldersOf(snapshot), specRecordsOf(snapshot.paths));
 }
 
 /**
  * queuesAt(snapshot, bases) -> Promise<Array<Queue | null>> — the queues whose folders are `bases`, docs/spec-freigaben/<folder>, as
  * queues gives them and in the order of `bases`, null for a base where the snapshot holds no such queue. Their files are read ahead
- * together, so that a file the queues share is read once. For acceptEntries, which needs the queues of the entries shown.
+ * together, so that a file the queues share is read once. For acceptEntries, which needs the queues of the entries shown, and for entryImpact, which reads no
+ * rationale and asks with `issues` false: then no rationale is read and every entry's issue is null.
  * @param {{ paths: string[], read: (path: string) => Promise<string | null>, blob: (path: string) => string | null }} snapshot
  * @param {string[]} bases
  * @returns {Promise<Array<Queue | null>>}
  */
-export async function queuesAt(snapshot, bases) {
+export async function queuesAt(snapshot, bases, { issues = true } = {}) {
   const folderOf = (base) => (snapshot.paths.includes(`${base}/index.md`) ? QUEUE_INDEX.exec(`${base}/index.md`)?.[1] ?? null : null);
   const folders = bases.map(folderOf);
-  const read = await readQueues(snapshot, folders.filter(Boolean), specRecordsOf(snapshot.paths));
+  const read = await readQueues(snapshot, folders.filter(Boolean), specRecordsOf(snapshot.paths), issues);
   return folders.map((folder) => (folder ? read[folders.filter(Boolean).indexOf(folder)] : null));
 }
 
+// The number a new entry of the queue `folder`, docs/spec-freigaben/<package>, takes: one more than any its index or its decisions name,
+// 1 for a queue the snapshot does not hold, so that a number is never given twice.
+export async function nextEntry(snapshot, folder) {
+  const index = await snapshot.read(`${folder}/index.md`), decisions = await snapshot.read(`${folder}/entscheidungen.md`);
+  const numbers = [
+    ...(index === null ? [] : readRegister(queueIndexSchema, `${folder}/index.md`, index).rows.map((row) => row.cells.Nr)),
+    ...(decisions === null ? [] : readRegister(queueDecisionsSchema, `${folder}/entscheidungen.md`, decisions).rows.map((row) => row.cells.Entry)),
+  ].map(Number).filter(Number.isInteger);
+  return Math.max(0, ...numbers) + 1;
+}
+
 /**
- * queueAt(snapshot, base) -> Promise<Queue | null> — the one queue whose folder is `base`, as queuesAt gives it. For entryView, which
- * needs one queue and not all of them.
+ * queueAt(snapshot, base) -> Promise<Queue | null> — the one queue whose folder is `base`, docs/spec-freigaben/<queue>, as queues gives it, read from that
+ * queue's files and what its entries name alone; null where the snapshot holds no such queue (MOD-spec-changes, Interfaces).
  * @param {{ paths: string[], read: (path: string) => Promise<string | null>, blob: (path: string) => string | null }} snapshot
  * @param {string} base
  * @returns {Promise<Queue | null>}

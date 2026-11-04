@@ -12,12 +12,8 @@ import { editStrategies } from "../artifact-edits/index.mjs";
 import { reuseStrategies } from "../reuse-facts/index.mjs";
 import { sourceStrategies } from "../source-register/index.mjs";
 import { specStrategies } from "../spec-changes/index.mjs";
-import { arrangeRoute } from "./arrange.mjs";
-import { draftRoute } from "./conversation-draft.mjs";
-import { reviewRoute } from "./flow.mjs";
-import { DECISIONS, MODULES, REQUIREMENT, REQUIREMENT_NEW, RELEASE_REPORTS, SPEC_ENTRIES, USE_CASES } from "./kinds.mjs";
+import { heads, routes } from "./routes.mjs";
 
-// view — what the frame loads: one route for the use cases, `use-case` (the list) and `use-case/id=<id>` (one use case).
-// `use-case/id=all` is Review all. ITM-440 adds the routes `decision` and `module` in the same form: the files with their status, one
-// file with the section of what it rests on that is not accepted, and accepting it.
-export const view = { routes: [reviewRoute(USE_CASES), reviewRoute(DECISIONS), reviewRoute(MODULES), reviewRoute(SPEC_ENTRIES), reviewRoute(RELEASE_REPORTS), reviewRoute(REQUIREMENT), reviewRoute(REQUIREMENT_NEW), draftRoute, arrangeRoute], strategies: [approvalStrategies, specStrategies, editStrategies, sourceStrategies, reuseStrategies] };
+export { heads };
+
+export const view = { routes, strategies: [approvalStrategies, specStrategies, editStrategies, sourceStrategies, reuseStrategies] };

@@ -47,8 +47,11 @@
 .btn.primary, .prompt-bar button.send, .arrange button.arrange-save { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
 .btn.small, .prompt-bar button.clear, .arrange-tree button, .arrange-add button { font-size: .78rem; padding: .2rem .5rem; }
 .btn:disabled, .prompt-bar button:disabled, .arrange button:disabled { opacity: .55; cursor: not-allowed; }
-/* The fields the pages share: the product selector in the header, the main page's job filters and retry choices, and the fields above the Requirements page's tree. */
-.product select, select.product, select.filter, .job-retry select, .spec-narrow input, .spec-narrow select, .version-bar select, .arrange input, .arrange select { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: .3rem .4rem; max-width: 22rem; }
+/* The fields every page shares: every select, text input and textarea, wherever a page draws it. A rule below gives a field of one place only its size;
+   being later and of a weight no lower, it wins. */
+select, textarea, input:not([type="checkbox"],[type="radio"],[type="file"]) { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: .3rem .4rem; max-width: 100%; }
+/* The product selector in the header, the main page's job filters and retry choices, and the fields above the Requirements page's tree. */
+.product select, select.product, select.filter, .job-retry select, .spec-narrow input, .spec-narrow select, .version-bar select, .arrange input, .arrange select { max-width: 22rem; }
 /* A button, or a link drawn as one, and the text beside it on the same line stand apart by a visible gap, however the view wrote them. */
 button, .btn { margin-inline: .35em; }
 
@@ -73,13 +76,12 @@ button, .btn { margin-inline: .35em; }
 
 /* The requirements tree shares the frame's boxed controls, with room for labels and long requirement text. */
 /* The requirements page's links to other pages (trace-pages/flow.mjs reviewLink, and Gaps or Specification) are plain links, each a target of at least 24 px. */
-:is(.arrange-link, .requirement-edit, .requirement-new, .spec-entries-link, .spec-history-link, .spec-waiting-entry, .trace-gaps-link, .trace-specification-link) { display: inline-flex; align-items: center; min-height: 24px; }
+:is(.arrange-link, .requirement-edit, .requirement-new, .spec-history-link, .spec-waiting-entry, .trace-gaps-link, .trace-specification-link) { display: inline-flex; align-items: center; min-height: 24px; }
 /* The Requirements page's version choice and the narrowing above its tree: one line that wraps, each field at most its panel wide. */
 .spec-narrow, .version-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin: .5rem 0 1rem; }
 .version-bar > :is(p, details) { flex-basis: 100%; margin: 0; }
 .spec-narrow input, .spec-narrow select, .version-bar select.version-choice { box-sizing: border-box; min-width: 0; max-width: 100%; min-height: 24px;
-  font: inherit; font-size: .95rem; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 4px;
-  color: var(--fg); background: var(--panel); }
+  font-size: .95rem; padding: .45rem .6rem; }
 .spec-narrow .spec-narrow-text { flex: 1 1 16rem; max-width: 28rem; }
 .spec-narrow label { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .4rem; min-width: 0; max-width: 100%; }
 .spec-narrow select { flex: 1 1 auto; }
@@ -122,7 +124,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 1.2rem 16px 3rem; }
 .names li { margin: .15rem 0; }
 .choices li { margin: .3rem 0; }
 
-/* A status's badge: the class b-<status>; an accepted and a superseded one in colours that meet the shared WCAG check. */
+/* A status's badge: the class b-<status>; an accepted, a superseded and a waiting-for-its-anchor one in colours that meet the shared WCAG check. */
 .badge { display: inline-block; font-size: .75rem; font-weight: 600; padding: .1rem .5rem; border-radius: 999px; white-space: nowrap; }
 .b-open { color: var(--open); background: var(--open-bg); }
 .b-applied { color: var(--ok); background: var(--ok-bg); }
@@ -130,6 +132,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 1.2rem 16px 3rem; }
 .b-stale { color: var(--bad); background: var(--bad-bg); }
 body .b-accepted { color: #155724; background: #d4edda; }
 body .b-superseded { color: #5c4300; background: #fff3cd; }
+body .b-waiting-for-its-anchor { color: #3b2a7a; background: #e6e0f7; }
 
 .cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 1.2rem; align-items: start; }
 .side { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
@@ -159,7 +162,7 @@ details.explain > div { margin-top: .5rem; padding: .6rem .8rem; background: var
 
 .editor { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .editor textarea { width: 100%; min-height: 520px; font-family: ui-monospace, Menlo, monospace; font-size: .82rem;
-  background: var(--code); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: .7rem; }
+  background: var(--code); padding: .7rem; }
 .editor .preview { max-height: 560px; overflow: auto; border: 1px dashed var(--line); border-radius: 6px; padding: .5rem .9rem; }
 @media (max-width: 900px) { .editor { grid-template-columns: 1fr; } }
 
@@ -171,9 +174,9 @@ details.explain > div { margin-top: .5rem; padding: .6rem .8rem; background: var
 /* Reject beside Accept: its panel, and the field for the reason across the panel's width. */
 .reject { border-color: var(--bad); }
 .reject label { display: block; margin: .5rem 0; }
-.reject textarea { display: block; box-sizing: border-box; width: 100%; min-height: 4.5rem; margin-top: .3rem; font: inherit; color: var(--fg);
-  background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: .5rem; resize: vertical; }
+.reject textarea { display: block; box-sizing: border-box; width: 100%; min-height: 4.5rem; margin-top: .3rem; padding: .5rem; resize: vertical; }
 .accepted-diff .diff { max-height: 420px; overflow: auto; }
+.change-impact { max-height: 420px; overflow: auto; }
 
 @media (max-width: 599px) {
   .table-scroll { overflow-x: visible; }
@@ -197,8 +200,7 @@ details.explain > div { margin-top: .5rem; padding: .6rem .8rem; background: var
 .prompt-bar .bar-grip::before { content: ""; width: 3rem; height: 4px; border-radius: 2px; background: var(--line); }
 .prompt-bar .bar-grip:hover::before, .prompt-bar .bar-grip:focus-visible::before { background: var(--accent); }
 .prompt-bar .chooser { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-.prompt-bar select.participant, .prompt-bar textarea.instruction { box-sizing: border-box; font: inherit; color: var(--fg); background: var(--panel);
-  border: 1px solid var(--line); border-radius: 6px; padding: .45rem .6rem; max-width: 100%; }
+.prompt-bar select.participant, .prompt-bar textarea.instruction { box-sizing: border-box; padding: .45rem .6rem; }
 .prompt-bar textarea.instruction { width: 100%; min-height: 3rem; resize: vertical; }
 .prompt-bar .bar-foot { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .5rem 1rem; }
 .prompt-bar .bar-notes { flex: 1 1 20rem; min-width: 0; color: var(--muted); font-size: .8rem; }

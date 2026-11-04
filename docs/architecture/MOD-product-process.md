@@ -31,12 +31,6 @@ uses:
   - MOD-text-tools.Finding
   - MOD-text-tools.finding
   - MOD-text-tools.blobSha
-  - MOD-job-runner.Strategies
-  - MOD-job-runner.JobContext
-  - MOD-job-runner.Part
-  - MOD-job-runner.JobResult
-  - MOD-job-runner.provenanceLines
-  - MOD-job-runner.sourcesOf
 provides:
   - Workflow
   - declarationSchema
@@ -52,7 +46,6 @@ provides:
   - mayDecide
   - recordGateDecision
   - doneCheck
-  - processStrategies
 ---
 # MOD-product-process A product's process — its declaration, workflow, gates and Definition of Done
 
@@ -83,7 +76,6 @@ and in Node.
 - `workflow.mjs` — the workflow of a product.
 - `gates.mjs` — gate states, who may decide, and the record of a decision.
 - `done.mjs` — the Definition-of-Done check of a pull request.
-- `strategies.mjs` — the recipe and writer of `processStrategies`.
 
 ## Data
 
@@ -191,14 +183,15 @@ once (`THE GATE IS RECORDED`, `A RECORD IS EVIDENCE, NOT A PROPOSAL`):
   "agent" | "check" }, role: string, decision: "passed" | "rejected", reason: string | null, on: string[] }, context: {
   workflow: Workflow, assignment: Document, workBy: string[], head: string, now: Date, trailers: string[] }) -> Promise<{
   commit: string, path:
-  string }>` — a decision on a gate — a person's on the page, an agent's through the writer `gate-record`, a CI check's
+  string }>` — a decision on a gate — a person's on the page, a CI check's
   through the Workflows — written as one gate record in one commit on the head that was read; `on` names each checked
   artifact as `<path>@<blob>`, or the commit; `trailers` are a job's provenance lines, empty for a person's own decision. The
   commit's message is the subject `gates: <gate> <decision> by <decider's name>`, then, after an empty line, the trailers,
   one per line — the one subject of every gate record, whoever decides it.
   Considers: `mayDecide` runs first, and a decision that would not pass the gate is refused with nothing written; a
-  rejection needs its reason; the waiting job is resumed by its route once the record is on the branch (MOD-runtimes'
-  `resumeJob`; on CI the record's push). Crosses the network. Errors: `MayNotDecide { reason, holders }`, `ReasonMissing`,
+  rejection needs its reason; once the record is on the branch, a `passed` one resumes the waiting job by its route, and a
+  `rejected` one ends it `failed`, naming the gate, the record and the rejection's reason (MOD-runtimes' `resumeJob`; on
+  CI the record's push). Crosses the network. Errors: `MayNotDecide { reason, holders }`, `ReasonMissing`,
   `Moved` (read again: the gate may have been decided meanwhile), `TokenRefused`, `PermissionMissing`, `RateLimited`,
   `Unreachable`.
 - `doneCheck(facts: PullRequestFacts, workflow: Workflow, modules: Document[], gates: Document[], job: { kind: "implement"
@@ -208,12 +201,6 @@ once (`THE GATE IS RECORDED`, `A RECORD IS EVIDENCE, NOT A PROPOSAL`):
   which those count whose `on` names one of the pull request's commits or its address, or names neither (only
   `<path>@<blob>` entries).
   Considers: it is run by the product's CI, through the job `agent-m done`, so that it holds whoever merges.
-- `processStrategies: Strategies` — the strategies this module offers the job runner (ARC-046):
-  - recipe `gate-inputs` — for an agent that decides a gate: the gate, what it checks and its condition, the texts of the
-    artifacts to examine, and the job waiting there;
-  - writer `gate-record` — writes the decision of an agent through `recordGateDecision`, with the job's provenance
-    lines; refused, and nothing written, when the agent did the work the gate checks.
-
 `Model` and `Catalogue` are MOD-model-catalogue's; `Schema` and `Document` are MOD-documents'; `Host`, `Snapshot` and
 `PullRequestFacts` MOD-repository-hosts'.
 
@@ -240,5 +227,3 @@ once (`THE GATE IS RECORDED`, `A RECORD IS EVIDENCE, NOT A PROPOSAL`):
 - MOD-repository-hosts.Host, Snapshot, PullRequestFacts, repositoryInfo, commitFiles — the facts of a pull request, and
   the gate record's commit on the default branch.
 - MOD-text-tools.Finding, finding, blobSha — findings, and the blobs of the checked texts.
-- MOD-job-runner.Strategies, JobContext, Part, JobResult, provenanceLines, sourcesOf — the form of the strategies, the
-  provenance of a gate record's commit, and the sources a part carries.

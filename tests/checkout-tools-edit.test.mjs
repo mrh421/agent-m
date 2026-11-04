@@ -67,8 +67,7 @@ test("TST-1240023: an edit on the LF view of a CRLF file keeps the file's ending
 // guards: UC-049
 // given: a.txt holding "alpha\nbeta\n"
 // input: edit oldString "delta"; edit oldString "" with newString "x"; edit oldString "beta" with newString "beta"
-// expect: "Could not find oldString in a.txt. It must match exactly, including whitespace and indentation."; "oldString must not be empty. Use write to create
-//   or overwrite a file."; "No changes to apply: oldString and newString are identical."; a.txt unchanged after each
+// expect: "Could not find oldString in a.txt. It must match exactly, including whitespace and indentation."; "oldString must not be empty. Use write to create or overwrite a file."; "No changes to apply: oldString and newString are identical."; a.txt unchanged after each
 test("TST-1240024: a text not found, an empty oldString and an edit without change are refused in opencode's words", async (t) => {
   const edit = fileWith(t, "alpha\nbeta\n");
   assert.deepEqual(await edit({ oldString: "delta", newString: "x" }),
@@ -81,8 +80,7 @@ test("TST-1240024: a text not found, an empty oldString and an edit without chan
 // guards: UC-049
 // given: a.txt holding "x = 1\nx = 1\n"
 // input: edit oldString "x = 1", newString "x = 2"; then the same with replaceAll true
-// expect: first "Found 2 matches for oldString, but expected exactly one. Add more surrounding context to make oldString unique, or set replaceAll to true to
-//   replace every occurrence." with a.txt unchanged; then "Edited a.txt (2 replacements)" and a.txt holds "x = 2\nx = 2\n"
+// expect: first "Found 2 matches for oldString, but expected exactly one. Add more surrounding context to make oldString unique, or set replaceAll to true to replace every occurrence." with a.txt unchanged; then "Edited a.txt (2 replacements)" and a.txt holds "x = 2\nx = 2\n"
 test("TST-1240025: an oldString that matches twice is refused unless replaceAll is set", async (t) => {
   const edit = fileWith(t, "x = 1\nx = 1\n");
   assert.deepEqual(await edit({ oldString: "x = 1", newString: "x = 2" }), ["Found 2 matches for oldString, but expected exactly one. Add more surrounding context to make oldString unique, or set replaceAll to true to replace every occurrence.", "x = 1\nx = 1\n"]);

@@ -52,7 +52,7 @@ export function runPanel(prepared, handlers) {
   panel.append(left, blocking, make("p", "limit", `Correction rounds: at most ${prepared.limit}`));
 
   if (prepared.blocking.length === 0 && prepared.notFitting.length === 0) {
-    const run = make("button", "", "Run");
+    const run = make("button", "btn", "Run");
     run.addEventListener("click", (event) => {
       // Run starts a job: only a click the browser marks as a person's (THE DASHBOARD WRITES ONLY ON A PERSON'S CLICK).
       if (event?.isTrusted !== true || run.hasAttribute("disabled")) return;
@@ -62,7 +62,7 @@ export function runPanel(prepared, handlers) {
     panel.append(run);
   }
   if (handlers.onCancel) {
-    const cancel = make("button", "", "Cancel");
+    const cancel = make("button", "btn", "Cancel");
     cancel.addEventListener("click", () => handlers.onCancel());
     panel.append(cancel);
   }

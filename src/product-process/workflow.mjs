@@ -1,6 +1,6 @@
 // The workflow of a product (MOD-product-process, Interfaces: Workflow, workflowOf): what its declared model, practices,
 // and process requirements add — and nothing else (THE MODEL DETERMINES THE PHASES AND THE GATES, A PRACTICE IS NOT A MODEL,
-// A PROCESS REQUIREMENT ADDS TO THE MODEL). index.mjs offers workflowOf.
+// A PROCESS REQUIREMENT ADDS TO THE MODEL). index.mjs offers workflowOf and branchesOf.
 //
 // Module: MOD-product-process
 //
@@ -11,7 +11,13 @@
 import { readDocument } from "../documents/index.mjs";
 import { catalogue, modelSchema } from "../model-catalogue/index.mjs";
 import { parseSpec } from "../spec-document/index.mjs";
-import { addedGatesOf, branchesOf, conditionsOf, practicesOf } from "./declaration.mjs";
+import { addedGatesOf, branchesOf as branchRowsOf, conditionsOf, practicesOf } from "./declaration.mjs";
+
+/**
+ * branchesOf(declaration: Document) -> Record<string, string> — the declaration's ## Branches, each phase or time box with its branch as
+ * written; empty without the section. The one reader of ## Branches: workflowOf gives it as Workflow.branches.
+ */
+export const branchesOf = (declaration) => Object.fromEntries(branchRowsOf(declaration).map(({ at, branch }) => [at, branch]));
 
 // The job rules, which every Definition of Done holds, as the module file states them.
 const JOB_RULES = [
@@ -113,7 +119,7 @@ export function workflowOf(declaration, model, practices, instanceSpec) {
       ...additions.flatMap(({ roles: added }) => added.map((role) => ({ name: role.Name, filledBy: role["Filled by"],
         howMany: role["How many"], capabilities: namesOf(role.Capabilities) }))),
     ],
-    branches: Object.fromEntries(branchesOf(declaration).map(({ at, branch }) => [at, branch])),
+    branches: branchesOf(declaration),
     done: [...JOB_RULES, ...conditionsOf(declaration)],
   };
 }

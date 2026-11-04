@@ -29,8 +29,7 @@ async function probe(bridge, token) {
 // guards: UC-003; THE LOCAL BRIDGE BINDS TO LOOPBACK ONLY; THE LOCAL BRIDGE REQUIRES A TOKEN; THE BRIDGE IS PAIRED ONCE; A CREDENTIAL IS NEVER PLACED IN A URL
 // given: the public Bridge entry, a real loopback server, a constructed endpoint-test handler and a fresh data folder
 // input: a missing-token probe, a paired endpoint-test probe, then pairAnew and probes with the old and new tokens
-// expect: authentication refuses before dispatch; the paired body reaches the handler once and returns its answer; rotation takes
-// effect on the running server, all endpoint configuration stays out of URL/logs, and the server closes
+// expect: authentication refuses before dispatch; the paired body reaches the handler once and returns its answer; rotation takes effect on the running server, all endpoint configuration stays out of URL/logs, and the server closes
 test("the public paired Bridge dispatches endpoint-test over loopback and enforces token rotation", async () => {
   const folder = await mkdtemp(join(tmpdir(), "agent-m-release-bridge-"));
   const received = [], lines = [], previous = console.info;

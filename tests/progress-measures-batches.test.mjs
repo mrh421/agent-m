@@ -42,26 +42,30 @@ const bySize = (sizes) => [...sizes].sort((a, b) => b - a);
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: a product of 600 backlog items, 400 job records, SPEC.md and one test file, an instance holding its participant list; a token
 // input: productFacts(…, { scope: "all" })
-// expect: 21 requests in all — the repository 1, the commits of main and of test-results 2, the tree of main 1, the pull requests 1, the tags 1, the CI runs of the head 1, the stored facts' file 1, and 13 batch requests; the batches hold 100 files ten times and 1 file three times (the 1,001 files productFacts itself reads — the 600 items, the 400 job records and SPEC.md — are 10 full batches and a batch of 1; the trace graph's batch is the one test file; the instance's batch is its participant list); the one file read by a request of its own is the stored facts'
+// expect: 21 requests in all — the repository 1 with the GraphQL request of greenToMerge beside it 1 (ITM-1170; the fake logs it as a batch of no file), the commits of main and of test-results 2, the tree of main 1, the pull requests 1, the tags 1, the CI runs of the head 1, and 13 batch requests; the batches hold 100 files ten times and 1 file three times (the 1,001 files productFacts itself reads — the 600 items, the 400 job records and SPEC.md — are 10 full batches and a batch of 1; the trace graph's batch is the one test file; the instance's batch is its participant list); no file is read by a request of its own — no `<commit>.facts.json` is asked for
 test("productFacts, scope all, with a token — 600 items and 400 job records are read in 13 batches of at most a hundred, 21 requests in all", async () => {
   const { seen } = await facts("all", true);
+  // ITM-1170: the fake logs every POST /graphql as a batch; the 14th, of no file, is greenToMerge's beside repositoryInfo.
   assert.equal(seen.total, 21);
-  assert.deepEqual(seen.kinds, { repository: 1, commit: 2, tree: 1, "pull requests": 1, tags: 1, "ci runs": 1, batch: 13, file: 1 });
-  assert.deepEqual(bySize(seen.batches), [...hundreds(10), 1, 1, 1]);
-  assert.deepEqual(seen.singles.map((path) => path.replace(/^[0-9a-f]{40}/, "<commit>")), ["<commit>.facts.json"], "the one file read by its own request is the stored facts' (none is stored here)");
+  assert.deepEqual(seen.kinds, { repository: 1, commit: 2, tree: 1, "pull requests": 1, tags: 1, "ci runs": 1, batch: 14 });
+  assert.deepEqual(bySize(seen.batches), [...hundreds(10), 1, 1, 1, 0]);
+  assert.deepEqual(seen.singles, [], "no file is read by a request of its own");
+  assert.deepEqual(seen.allFiles.filter((path) => path.endsWith(".facts.json")), [], "no facts file is asked for");
 });
 
 // TST-826002 · level: unit · module: MOD-progress-measures
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the product and instance of TST-826001; a token
 // input: productFacts(…, { scope: "work" })
-// expect: 17 requests in all (before the read-ahead, with the same token, the same product cost 1,006: see TST-826003) — the repository 1, the commit 1, the tree 1, the pull requests 1, and 12 batch requests: 100 files ten times (the 600 items and 400 job records) and 1 file twice (SPEC.md and the instance's participant list); the sole file request is the missing facts-cache lookup; no tags, no branch test-results, no test file read
+// expect: 17 requests in all (before the read-ahead, with the same token, the same product cost 1,006: see TST-826003) — the repository 1 with the GraphQL request of greenToMerge beside it 1 (ITM-1170; a batch of no file in the fake's log), the commit 1, the tree 1, the pull requests 1, and 12 batch requests: 100 files ten times (the 600 items and 400 job records) and 1 file twice (SPEC.md and the instance's participant list); no file request — no `<commit>.facts.json` is asked for; no tags, no branch test-results, no test file read
 test("productFacts, scope work, with a token — 600 items and 400 job records are read in 12 batches, 17 requests in all", async () => {
   const { seen } = await facts("work", true);
+  // ITM-1170: the 13th batch, of no file, is greenToMerge's beside repositoryInfo.
   assert.equal(seen.total, 17);
-  assert.deepEqual(seen.kinds, { repository: 1, commit: 1, tree: 1, "pull requests": 1, batch: 12, file: 1 });
-  assert.deepEqual(bySize(seen.batches), [...hundreds(10), 1, 1]);
-  assert.deepEqual(seen.singles.map((path) => path.replace(/^[0-9a-f]{40}/, "<commit>")), ["<commit>.facts.json"], "the one file read by its own request is the stored facts' (none is stored here)");
+  assert.deepEqual(seen.kinds, { repository: 1, commit: 1, tree: 1, "pull requests": 1, batch: 13 });
+  assert.deepEqual(bySize(seen.batches), [...hundreds(10), 1, 1, 0]);
+  assert.deepEqual(seen.singles, [], "no file is read by a request of its own");
+  assert.deepEqual(seen.allFiles.filter((path) => path.endsWith(".facts.json")), [], "no facts file is asked for");
   assert.ok(!seen.allFiles.includes("tests/unit.test.mjs"), "the scope work reads no test file");
 });
 
@@ -69,12 +73,13 @@ test("productFacts, scope work, with a token — 600 items and 400 job records a
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the product and instance of TST-826001; no token, so that the host has no batch request and every file is read by its own request, as every file was read with a token before the read-ahead
 // input: productFacts(…, { scope: "work" })
-// expect: 1,007 requests — the repository 1, the commit 1, the tree 1, the pull requests 1, and 1,003 files each by a request of its own (the 600 items, the 400 job records, SPEC.md and the instance's participant list); no batch request
-test("productFacts, scope work, without a token — every file is read by a request of its own, 1,007 requests (the count before the read-ahead)", async () => {
+// expect: 1,006 requests — the repository 1, the commit 1, the tree 1, the pull requests 1, and 1,002 files each by a request of its own (the 600 items, the 400 job records, SPEC.md and the instance's participant list); no batch request; no `<commit>.facts.json` is asked for
+test("productFacts, scope work, without a token — every file is read by a request of its own, 1,006 requests (the count before the read-ahead)", async () => {
   const { seen } = await facts("work", false);
-  assert.equal(seen.total, 1007);
-  assert.deepEqual(seen.kinds, { repository: 1, commit: 1, tree: 1, "pull requests": 1, file: 1003 });
-  assert.equal(seen.singles.length, 1003);
+  assert.equal(seen.total, 1006);
+  assert.deepEqual(seen.kinds, { repository: 1, commit: 1, tree: 1, "pull requests": 1, file: 1002 });
+  assert.equal(seen.singles.length, 1002);
+  assert.deepEqual(seen.singles.filter((path) => path.endsWith(".facts.json")), [], "no facts file is asked for");
 });
 
 // TST-826004 · level: unit · module: MOD-progress-measures
@@ -116,7 +121,7 @@ test("productFacts, scope all — the facts the scope adds are read, including m
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
 // given: the product and instance of TST-826001, and the product has a branch test-results of two files (runs/aaaa/r1.md, runs/aaaa/r2.md); a token
 // input: productFacts(…, { scope: "all" })
-// expect: results is the Snapshot of that branch — its ref "test-results", its two paths, a commit other than main's — and not null; 23 requests in all: the commits are 2, the trees 2, the batches 13 and the file 1 as before, the CI runs of the head 1, and one more, the default branch's history that resultCommits are told from (readHistory, one request for a page of commits); no file of the branch is read
+// expect: results is the Snapshot of that branch — its ref "test-results", its two paths, a commit other than main's — and not null; 23 requests in all: the commits are 2, the trees 2 and the batches 13 as before, greenToMerge's GraphQL request beside the repository 1 (ITM-1170), the CI runs of the head 1, and one more, the default branch's history that resultCommits are told from (readHistory, one request for a page of commits); no file of the branch is read
 test("productFacts, scope all — a branch test-results is read as a Snapshot, by its commit and its tree, and no file of it", async () => {
   server.restore();
   const results = { "runs/aaaa/r1.md": "run one\n", "runs/aaaa/r2.md": "run two\n" };
@@ -127,6 +132,6 @@ test("productFacts, scope all — a branch test-results is read as a Snapshot, b
   assert.deepEqual([...result.results.paths], ["runs/aaaa/r1.md", "runs/aaaa/r2.md"]);
   assert.notEqual(result.results.commit, result.snapshot.commit);
   assert.equal(seen.total, 23);
-  assert.deepEqual(seen.kinds, { repository: 1, commit: 2, tree: 2, "pull requests": 1, tags: 1, "ci runs": 1, batch: 13, file: 1, other: 1 });
+  assert.deepEqual(seen.kinds, { repository: 1, commit: 2, tree: 2, "pull requests": 1, tags: 1, "ci runs": 1, batch: 14, other: 1 });
   assert.ok(!seen.allFiles.some((path) => path.startsWith("runs/")), "no file of the branch is read");
 });

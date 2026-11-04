@@ -146,9 +146,16 @@ printf '%s\\n' '${event}' '{"type":"step_finish","part":{"tokens":{"input":11,"o
       release: () => writeFileSync(gate, ""), close: () => rmSync(gate, { force: true }), finished: () => existsSync(finished), repository: (name, files) => repository(root, name, files) });
   } finally {
     await stopWatching("quit");
-    process.env.PATH = prior;
-    for (const key of Object.keys(process.env)) if (key.startsWith("GIT_CONFIG_") && key !== "GIT_CONFIG_GLOBAL" && key !== "GIT_CONFIG_SYSTEM") delete process.env[key];
-    rmSync(root, { recursive: true, force: true });
+    try {
+      // A job's end commit is on the server before the `git push` that made it has returned: that process updates the clone's remote-tracking ref in the
+      // clone's `.git` once the server's receive-pack has exited. `stopWatching("pause")` leaves a running job to end, and the quit above finds no watcher
+      // then to await it, so the folder is removed only when no job of the Bridge is listed running: the end of that process.
+      await until(async () => (await list()).jobs.every(({ state }) => state !== "running"), "every job of the Bridge to end");
+    } finally {
+      process.env.PATH = prior;
+      for (const key of Object.keys(process.env)) if (key.startsWith("GIT_CONFIG_") && key !== "GIT_CONFIG_GLOBAL" && key !== "GIT_CONFIG_SYSTEM") delete process.env[key];
+      rmSync(root, { recursive: true, force: true });
+    }
   }
 }
 const watch = (w, agents, extra = {}) => startWatching({ bridgeName: "lab-pc", agents, products: [{ address: PRODUCT_A }], every: 100, instance: INSTANCE, enclosures: openEnclosures(), ...extra });
@@ -238,4 +245,25 @@ test("GET /v1/jobs does not list a job as running when its end could not be writ
     assert.equal(listed.state, "failed");
     assert.equal(/^## End$/m.test(w.originText(PRODUCT_A, job.path)), false, "the end was refused");
   });
+});
+
+// TST-1295001 · level: unit · module: MOD-bridge-jobs
+// guards: A TEST THAT FLIPS ON THE SAME COMMIT IS FLAKY
+// given: a job whose end commit the product's server answers at once and then keeps working on (a post-receive hook of the bare repository that sleeps for a second), and a test body that pauses the Bridge as soon as the end is on the server
+// input: the world's cleanup, run when the test body returns
+// expect: the cleanup returns only after the job has ended, which is then listed done and not running, and its folder is gone: nothing of the job writes into the folder any more
+test("the world of a test is removed only after the job it started has ended", async () => {
+  let root = null;
+  await world(async (w) => {
+    root = w.root;
+    const hook = join(w.products[PRODUCT_A].origin, "hooks", "post-receive");
+    mkdirSync(join(hook, ".."), { recursive: true });
+    writeFileSync(hook, `#!/bin/sh\nwhile read old new ref; do case "$(git log -1 --format=%s "$new")" in end\\ *) sleep 1;; esac; done\n`, { mode: 0o755 });
+    const job = w.queue(PRODUCT_A, JOB(ID(6), "drafter"));
+    watch(w, [{ name: "opencode", folder: w.folder("agent-work") }], { every: 50 });
+    await w.ended(job);
+    await stopWatching("pause");
+  });
+  assert.equal(existsSync(root), false, "the folder is removed");
+  assert.equal((await list()).jobs.find((each) => each.id === ID(6)).state, "done", "the job has ended when the cleanup returns");
 });

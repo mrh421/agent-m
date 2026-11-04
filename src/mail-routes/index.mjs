@@ -21,7 +21,8 @@ export { signIn } from "./graph-route.mjs";
  * @typedef {{ address: string, route: "graph" | "imap", folders: string[],
  *   places: { place: string, outsideEu: boolean, notCompliantNoted?: boolean }[],
  *   graph?: { clientId: string, account: string },
- *   imap?: { bridge: string, jumpHostNoted: boolean, imap: Server, smtp: Server, account: string, password: string } }} MailConnection
+ *   imap?: { bridge: string, jumpHostNoted: boolean, imap: Server, smtp: Server, account: string,
+ *     smtpAccount?: string, sender?: { name: string | null, address: string }, password: string } }} MailConnection
  * @typedef {{ host: string, port: number, security: "tls" | "starttls" | "none" }} Server
  */
 

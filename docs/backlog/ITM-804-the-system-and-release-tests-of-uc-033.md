@@ -13,7 +13,7 @@ builds_on:
   - ITM-583
   - ITM-584
   - ITM-1250
-  - ITM-1252
+  - ITM-1256
   - ITM-617
 tests:
   - system

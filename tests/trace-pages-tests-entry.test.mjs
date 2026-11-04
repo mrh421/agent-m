@@ -111,8 +111,7 @@ test("TST-1224003 the tests browser shows the Tests entry's views under its head
 // guards: UC-030; EVERY PAGE SHARES ONE LOOK AND WORKS ON A PHONE
 // given: the frame started with a fixture route tests-views; the product at the release tag v2026.1.0, and the same product with no release tag
 // input: Route.render with the key "audit" at the ref v2026.1.0; then at the ref main of the product with no tag
-// expect: each time tests-views is rendered once, with { shown: "Audit" }, into the element that follows the h2 Audit in the page's section.head; with no tag
-//   the page says that no release is tagged
+// expect: each time tests-views is rendered once, with { shown: "Audit" }, into the element that follows the h2 Audit in the page's section.head; with no tag the page says that no release is tagged
 // Planted fault: an audit that embeds nothing, or embeds it only where a tag exists, fails.
 test("TST-1224004 the audit of a release tag shows the Tests entry's views under its heading through the frame, Audit shown", async () => {
   await frameWith([testsViews]);
@@ -148,8 +147,7 @@ test("TST-1224006 the audit of a release candidate, shown inside the release pan
 // guards: UC-029; UC-030
 // given: the frame started without a route tests-views, as a page that does not load MOD-test-pages
 // input: Route.render with the key "tests" at the ref main, and with the key "audit" at the ref v2026.1.0
-// expect: under each heading the frame's link to #tests-views/shown=Browser and #tests-views/shown=Audit stands in place of the views; the tests browser and the
-//   audit are drawn on (the audit's two rows stand)
+// expect: under each heading the frame's link to #tests-views/shown=Browser and #tests-views/shown=Audit stands in place of the views; the tests browser and the audit are drawn on (the audit's two rows stand)
 // Planted fault: a page that fails, or draws nothing more, when the route is not loaded fails.
 test("TST-1224007 where MOD-test-pages is not loaded, the frame's link stands in place of the views and the view is drawn on", async () => {
   await frameWith([]);
@@ -167,8 +165,7 @@ test("TST-1224007 where MOD-test-pages is not loaded, the frame's link stands in
 // guards: UC-030; EVERY PAGE SHARES ONE LOOK AND WORKS ON A PHONE
 // given: the product at the release tag v2026.1.0 with two requirements
 // input: Route.render with the key "audit" at the ref v2026.1.0
-// expect: the table audit-table carries list; it has a row for each requirement, and every cell of its body names its column in data-label — Requirement, Sources,
-//   Tests, Gates, Acceptance, Detail; the summary audit-summary and the filters audit-filters carry panel
+// expect: the table audit-table carries list; it has a row for each requirement, and every cell of its body names its column in data-label — Requirement, Sources, Tests, Gates, Acceptance, Detail; the summary audit-summary and the filters audit-filters carry panel
 // Planted fault: a table without list, a cell without data-label, or a summary drawn outside a panel fails.
 test("TST-1224005 the audit's table is table.list with data-label, its summary and filters panels", async () => {
   await frameWith([testsViews]);

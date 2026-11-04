@@ -17,7 +17,7 @@
 //     default branch, <p class="problem"> "The file differs on the default branch; compare before committing." (as tests/review-pages-edit-requirement-pages.test.mjs reads the requirement editor's list).
 //   - "A file that differs" is stood in for by a snapshot whose `paths` is read through a counter: the last reading of an unwarned Save names one path less (or one more) than the earlier ones, so that the
 //     default branch no longer has the file as the edit started (MOD-artifact-edits' fallbackEditLinks: "`differs` says that the default branch, as the snapshot holds it, no longer has the file as the edit started").
-//   - Without a token the person of a requirements draft is "anonymous", so its queue is docs/spec-freigaben/<day>_edits-of-anonymous.
+//   - The queue of a requirements draft of the section "## 1. Lending" is its section's queue, docs/spec-freigaben/lending.
 
 import "./review-pages-harness.mjs";
 import test from "node:test";
@@ -136,8 +136,7 @@ const written = (fake) => fake.writes().filter((change) => change.files.length >
 // guards: UC-018; WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK
 // given: a GitHub product whose host cannot write and no token stored; the open entry 01 of the sample queue edited in place — the section "1. Lending" with one book standing on "one shelf" — with a Why
 // input: a click on Save
-// expect: nothing committed; a paragraph above the list is exactly "There is no token: GitHub's page opens for each file, and you commit them there."; two pages — the entry's proposal and its rationale —, each
-//   with exactly one text beside its link; the proposal's text is the section as edited, byte for byte; the rationale's text holds the Why; no address holds a word of the text; no page is warned about
+// expect: nothing committed; a paragraph above the list is exactly "There is no token: GitHub's page opens for each file, and you commit them there."; two pages — the entry's proposal and its rationale —, each with exactly one text beside its link; the proposal's text is the section as edited, byte for byte; the rationale's text holds the Why; no address holds a word of the text; no page is warned about
 test("spec-entry/<id>/edit — without a token the entry's pages are fallbackPages' list: the sentence, each file's text, no warning", async () => {
   const { fake, target } = await savedEntry();
   assert.equal(written(fake).length, 0, "nothing committed");
@@ -176,8 +175,7 @@ test("spec-entry/<id>/edit — without a token a file that already differs is wa
 // guards: UC-019; UC-018; WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK
 // given: a GitHub product whose host cannot write and no token stored; the draft of UC-007 and UC-008, each with an added alternative flow 2b, in their editors
 // input: a click on Save
-// expect: nothing committed; a paragraph above the list is exactly "There is no token: GitHub's page opens for each file, and you commit them there."; two pages — UC-007's file and UC-008's, in this order —,
-//   each with exactly one text beside its link, which is the file as drafted, byte for byte; no address holds a word of the text; no page is warned about
+// expect: nothing committed; a paragraph above the list is exactly "There is no token: GitHub's page opens for each file, and you commit them there."; two pages — UC-007's file and UC-008's, in this order —, each with exactly one text beside its link, which is the file as drafted, byte for byte; no address holds a word of the text; no page is warned about
 test("draft — without a token the pages of a draft of files are fallbackPages' list: the sentence, each file's text, no warning", async () => {
   const { fake, target } = await savedFiles();
   assert.equal(written(fake).length, 0, "nothing committed");
@@ -214,16 +212,14 @@ test("draft — without a token a file of a draft that already differs is warned
 // guards: UC-019; UC-018; WITHOUT A TOKEN, GITHUB'S WEB INTERFACE IS THE FALLBACK
 // given: a GitHub product whose host cannot write and no token stored; the draft of a change of A LOAN HAS A DUE DATE — its rule gains "and says when it is overdue." — from the source SRC-alice
 // input: a click on Save
-// expect: nothing committed; a paragraph above the list is exactly "There is no token: GitHub's page opens for each file, and you commit them there."; four pages — the queue's index and decisions file, the
-//   entry's proposal and its rationale — of the queue docs/spec-freigaben/<day>_edits-of-anonymous, each with exactly one text beside its link; the proposal's text is the section "## 1. Lending" with the
-//   changed rule; the rationale's text is "Drafted from SRC-alice on the person's instruction."; the index's text names the section; no address holds a word of the text; no page is warned about
+// expect: nothing committed; a paragraph above the list is exactly "There is no token: GitHub's page opens for each file, and you commit them there."; four pages — the queue's index and decisions file, the entry's proposal and its rationale — of the queue docs/spec-freigaben/<day>_edits-of-anonymous, each with exactly one text beside its link; the proposal's text is the section "## 1. Lending" with the changed rule; the rationale's text is "Drafted from SRC-alice on the person's instruction."; the index's text names the section; no address holds a word of the text; no page is warned about
 test("draft — without a token the pages of a draft of requirements are fallbackPages' list: the sentence, each file's text, no warning", async () => {
   const { fake, target } = await savedRequirements();
   assert.equal(written(fake).length, 0, "nothing committed");
   assert.ok(sentencesOf(target).includes(SENTENCE), `the sentence: ${JSON.stringify(sentencesOf(target))}`);
   const found = listed(target);
-  const queue = /^(docs\/spec-freigaben\/\d{4}-\d\d-\d\d_edits-of-anonymous)\//.exec(found[0].path)?.[1];
-  assert.ok(queue, `the queue of the person: ${found[0].path}`);
+  const queue = /^(docs\/spec-freigaben\/lending)\//.exec(found[0].path)?.[1];
+  assert.ok(queue, `the queue of the section: ${found[0].path}`);
   assert.deepEqual(found.map((page) => page.path.replace(queue, "<queue>")).sort(), ["<queue>/01-lending.begruendung.md", "<queue>/01-lending.md", "<queue>/entscheidungen.md", "<queue>/index.md"]);
   for (const page of found) {
     assert.equal(page.clipboard.length, 1, `${page.path}: one text beside the link`);
@@ -280,7 +276,7 @@ test("spec-entry/<id>/edit — without a token a file that appeared on the defau
 // input: a click on Save
 // expect: the page of the index carries the warning "The file differs on the default branch; compare before committing." beside its text; no other page carries a warning, and each other page still carries its text
 test("draft — without a token the index of a draft of requirements that the default branch lost since the draft was opened is warned about on its page", async () => {
-  const index = `docs/spec-freigaben/${new Date().toISOString().slice(0, 10)}_edits-of-anonymous/index.md`;
+  const index = "docs/spec-freigaben/lending/index.md";
   const { target } = await savedRequirements(null, { extra: [index] });
   const found = listed(target);
   const warned = found.find((page) => page.path === index);

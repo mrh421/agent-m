@@ -4,10 +4,12 @@
 // records. Crosses the network: reads the history of the records and of the file through the host" — and MOD-repository-hosts — "readHistory(
 // path: string | null, options: { ref?: string, limit?: number, changes?: boolean }) -> Promise<HistoryEntry[]> — … With `changes: false`,
 // each entry's `changes` is empty and the history costs one request per page of commits; otherwise each entry lists its changes."
-// The function uses only the commit and the date of each record's adding commit, so the request for that commit's changes is not made.
+// The function uses only the commit and the date of each record's adding commit, so the request for that commit's changes is not made. It reads the
+// file at the commit that added the record with readFileAt(file, [commit]) (ITM-1291): "readFileAt(path: string, commits: string[]) … It reads in
+// batches, not one snapshot per commit: with a token, one request per batch of commits through the server's batch query, as `readMany` reads".
 // Through the REAL GitHub and GitLab hosts of src/repository-hosts (connect with a token), over counting fakes of the two servers' REST
 // APIs that answer as the real APIs document — GitHub: "Get a repository", "Get a commit" (a name resolves to a commit; with per_page the
-// commit's files), "Get a tree", "List commits" (sha, path, per_page, page), "Get repository content" (raw); GitLab: "Get a single
+// commit's files), "Get a tree", "List commits" (sha, path, per_page, page), "Get repository content" (raw), and the GraphQL batch query of readFileAt (`repository.object(expression: "<commit>:<path>")`, a Blob's `text`, served by tests/repository-hosts-batch-fake.mjs); GitLab: "Get a single
 // project", "Get a single commit", "List repository tree", "List repository commits" (ref_name, path, follow, per_page, page), "Get the
 // diff of a commit", "Get raw file from repository". Nothing reaches the network.
 // Run: node --test tests/approvals-last-accepted-requests.test.mjs
@@ -21,6 +23,8 @@
 // the numbers written in its own text; they are not read from any document. Each test states its input and its expected result before
 // it runs (given / input / expect). The counter-proofs are recorded in the pull request.
 
+import { treeRequest, treeAnswer } from "./github-trees-fake.mjs";
+import { batchAnswer, askedBy } from "./repository-hosts-batch-fake.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -88,7 +92,7 @@ async function using(fetchFn, run) {
 }
 const failure = (p) => Promise.resolve(p).then(() => null, (e) => e);
 
-const KINDS = ["repository", "commit", "tree", "list", "detail", "file", "other"];
+const KINDS = ["repository", "commit", "tree", "list", "detail", "file", "folders", "batch", "other"];
 // How many requests of each kind a fake has been sent.
 const tally = (requests) => Object.fromEntries(KINDS.map((kind) => [kind, requests.filter((r) => r.kind === kind).length]));
 
@@ -105,15 +109,30 @@ function fakeGitHub({ answer = null } = {}) {
     const r = seen(input, init);
     const rest = r.origin === "https://api.github.com" && r.path.startsWith(GH_PREFIX) ? r.path.slice(GH_PREFIX.length) : null;
     let m, kind = "other";
-    if (rest === "") kind = "repository";
+    const tree = treeRequest(new URL(typeof input === "object" && !(input instanceof URL) ? input.url : String(input)));
+    if (tree && (tree.path || !tree.recursive)) kind = "folders";
+    else if (r.method === "POST" && r.origin === "https://api.github.com" && r.path === "/graphql") kind = "batch";
+    else if (rest === "") kind = "repository";
     else if (rest === "/commits") kind = "list";
     else if ((m = /^\/commits\/([^/]+)$/.exec(rest ?? "")) && r.query.per_page) kind = "detail";
     else if (m) kind = "commit";
     else if (/^\/git\/trees\/[0-9a-f]{40}$/.test(rest ?? "")) kind = "tree";
     else if ((rest ?? "").startsWith("/contents/")) kind = "file";
-    requests.push({ ...r, kind });
+    requests.push({ ...r, kind, body: typeof init.body === "string" ? init.body : "" });
     const own = answer?.({ ...r, kind });
     if (own) return own;
+    if (kind === "folders") {
+      // The trees of named folders and the entries of the folders of named files, at the commit asked, as GitHub's "Get a tree" gives them.
+      const c = COMMITS.find((x) => x.sha === tree.commit);
+      if (!c) return notFound();
+      const files = Object.fromEntries(c.tree);
+      return treeAnswer(files, tree, (path) => blobOf(files[path]));
+    }
+    if (kind === "batch") {
+      // The batch request of readFileAt: one aliased field for each "<commit>:<path>", the file's text where that commit holds it, null where not.
+      const held = (sha, path) => COMMITS.find((x) => x.sha === sha)?.tree.get(path);
+      return json(200, batchAnswer(JSON.parse(init.body).query, { held }));
+    }
     if (rest === null) return notFound();
     if (kind === "repository") return json(200, { default_branch: "main", visibility: "public", private: false, permissions: { push: true }, archived: false, description: "" });
     if (kind === "list") {
@@ -198,7 +217,7 @@ const onGitLab = (fake, run) => using(fake.fetch, () => run(connect(GL_ADDRESS, 
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT
 // given: the history above on a GitHub repository, read with a token through the real host; UC-010 has four records and UC-011 one; and, as the known positive of the counting fake, readHistory(UC-010's file, { limit: 1 }) on a fake of its own
 // input: lastAcceptedText("UC-010", host) and lastAcceptedText("UC-011", host), each on a fake of its own
-// expect: UC-010 gives the text of its fourth record (version 4, not the version 5 the file holds now) with that record's blob and the path of the file; UC-011 gives version 1. The requests of UC-010: 1 of the repository, 2 resolving a commit (the branch, then the commit that added the record), 2 of a tree, 4 "List commits" (one for each of its four records), 0 "Get a commit" for the files of a commit, 2 of a file (the record, then the use case at the commit) — 11 in all; of UC-011: 1, 2, 2, 1 list, 0 commit files, 2 — 8 in all. Known positive: readHistory(UC-010's file, { limit: 1 }) without the option sends 1 "List commits" and 1 "Get a commit" for files, and with `changes: false` 1 and none
+// expect: UC-010 gives the text of its fourth record (version 4, not the version 5 the file holds now) with that record's blob and the path of the file; UC-011 gives version 1. The requests of UC-010: 1 of the repository, 1 resolving a commit (the branch; the commit that added the record is not resolved), 1 of a tree (the head's; the older commit's is not read), 0 of the entries of a folder, 4 "List commits" (one for each of its four records), 0 "Get a commit" for the files of a commit, 1 of a file (the record), 1 batch request (the use case at the commit that added the record), and the GraphQL request of greenToMerge beside the repository (ITM-1170; the fake counts it as a batch) — 10 in all; of UC-011: 1, 1, 1, 0 entries, 1 list, 0 commit files, 1 file, 1 batch and greenToMerge's — 7 in all. Known positive: readHistory(UC-010's file, { limit: 1 }) without the option sends 1 "List commits" and 1 "Get a commit" for files, and with `changes: false` 1 and none
 test("MOD-approvals lastAcceptedText — one answer sends no request for the changes of a commit, one list for each record (GitHub)", async () => {
   const positive = fakeGitHub();
   await onGitHub(positive, (host) => host.readHistory(UC10, { limit: 1 }));
@@ -210,21 +229,22 @@ test("MOD-approvals lastAcceptedText — one answer sends no request for the cha
   const four = fakeGitHub();
   const sent = await onGitHub(four, (host) => lastAcceptedText("UC-010", host));
   assert.deepEqual(sent, { text: V[3], blob: blobOf(V[3]), path: UC10 });
-  assert.deepEqual(four.tally(), { repository: 1, commit: 2, tree: 2, list: 4, detail: 0, file: 2, other: 0 });
-  assert.equal(four.requests.length, 11);
+  // ITM-1170: the fake counts every POST /graphql as a batch; the second is greenToMerge's, beside the repository's information.
+  assert.deepEqual(four.tally(), { repository: 1, commit: 1, tree: 1, list: 4, detail: 0, file: 1, folders: 0, batch: 2, other: 0 });
+  assert.equal(four.requests.length, 10);
 
   const one = fakeGitHub();
   const received = await onGitHub(one, (host) => lastAcceptedText("UC-011", host));
   assert.deepEqual(received, { text: W[0], blob: blobOf(W[0]), path: UC11 });
-  assert.deepEqual(one.tally(), { repository: 1, commit: 2, tree: 2, list: 1, detail: 0, file: 2, other: 0 });
-  assert.equal(one.requests.length, 8);
+  assert.deepEqual(one.tally(), { repository: 1, commit: 1, tree: 1, list: 1, detail: 0, file: 1, folders: 0, batch: 2, other: 0 });
+  assert.equal(one.requests.length, 7);
 });
 
 // TST-929002 · level: unit · module: MOD-approvals
 // guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT
 // given: the history above on a GitLab project, read with a token through the real host; UC-010 has four records and UC-011 one; and, as the known positive of the counting fake, readHistory(UC-010's file, { limit: 1 }) on a fake of its own
 // input: lastAcceptedText("UC-010", host) and lastAcceptedText("UC-011", host), each on a fake of its own
-// expect: the same texts as on GitHub. The requests of UC-010: 1 of the project, 2 resolving a commit, 2 of a tree (one page each), 4 "List repository commits", 0 diffs of a commit, 2 of a raw file — 11 in all; of UC-011: 1, 2, 2, 1, 0, 2 — 8 in all. Known positive: readHistory(UC-010's file, { limit: 1 }) without the option sends 1 list and 1 diff, and with `changes: false` 1 and none
+// expect: the same texts as on GitHub. The requests of UC-010: 1 of the project, 1 resolving a commit (the branch), 1 of a tree (the head's), 4 "List repository commits", 0 diffs of a commit, 2 of a raw file (the record, and the use case at the commit that added it, GitLab's readFileAt) — 9 in all; of UC-011: 1, 1, 1, 1, 0, 2 — 6 in all. Known positive: readHistory(UC-010's file, { limit: 1 }) without the option sends 1 list and 1 diff, and with `changes: false` 1 and none
 test("MOD-approvals lastAcceptedText — one answer sends no request for the diff of a commit, one list for each record (GitLab)", async () => {
   const positive = fakeGitLab();
   await onGitLab(positive, (host) => host.readHistory(UC10, { limit: 1 }));
@@ -236,14 +256,14 @@ test("MOD-approvals lastAcceptedText — one answer sends no request for the dif
   const four = fakeGitLab();
   const sent = await onGitLab(four, (host) => lastAcceptedText("UC-010", host));
   assert.deepEqual(sent, { text: V[3], blob: blobOf(V[3]), path: UC10 });
-  assert.deepEqual(four.tally(), { repository: 1, commit: 2, tree: 2, list: 4, detail: 0, file: 2, other: 0 });
-  assert.equal(four.requests.length, 11);
+  assert.deepEqual(four.tally(), { repository: 1, commit: 1, tree: 1, list: 4, detail: 0, file: 2, folders: 0, batch: 0, other: 0 });
+  assert.equal(four.requests.length, 9);
 
   const one = fakeGitLab();
   const received = await onGitLab(one, (host) => lastAcceptedText("UC-011", host));
   assert.deepEqual(received, { text: W[0], blob: blobOf(W[0]), path: UC11 });
-  assert.deepEqual(one.tally(), { repository: 1, commit: 2, tree: 2, list: 1, detail: 0, file: 2, other: 0 });
-  assert.equal(one.requests.length, 8);
+  assert.deepEqual(one.tally(), { repository: 1, commit: 1, tree: 1, list: 1, detail: 0, file: 2, folders: 0, batch: 0, other: 0 });
+  assert.equal(one.requests.length, 6);
 });
 
 // ---------------------------------------------------------------- a server that refuses the changes
@@ -267,4 +287,36 @@ test("MOD-approvals lastAcceptedText — a server that refuses the changes of a 
   assert.deepEqual(hub, { text: V[3], blob: blobOf(V[3]), path: UC10 }, "GitHub");
   const lab = await onGitLab(refusingGitLab(), (host) => lastAcceptedText("UC-010", host));
   assert.deepEqual(lab, { text: V[3], blob: blobOf(V[3]), path: UC10 }, "GitLab");
+});
+
+// ---------------------------------------------------------------- the older text in one request (ITM-1291)
+
+// The commit that added UC-010's newest record (the eighth), and the requests a fake was sent that name it — in their address or in their body.
+const ADDING_UC10 = COMMITS[7].sha;
+const naming = (fake, sha) => fake.requests.filter((r) => r.path.includes(sha) || Object.values(r.query).includes(sha) || r.body.includes(sha));
+
+// TST-1291101 · level: unit · module: MOD-approvals
+// guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES; A CHANGED FILE IS SHOWN AGAINST ITS LAST ACCEPTED TEXT
+// given: the history above on a GitHub repository, read with a token through the real host; UC-010's newest record was added by the eighth commit
+// input: lastAcceptedText("UC-010", host)
+// expect: the text of its fourth record (version 4) with that record's blob and the path of the file; of the requests sent, exactly one names the commit that added the record — one batch request (MOD-repository-hosts' readFileAt) asking for UC-010's file at that commit —, and none of them resolves that commit or asks for a tree or the entries of a folder at it
+test("MOD-approvals lastAcceptedText — the older text is one request, and the older commit and its tree are not read (GitHub)", async () => {
+  const fake = fakeGitHub();
+  const sent = await onGitHub(fake, (host) => lastAcceptedText("UC-010", host));
+  assert.deepEqual(sent, { text: V[3], blob: blobOf(V[3]), path: UC10 });
+  const older = naming(fake, ADDING_UC10);
+  assert.deepEqual(older.map((r) => r.kind), ["batch"], "one request names the older commit, the batch request");
+  assert.deepEqual(askedBy(JSON.parse(older[0].body).query).map(({ commit, path }) => [commit, path]), [[ADDING_UC10, UC10]], "it asks for UC-010's file at that commit");
+});
+
+// TST-1291102 · level: unit · module: MOD-approvals
+// guards: A PAGE LOAD READS THE REPOSITORY IN BATCHES
+// given: the same history and fake; known positive of TST-1291101's count
+// input: readSnapshot(the commit that added UC-010's newest record, { folders: [UC-010's file] }) and a read of UC-010 from it, called directly on the host
+// expect: that reading gives version 4, and the requests naming the older commit are counted: one that resolves the commit, one for the entries of the folder at it and one for the file at it — so that a lastAcceptedText reading the older text so would fail TST-1291101
+test("MOD-approvals lastAcceptedText — known positive: the fake counts the requests of a snapshot of the older commit (GitHub)", async () => {
+  const fake = fakeGitHub();
+  const text4 = await onGitHub(fake, async (host) => (await host.readSnapshot(ADDING_UC10, { folders: [UC10] })).read(UC10));
+  assert.equal(text4, V[3]);
+  assert.deepEqual(naming(fake, ADDING_UC10).map((r) => r.kind).sort(), ["commit", "file", "folders"]);
 });

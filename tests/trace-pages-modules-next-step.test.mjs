@@ -65,12 +65,12 @@ const links = (gap, className) => byClass(gap, "a", className).map((link) => [li
 // guards: UC-025; MODULE GAPS ARE REPORTED, NOT FORBIDDEN
 // given: the fixture product at main, with GAMMA RULE realised by no module
 // input: Route.render with the key "modules" at main
-// expect: the gap "requirement-without-module" for GAMMA RULE offers the link "Change the architecture" to #decision and no Implement
+// expect: the gap "requirement-without-module" for GAMMA RULE offers the link "Change the architecture" to #decision/product=<the product's address, encoded> and no Implement
 test("a requirement without a module offers Change the architecture, to the architecture's review pages", async () => {
   const target = await render(hostOf());
   const gap = gapOf(target, "requirement-without-module", "GAMMA RULE");
   assert.ok(gap, "known positive: the gap is listed");
-  assert.deepEqual(links(gap, "gap-change-architecture"), [["Change the architecture", "#decision"]]);
+  assert.deepEqual(links(gap, "gap-change-architecture"), [["Change the architecture", "#decision/product=https%3A%2F%2Fgithub.com%2Facme%2Flibrary"]]);
   assert.deepEqual(links(gap, "gap-implement"), []);
 });
 
@@ -92,13 +92,13 @@ test("a module without code and a module without tests offer Implement, to the i
 
 // TST-073603 · level: component · module: MOD-trace-pages
 // guards: UC-025; MODULE GAPS ARE REPORTED, NOT FORBIDDEN
-// given: the fixture product at main, whose other gaps are an import of MOD-notest that MOD-page's file does not name, a code file outside every module's folder and its folder
+// given: the fixture product at main, whose other gaps are an import of MOD-notest that MOD-page's file does not name, a code file outside every module's folder and its folder, and the two modules whose tests guard no requirement (realises-nothing)
 // input: Route.render with the key "modules" at main
 // expect: counter-proof — those gaps are listed and offer neither link; the only links on the page are those of the four gaps above
 test("the other gaps offer neither link", async () => {
   const target = await render(hostOf());
   const others = gaps(target).filter((gap) => !["requirement-without-module", "module-without-code", "module-without-test"].includes(gap.getAttribute("data-kind")));
-  assert.deepEqual(others.map((gap) => gap.getAttribute("data-kind")).sort(), ["code-without-module", "folder-named-by-no-module", "import-not-in-uses"]);
+  assert.deepEqual(others.map((gap) => gap.getAttribute("data-kind")).sort(), ["code-without-module", "folder-named-by-no-module", "import-not-in-uses", "realises-nothing", "realises-nothing"]);
   for (const gap of others) assert.deepEqual(find(gap, (node) => node.localName === "a"), [], gap.getAttribute("data-kind"));
   assert.equal(byClass(target, "a", "gap-implement").length + byClass(target, "a", "gap-change-architecture").length, 4);
 });
@@ -121,12 +121,12 @@ test("at a version that is not the default branch the gaps offer no link, and a 
 // guards: UC-025
 // given: the fixture product at main, a Host that has no write method
 // input: Route.render with the key "modules" at main, and a click on each link
-// expect: the links are anchors (the page changes by the address alone); the Host is asked nothing but reads; it has no commitFiles
+// expect: the links are anchors (the page changes by the address alone), Change the architecture to #decision/product=<the product's address, encoded> and Implement to #implement; the Host is asked nothing but reads; it has no commitFiles
 test("the links start and write nothing: they are anchors to an address", async () => {
   const productHost = hostOf();
   const target = await render(productHost);
   const anchors = [...byClass(target, "a", "gap-implement"), ...byClass(target, "a", "gap-change-architecture")];
   assert.equal(anchors.length, 4);
-  for (const anchor of anchors) assert.match(anchor.getAttribute("href"), /^#(decision|implement)$/);
+  for (const anchor of anchors) assert.match(anchor.getAttribute("href"), /^#(decision\/product=https%3A%2F%2Fgithub\.com%2Facme%2Flibrary|implement)$/);
   assert.equal(Object.hasOwn(productHost, "commitFiles"), false);
 });

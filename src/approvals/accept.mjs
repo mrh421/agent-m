@@ -17,7 +17,7 @@ import { connect } from "../repository-hosts/index.mjs";
 import { parseSpec } from "../spec-document/index.mjs";
 // The schema is loaded by index.mjs, once, and used here only when a function is called: that is after both have loaded.
 import { approvalSchema } from "./index.mjs";
-import { statuses } from "./status.mjs";
+import { statuses, reviewedFile, EMPTY_BLOB } from "./status.mjs";
 
 const SPEC_PATH = "SPEC.md";
 
@@ -58,7 +58,8 @@ export async function acceptanceBlockers(path, snapshot) {
  * names: string[] }> }> — accepts every reviewed file that was shown in one commit on the default branch of the host, on the
  * head it read, with the token the host was connected with: one record `docs/approvals/<id>-<blob12>.md` for each, naming the
  * blob that was shown. A file whose blob on that head is not the one shown — also one that is gone — gets no record and is left
- * out with the reason "changed since shown" and no name; a file with blockers (acceptanceBlockers on that head) gets none and is
+ * out with the reason "changed since shown" and no name. A shown file with the empty text's blob is a removal: it is recorded, naming the
+ * empty text's blob, while the head holds no file of its identifier, and left out as "changed since shown" when the head holds one; a file with blockers (acceptanceBlockers on that head) gets none and is
  * left out with the reason "rests on what is not accepted" and its blockers as names. `recorded` holds the paths of the files
  * that got a record, `leftOut` the others, each in the order shown. The commit's message names the accepting person and the
  * files accepted. A shown path is a reviewed file — a use case, a decision or a module file —: another file that stands on the
@@ -74,17 +75,30 @@ export async function acceptShown(host, shown, person) {
   const head = await host.readSnapshot(defaultBranch);
   const reviewed = statuses(head);
   const files = [], recorded = [], ids = [], leftOut = [];
+  const held = new Set([...reviewed.values()].map((each) => each.id));
   for (const { path, blob } of shown) {
-    if (head.blob(path) !== blob) {
-      leftOut.push({ path, reason: "changed since shown", names: [] });
-      continue;
+    let file;
+    if (blob === EMPTY_BLOB) {
+      // A removal: recorded while the head holds no file of its identifier; it names nothing, so nothing blocks it.
+      file = reviewedFile(path);
+      if (file === null) throw new TypeError(`acceptShown: ${path} is no use case, decision or module file`);
+      if (held.has(file.id)) {
+        leftOut.push({ path, reason: "changed since shown", names: [] });
+        continue;
+      }
+    } else {
+      if (head.blob(path) !== blob) {
+        leftOut.push({ path, reason: "changed since shown", names: [] });
+        continue;
+      }
+      const names = await acceptanceBlockers(path, head);
+      if (names.length > 0) {
+        leftOut.push({ path, reason: "rests on what is not accepted", names });
+        continue;
+      }
+      file = reviewed.get(path);
     }
-    const names = await acceptanceBlockers(path, head);
-    if (names.length > 0) {
-      leftOut.push({ path, reason: "rests on what is not accepted", names });
-      continue;
-    }
-    const { id, kind } = reviewed.get(path);
+    const { id, kind } = file;
     const text = writeDocument(approvalSchema, { fields: { kind, file: path, blob } });
     files.push({ path: `docs/approvals/${id}-${blob.slice(0, 12)}.md`, text });
     recorded.push(path);

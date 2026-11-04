@@ -23,10 +23,10 @@ origin:
 
 ## Outcome
 
-MOD-implementation-pages.md:158-159: "*Save plan*, which ... writes a plan made by hand with `savePlan`; *+ Step*." UC-045
+MOD-implementation-pages.md:171: "*Save plan*, which ... writes a plan made by hand with `savePlan`; *+ Step*." UC-045
 2a (UC-045.md:112-113): "They add steps with **+ Step**, each naming what it implements or integrates; the check of step 3
 runs when they press **Save plan**, and the plan is committed as their own input." `savePlan` runs `planFindings` first and
-writes nothing on an error finding (MOD-work-plans.md:179-185).
+writes nothing on an error finding (MOD-work-plans.md:215-221).
 
 ## Acceptance
 

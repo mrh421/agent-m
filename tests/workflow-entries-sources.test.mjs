@@ -112,8 +112,8 @@ const run = (f, extra) => { assert.equal(typeof runEntry, "function", "runEntry 
 const entryAt = (f, commit = "main") => readDocument(sourceSchemas().entry, "docs/sources/SRC-ai-act.md",
   git(f.origin, "show", `${commit}:docs/sources/SRC-ai-act.md`) + "\n");
 
-// TST-401001 - level: unit - module: MOD-workflow-entries
-// guards: AN EU LEGAL TEXT IS FETCHED FROM THE OFFICIAL REPOSITORY; UC-004 step 7
+// TST-401001 · level: unit · module: MOD-workflow-entries
+// guards: AN EU LEGAL TEXT IS FETCHED FROM THE OFFICIAL REPOSITORY; UC-004
 // given: an instance checkout with one EU legal-text source entry whose ## Versions table has no row, and one non-EU source entry
 // input: onSourcesCommitted with a publication fixture returning one XHTML file, date 2024-07-16 and ETag cellar-2024-07-12
 // expect: outcome done; one commit on main changes only SRC-ai-act and its fetched file; the new version row records the repository version, retrieved date and SHA-256 file table
@@ -146,8 +146,8 @@ test("onSourcesCommitted - completes one waiting EU legal text in one commit", a
   });
 });
 
-// TST-401002 - level: unit - module: MOD-workflow-entries
-// guards: PROGRESS AND JOB STATE ARE DERIVED, NOT STORED; UC-004 step 7
+// TST-401002 · level: unit · module: MOD-workflow-entries
+// guards: PROGRESS AND JOB STATE ARE DERIVED, NOT STORED; UC-004
 // given: an EU legal-text source entry that already has one version
 // input: onSourcesCommitted with a publication fixture
 // expect: outcome nothing to do; fetch is not called; no commit is made
@@ -168,8 +168,8 @@ test("onSourcesCommitted - leaves an entry with a version alone", async () => {
   });
 });
 
-// TST-401003 - level: unit - module: MOD-workflow-entries
-// guards: AN EU LEGAL TEXT IS FETCHED FROM THE OFFICIAL REPOSITORY; UC-004 step 7a
+// TST-401003 · level: unit · module: MOD-workflow-entries
+// guards: AN EU LEGAL TEXT IS FETCHED FROM THE OFFICIAL REPOSITORY; UC-004
 // given: a waiting EU legal-text entry and a publication fetch that fails
 // input: onSourcesCommitted
 // expect: outcome failed; summary names the source and the fetch failure; nothing is written

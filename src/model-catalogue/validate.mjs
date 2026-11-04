@@ -3,16 +3,16 @@
 // phase's Produces may follow a kind with an explanation in parentheses that no type of the schema language sets apart
 // from it; those that compare one part of a definition with another — the phases its transitions, verification pairs and
 // gates name; the phases reached from the first one; the roles its phases and gates name; the kinds of artifact a gate
-// checks against those its phase and the phases before it produce —; and the flow control of pulled work, a stated Time
-// box of none read, before it reaches here, as no time box.
+// checks against those its phase and the phases before it produce —; the flow control of pulled work, a stated Time
+// box of none read, before it reaches here, as no time box; and the measure of pulled work against its flow control.
 //
 // Module: MOD-model-catalogue
 //
 // It compares the parts of a definition as index.mjs reads them from a document of the model's schema, each with the line
 // it stands on — a phase's produced kinds already read with an explanation in parentheses dropped, and a Time box of none
 // already read as null. What the schema decides — a value left out where it is required, a value not of its type, a
-// measure that does not fit the kind of work, a missing declaration of planned or pulled — MOD-documents' documentFindings
-// names, and nothing here names it twice: a part that is left out is compared with nothing. Every finding is an error on
+// measure that does not fit the kind of work as planned or pulled, a missing declaration of planned or pulled —
+// MOD-documents' documentFindings names, and nothing here names it twice: a part that is left out is compared with nothing. Every finding is an error on
 // the line of the part that causes it, made with MOD-text-tools' finding.
 
 import { finding } from "../text-tools/index.mjs";
@@ -22,6 +22,11 @@ const PEOPLE_AND_AGENTS = "A PROCESS MODEL ORGANISES PEOPLE AND AGENTS";
 const WHAT_IT_CHECKS = "A GATE NAMES WHAT IT CHECKS";
 const WHO_DECIDES = "A GATE NAMES WHO DECIDES IT";
 const VALIDATED = "A MODEL DEFINITION IS VALIDATED BEFORE IT IS USED";
+const MEASURE = "PROGRESS IS SHOWN IN THE MODEL'S OWN MEASURE";
+
+// The two measures of pulled work (model.schema.md, the variants of measure).
+const PER_TIME_BOX = "remaining items per time box";
+const PER_STATE = "items per state over time";
 
 // A decider that is an automated check, whose result decides: `check: <CI check name>`.
 const CHECK = /^check:[ \t]*\S/;
@@ -45,8 +50,10 @@ const names = (text, kind) => new RegExp(`(?<![A-Za-z0-9])${escaped(kind)}(?![A-
  * - a gate that checks a kind of artifact which neither the phase it follows nor any phase before it — along the
  *   transitions that are not `back` — produces (A GATE NAMES WHAT IT CHECKS);
  * - pulled work that names neither a time box nor a work-in-progress limit, or both (A MODEL DEFINITION IS VALIDATED
- *   BEFORE IT IS USED), on the line of its ## Flow control, or on line 1 without one.
- * @param {{ artifact: string, kind: string,
+ *   BEFORE IT IS USED), on the line of its ## Flow control, or on line 1 without one;
+ * - pulled work that names no time box and measures remaining items per time box: a measure that does not fit the kind
+ *   of work, since its work has no time box (PROGRESS IS SHOWN IN THE MODEL'S OWN MEASURE), on the line of its measure.
+ * @param {{ artifact: string, kind: string, measure: string, measureLine: number,
  *   phases: Array<{ line: number, name: string, roles: string[], produces: string[] }>,
  *   transitions: Array<{ line: number, from: string, to: string, kind: string }>,
  *   pairs: Array<{ line: number, phase: string, checkedBy: string }>,
@@ -161,6 +168,10 @@ export function validate(parts, kinds) {
           : "pulled work names both a time box and a work-in-progress limit",
         wip === null ? "name under ## Flow control a WIP limit or a time box"
           : "keep the WIP limit or the time box under ## Flow control, and leave the other out with —");
+    }
+    if (parts.measure === PER_TIME_BOX && timeBox === null) {
+      add(parts.measureLine, MEASURE, `the measure ${PER_TIME_BOX} does not fit pulled work that names no time box`,
+        `name a time box under ## Flow control, or measure ${PER_STATE}`);
     }
   }
   return found;

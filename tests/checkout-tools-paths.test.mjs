@@ -30,8 +30,7 @@ function world(t) {
 // guards: UC-049
 // given: a checkout holding a.txt with "inside text"; beside the checkout a folder holding secret.txt with "outside text"
 // input: read, write, edit, grep and glob of "../outside/secret.txt" or "../outside", the same by its absolute path, and bash with workdir "../outside"
-// expect: each answer starts "refused: " and names the path as outside the checkout; secret.txt is unchanged and no file appears outside;
-//   known positive: read of "a.txt" holds "1: inside text"
+// expect: each answer starts "refused: " and names the path as outside the checkout; secret.txt is unchanged and no file appears outside; known positive: read of "a.txt" holds "1: inside text"
 test("TST-1240001: a path outside the checkout is refused by every tool", async (t) => {
   const { root, outside } = world(t);
   const context = contextOf(root);
@@ -56,8 +55,7 @@ test("TST-1240001: a path outside the checkout is refused by every tool", async 
 // guards: UC-049
 // given: the checkout of TST-1240001 with a symbolic link link.txt to ../outside/secret.txt, a link out/ to the outside folder, and a link inner.txt to a.txt
 // input: read link.txt; write out/new.txt; edit link.txt; read inner.txt
-// expect: the three through a link that leaves the checkout start "refused: " and name it outside the checkout; secret.txt is unchanged and out/new.txt
-//   is not written; known positive: inner.txt, a link that stays inside, is read with "1: inside text"
+// expect: the three through a link that leaves the checkout start "refused: " and name it outside the checkout; secret.txt is unchanged and out/new.txt is not written; known positive: inner.txt, a link that stays inside, is read with "1: inside text"
 test("TST-1240002: a symbolic link that leads out of the checkout is refused", async (t) => {
   const { root, outside } = world(t);
   symlinkSync(join(outside, "secret.txt"), join(root, "link.txt"));

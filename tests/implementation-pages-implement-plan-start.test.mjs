@@ -16,7 +16,7 @@
 //   - For each ticked step the page shows <div data-job-of="<step>"> with <select data-participant-of> (the holders of the implementing role with both capabilities), <p data-places-of> (where each processes data),
 //     <input data-limit-of> (the attempt limit), <select data-merges-of> (`agent` or `person`), <input type="checkbox" data-refactor-of> (3a), <p data-branch-of> (the target branch), <p data-gates-of> (the gates from the step's phase on,
 //     with their deciders), <div data-sent-of> (what is sent where); with no holder that can implement, <p data-none-of> beside the step's reasons, with a link to #participants (5a).
-//   - The target branch is the default branch, or the declaration's branch for the step's phase with <item> replaced by the step.
+//   - The target branch is the default branch, or the declaration's branch for the step's phase as declared (MOD-work-plans' targetBranch; ITM-1171).
 //   - Start jobs is <button data-start-jobs>; its outcome <div data-start-result>. A start record is docs/jobs/JOB-<stamp>-<4 hex>.md; `kind: refactor` when *refactoring* is ticked; the attempt limit is its `limit`; who merges is
 //     `merges` in its parameters. A route that does not answer is named and the job is not started (7a); a token that may not start workflows gives <a data-run-workflow> to the workflow's page with the job's inputs named (7b).
 // Each test states its input and its expected result before it runs (given / input / expect). The counter-proofs are recorded in the pull request.
@@ -163,11 +163,11 @@ test("for each selected step only the holders of the implementing role with both
 // guards: UC-024; WORK MERGES INTO THE DEFAULT BRANCH UNLESS A BRANCH IS SET; A PHASE OR A TIME BOX MAY HAVE A BRANCH OF ITS OWN; A GATE NAMES WHO DECIDES IT; THE PAGE NAMES WHERE IT SENDS
 // given: the same page, the declaration setting the branch test/<item> for the phase Testing
 // input: the route's render
-// expect: ITM-012 names the target branch test/ITM-012, the attempt limit, who merges (a choice) and refactoring (a tick, not ticked); the gates from its phase on with their deciders — Validation & Verification → Operation & Maintenance, decided by Reviewer —; what is sent where names dev-a and the part inputs of ITM-012
+// expect: ITM-012 names the target branch test/<item>, as the declaration writes it, the attempt limit, who merges (a choice) and refactoring (a tick, not ticked); the gates from its phase on with their deciders — Validation & Verification → Operation & Maintenance, decided by Reviewer —; what is sent where names dev-a and the part inputs of ITM-012
 test("a selected step names its target branch, the attempt limit, who merges, the gates with their deciders and what is sent where", async () => {
   const { target } = await render(productFiles());
   const job = jobOf(target, "ITM-012");
-  assert.match(text(found(job, "[data-branch-of]")[0]), /test\/ITM-012/);
+  assert.match(text(found(job, "[data-branch-of]")[0]), /Target branch: test\/<item>$/);
   assert.match(String(found(job, "[data-limit-of]")[0].getAttribute("value") ?? found(job, "[data-limit-of]")[0].value), /\d+/);
   assert.ok(found(job, "[data-merges-of]")[0], "who merges is chosen");
   assert.equal(found(job, "[data-refactor-of]")[0].getAttribute("checked"), null, "refactoring is not ticked");

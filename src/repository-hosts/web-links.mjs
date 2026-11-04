@@ -65,6 +65,8 @@ export function webLinks(address, defaultBranch = DEFAULT_BRANCH) {
       fork: `${address.web}/fork`,
       pagesSettings: `${address.web}/settings/pages`,
       pipelineSchedules: null,
+      // The repository's Settings > Branches, where a branch protection rule and its required status checks are set, and from which its rulesets are reached (RepositoryInfo's greenToMerge).
+      branchProtection: `${address.web}/settings/branches`,
     });
   }
   // A GITLAB PRODUCT USES A PROJECT ACCESS TOKEN: the project's Access tokens page, where the person creates the project access
@@ -94,5 +96,7 @@ export function webLinks(address, defaultBranch = DEFAULT_BRANCH) {
     fork: `${address.web}/-/forks/new`,
     pagesSettings: `${address.web}/-/pages`,
     pipelineSchedules: `${address.web}/-/pipeline_schedules`,
+    // The project's Settings > Merge requests, where "Pipelines must succeed" is set (RepositoryInfo's greenToMerge).
+    branchProtection: `${address.web}/-/settings/merge_requests`,
   });
 }

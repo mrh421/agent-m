@@ -22,7 +22,7 @@ origin:
 
 ## Outcome
 
-UC-020 step 5 (history) and 5d. `requirementHistory` is in MOD-spec-changes' file but not built (`src/spec-changes/index.mjs:4-5`).
+UC-020 step 5 (history) and 5d. `requirementHistory` is in MOD-spec-changes' file but not built (`src/spec-changes/index.mjs:3-4`).
 
 **The reading of 2026-10-17 (sprint team1/63): it waits for ITM-597's merge,** whose opened requirement shows the history.
 - `requirementHistory(name, host)` is stated in MOD-spec-changes' file, and its part `history.mjs` is not built.
@@ -34,7 +34,7 @@ UC-020 step 5 (history) and 5d. `requirementHistory` is in MOD-spec-changes' fil
 **Settled at sprint team1/66's start.** ITM-597 is merged, so it is selectable.
 - **The modules whose files it changes** (sprint 65's agreement):
   - MOD-spec-changes: a new `src/spec-changes/history.mjs`, the part its file names; `index.mjs`'s export; and the
-    "not built yet" lines of `index.mjs:4-5` and `queues.mjs:19`.
+    "not built yet" lines of `index.mjs:3-4` and `queues.mjs:21`.
   - MOD-trace-pages: `flow.mjs`, the opened requirement's history.
   - No topic is added, so MOD-site-frame is not changed. UC-020's folded "why a requirement has a history of approvals"
     is ITM-602's.
@@ -70,10 +70,10 @@ UC-020 step 5 (history) and 5d. `requirementHistory` is in MOD-spec-changes' fil
 - Its tests in `tests/trace-pages-specification.test.mjs` guard `A REQUIREMENT SHOWS ITS HISTORY` by name (queue `2026-10-17c`).
 - The first commit holds only the tests, and CI is red on it. No stub is committed.
 
-**At its gate on #697 (`docs/gates/20261017-0634-development-release-testing-3c18.md`): it waits for ITM-652.**
-- The history cost 380 requests per first opening of a requirement on this repository, 286 of them API calls on the
-  person's token. Without a token it cannot load.
-- ITM-652 gives MOD-repository-hosts `readFileAt` and `readHistory(…, { changes: false })`, after akmaier accepts their
-  draft.
-- `requirementHistory` then reads `SPEC.md`'s commits in one request per page, and their texts in batches. MOD-spec-changes'
-  Uses gain `readFileAt` in the same draft.
+**At its gate on #697 (`docs/gates/20261017-0634-development-release-testing-3c18.md`)** the history cost 380 requests
+per first opening of a requirement on this repository, 286 of them API calls on the person's token; without a token it
+could not load. Pull request #697 is still open.
+- ITM-652 is merged (#1042): MOD-repository-hosts gives `readFileAt` (`src/repository-hosts/index.mjs:182`) and
+  `readHistory(…, { changes: false })` (`src/repository-hosts/github.mjs:314-315`).
+- MOD-spec-changes' Uses name `readFileAt` (`docs/architecture/MOD-spec-changes.md:16`, `:266`). So `requirementHistory`
+  reads `SPEC.md`'s commits in one request per page, and their texts in batches.

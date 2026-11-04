@@ -12,7 +12,7 @@ hand-over the participant proposes, followed without a further click), the `need
 and `foundCount` (each needle: where, and in how many places, it was found among every commit message, every file of every commit and every
 job record), `conversationFiles` (how many records lie under docs/conversations/ in each repository), `conversationPaths` (whether every
 record's path has the form docs/conversations/<yyyymmdd>-<hhmm>-<4 hex>.md), `jobRecords`, `workflowStarts`, `recorded` (each needle: whether
-the conversation records of that repository hold it), `commits` and `strayRequests` (requests to anything but the fake endpoint).
+the conversation records of that repository hold it), `commits` and `strayRequests` (requests to anything but the fake endpoint and the fake Bridge lab-pc).
 
 ## A CONVERSATION IS WRITTEN TO A REPOSITORY ONLY WHEN RECORDING IS ON
 
@@ -20,7 +20,7 @@ the conversation records of that repository hold it), `commits` and `strayReques
 
 ```json
 {
-  "given": "The instance does not record conversations. On a page of the product the person asks tooler (a model endpoint that can use tools), which reads SPEC.md, then asks for a change of the notes and saves the edit, then asks it to run the tests; the answer proposes handing the task to GitHub Actions, which goes on without a further click.",
+  "given": "The instance does not record conversations. On a page of the product the person asks tooler (an endpoint of this browser whose last test found that it uses tools), which reads SPEC.md, then asks for a change of the notes and saves the edit, then asks handy (an endpoint of this browser, called through the Bridge lab-pc, that names the CI secret KEY_A) to run the tests; the answer proposes handing the task to GitHub Actions, which goes on without a further click.",
   "input": {
     "recording": false,
     "page": "product",
@@ -70,7 +70,7 @@ the conversation records of that repository hold it), `commits` and `strayReques
       },
       {
         "send": "NEEDLE-THREE run the tests of the notes",
-        "to": "tooler"
+        "to": "handy"
       },
       {
         "handOver": true
@@ -159,7 +159,7 @@ the conversation records of that repository hold it), `commits` and `strayReques
       },
       {
         "send": "NEEDLE-THREE run the tests of the notes",
-        "to": "tooler"
+        "to": "handy"
       },
       {
         "handOver": true

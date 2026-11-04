@@ -9,6 +9,7 @@
 import { renderArtifact, showDifference } from "../markdown-render/index.mjs";
 import { explain } from "../site-frame/index.mjs";
 import { storedGraph, architectureImpact } from "../trace-graph/index.mjs";
+import { asOfLine } from "./common.mjs";
 
 function el(name, className, ...children) {
   const node = document.createElement(name);
@@ -25,9 +26,14 @@ export function splitDueDiligence(body) {
   return { rest: body.slice(0, found.index) + body.slice(found.index + found[0].length), section: found[1] };
 }
 
-// The due-diligence section as drawn on the review page: the candidates side by side in the table the decision holds.
+// The due-diligence section as drawn on the review page: the candidates side by side in the table the decision holds, with the folded explanation of a due
+// diligence; below the table, while a row's column of compatibility says other than `yes` (MOD-reuse-facts) — a licence missing, unknown or restrictive
+// (UC-022 7c) —, the folded explanation of what a licence permits, once. The rows themselves stay as the table holds them.
+const COMPATIBLE_COLUMN = /^Compatible/;
 export function dueDiligenceSection(section) {
-  return el("section", "due-diligence", el("h4", null, "Due diligence"), renderArtifact(section));
+  const table = renderArtifact(section);
+  const undecided = [...table.getElementsByTagName("td")].some((cell) => COMPATIBLE_COLUMN.test(cell.getAttribute("data-label") ?? "") && cell.textContent.trim() !== "yes");
+  return el("section", "due-diligence", el("h4", null, "Due diligence"), explain("due-diligence"), table, ...(undecided ? [explain("licence-permits")] : []));
 }
 
 // The text of a section of a report, under its heading `## <heading>`, or null where the report has none.
@@ -94,8 +100,9 @@ export function roundsSection(rounds, stopped = null) {
 }
 
 // A SPEC change entry's sections, drawn from its view as MOD-spec-changes gives it: the section that holds now, the proposal, their difference, the
-// rationale, the impact list, the other open proposals on the same section — [{ id, state }] — and the queue's order — [{ number, anchor, state }].
-export function entrySections(view, others, order, hrefOf) {
+// rationale, the impact list, the other open proposals on the same section — [{ id, state }], with the line As of while they are of the earlier commit `asOf` — and the queue's
+// order — [{ number, anchor, state }].
+export function entrySections(view, others, order, hrefOf, asOf = null) {
   const impact = el("ul", "impact");
   for (const each of view.impact) impact.append(el("li", null, `${each.name} — ${each.change}${each.referencedBy.length ? `, named by ${each.referencedBy.join(", ")}` : ""}`));
   const otherList = el("ul", "others");
@@ -112,7 +119,7 @@ export function entrySections(view, others, order, hrefOf) {
     el("section", "difference", el("h3", null, "Difference"), showDifference(view.current?.text ?? "", view.proposal.text)),
     el("section", "rationale", el("h3", null, "Why"), renderArtifact(view.rationale)),
     el("section", "impact-list", el("h3", null, "Impact list"), impact),
-    el("section", "others-list", el("h3", null, "Other open proposals on this section"), otherList),
+    el("section", "others-list", el("h3", null, "Other open proposals on this section"), ...[asOfLine(asOf)].filter(Boolean), otherList),
     el("section", "queue-order", el("h3", null, "The queue's order"), orderList),
   ];
 }
@@ -139,24 +146,51 @@ export function impactSection(impact, graph) {
     modules.append(item);
   }
   if (impact.modules.length === 0) modules.append(el("li", null, "none — no module follows this decision"));
-  return el("section", "change-impact", el("h3", null, "Impact of this change"),
+  const section = el("section", "change-impact", el("h3", null, "Impact of this change"),
     el("p", "small", el("strong", null, "Affected modules")), modules,
     ...(graph === null ? [el("p", "small code-files", `Code files — ${impact.codeFiles.length ? list(impact.codeFiles) : "no code yet"}`), el("p", "small tests", `Tests — ${testsLine(impact.tests)}`)] : []),
     el("p", "small", el("strong", null, "Requirements and use cases"), ` — newly named: ${list(impact.named.added)} · no longer named: ${list(impact.named.removed)}`),
     el("p", "small", el("strong", null, "Items"), ` — ${list(impact.items)}`));
+  section.setAttribute("tabindex", "0"); // the box scrolls (look.css), so a keyboard must reach it
+  return section;
 }
 
 // The impact list of a change to an accepted decision or module (AN ARCHITECTURE CHANGE IS NOT ACCEPTED WITHOUT AN IMPACT LIST), from the graph of the
-// snapshot shown, the text accepted last and the text shown: { shown } the section to show, or { problem } a paragraph saying why it could not be
-// derived, in which case the change is not offered for acceptance. graphOf() gives the graph, built once for a page.
+// snapshot shown, the text accepted last and the text shown — null for a removed file: { shown } the section to show, or { problem } a paragraph
+// saying why it could not be derived, in which case the change is not offered for acceptance. graphOf() gives the graph, built once for a page. A
+// removed module has no node in the graph, so its folder is not the graph's: the code files and tests of a removal stand in one line each, as for a
+// stored list. `impact` is the ArchitectureImpact shown.
 export async function changeImpact(file, last, body, graphOf) {
   try {
     const graph = await graphOf();
-    const shown = impactSection(architectureImpact(graph, [{ path: file.path, before: last.text, after: body }]), graph);
+    const impact = architectureImpact(graph, [{ path: file.path, before: last.text, after: body }]);
+    const shown = impactSection(impact, body === null ? null : graph);
     shown.append(explain("impact-of-a-change"));
-    return { shown };
+    return { shown, impact };
   } catch (failure) {
     return { problem: el("p", "problem", `The impact list could not be derived: ${failure.message} — without it, this change cannot be accepted.`) };
   }
 }
 export const graphOnce = (snapshot) => { let graph = null; return () => (graph ??= storedGraph(snapshot, snapshot.commit)); };
+
+// After an acceptance (UC-023 step 6): the modules of the impact lists the page showed for the files the acceptance recorded, in their order, each with the plan steps and
+// backlog items of those lists that name it in the graph of the commit shown — an item names a module, as in the impact list, by its `changes` edge. graphOf() gives that
+// graph (graphOnce). Nothing where no list was shown for a recorded file or the lists name no module; a paragraph saying why where the graph cannot be read.
+export async function affectedModules(impacts, graphOf) {
+  const modules = [...new Set(impacts.flatMap((impact) => impact.modules.map((each) => each.id)))];
+  if (modules.length === 0) return [];
+  const items = [...new Set(impacts.flatMap((impact) => impact.items))];
+  try {
+    const graph = await graphOf();
+    const list = el("ul", "names");
+    for (const id of modules) {
+      const naming = items.filter((each) => graph.edges.some((edge) => edge.via === "changes" && edge.from === each && edge.to === id));
+      const entry = el("li", "module", `${id} — ${naming.length ? naming.join(", ") : "—"}`);
+      entry.setAttribute("data-id", id);
+      list.append(entry);
+    }
+    return [el("section", "affected-modules", el("h3", null, "Affected modules"), list)];
+  } catch (failure) {
+    return [el("p", "problem", `The affected modules cannot be listed: ${failure.message}`)];
+  }
+}

@@ -11,7 +11,7 @@ import { parseSpec } from "../spec-document/index.mjs";
 import { graphFindings, storedGraph } from "../trace-graph/index.mjs";
 import { finding } from "../text-tools/index.mjs";
 import { runOnTab } from "../runtimes/index.mjs";
-import { button, el, link, openEditor, openGithubEditor, parseServer, tokenStep } from "./common.mjs";
+import { arrangeLink, button, el, link, openEditor, openGithubEditor, parseServer, tokenStep } from "./common.mjs";
 import { byClassChecked, connectionsOf, loadStage, participantList, preparedRun } from "./jobs.mjs";
 
 const SCHEMA = { "use-case": "useCase", "architecture-decision": "decision", module: "module" };
@@ -130,7 +130,8 @@ export async function showFileEdit(where, kind, file) {
     target.append(el("p", "problem", `No ${kind.noun} ${file.id} on the default branch.`));
     return;
   }
-  target.append(el("h2", null, `Edit ${file.id}`), explain(kind.explain.edit ?? kind.explain.one));
+  // The editor changes text only, never a group: moving the file to another group is the arrangement's (UC-018 3e).
+  target.append(el("h2", null, `Edit ${file.id}`), explain(kind.explain.edit ?? kind.explain.one), arrangeLink(context, kind));
   if (!token && parseServer(context) === "gitlab") {
     target.append(renderArtifact(body), el("p", "problem", "A GitLab product is written with the project's own token. ",
       tokenStep(context)));
@@ -140,7 +141,8 @@ export async function showFileEdit(where, kind, file) {
   const schema = schemaOf(kind);
   const spec = await snapshot.read("SPEC.md");
   const requirements = spec === null ? new Set() : new Set(parseSpec(spec).requirements.keys());
-  const openedBlob = snapshot.blob(file.path);
+  // The blob the next save is compared with: the one opened, and after a refusal the newer one shown beside the edit (UC-018 5a).
+  let openedBlob = snapshot.blob(file.path);
   const saved = el("div", "saved");
   const editorBox = el("div", "editor-box");
   target.append(editorBox, saved);
@@ -178,7 +180,10 @@ export async function showFileEdit(where, kind, file) {
     }
     try {
       const outcome = await saveFile(host, { path: file.path, text, openedBlob, openedId: file.id });
-      if (outcome.refused === "changed meanwhile") return { kind: "refused", newer: outcome.current ?? "" };
+      if (outcome.refused === "changed meanwhile") {
+        openedBlob = outcome.currentBlob;
+        return { kind: "refused", newer: outcome.current ?? "" };
+      }
       if (outcome.refused === "identifier changed") {
         return { kind: "failed", reason: `the identifier changed from ${outcome.openedId} to ${outcome.nowId ?? "none"}; keep ${outcome.openedId}.` };
       }

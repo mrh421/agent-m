@@ -89,7 +89,7 @@ test("TST-487005: OpenAI empty call list preserves zero and unknown usage separa
     text: "Only text.", calls: [], usage: { inputTokens: 0, outputTokens: null, minutes: null, cost: null },
   });
   assert.equal(calls.length, 1);
-  assert.deepEqual(JSON.parse(calls[0].body), { model: "fixture-model", messages: [{ role: "user", content: "Finish." }] });
+  assert.deepEqual(JSON.parse(calls[0].body), { model: "fixture-model", messages: [{ role: "user", content: "Finish." }], stream: false });
 });
 
 // TST-487006 · level: unit · module: MOD-endpoint-calls
@@ -139,16 +139,14 @@ async function failureCase(t, provider) {
 // guards: UC-049; AN UNSUPPORTED ENDPOINT SAYS SO
 // given: one successful OpenAI exchange followed by constructed key, length, rate, provider and network failures, each answer with retry-after-ms 0
 // input: the same public exchange for each refusal
-// expect: EndpointFailed with the exact diagnosis/message; one request for a refused key and for a too-long input; six — the request and five retries — for a
-//   rate limit, a provider error and a network error
+// expect: EndpointFailed with the exact diagnosis/message; one request for a refused key and for a too-long input; six — the request and five retries — for a rate limit, a provider error and a network error
 test("TST-487007: OpenAI exchange failures preserve their diagnosis, retried only where opencode retries", async (t) => failureCase(t, "openai"));
 
 // TST-487008 · level: unit · module: MOD-endpoint-calls
 // guards: UC-049; AN UNSUPPORTED ENDPOINT SAYS SO
 // given: one successful Anthropic exchange followed by constructed key, length, rate, provider and network failures, each answer with retry-after-ms 0
 // input: the same public exchange for each refusal
-// expect: EndpointFailed with the exact diagnosis/message; one request for a refused key and for a too-long input; six — the request and five retries — for a
-//   rate limit, a provider error and a network error
+// expect: EndpointFailed with the exact diagnosis/message; one request for a refused key and for a too-long input; six — the request and five retries — for a rate limit, a provider error and a network error
 test("TST-487008: Anthropic exchange failures preserve their diagnosis, retried only where opencode retries", async (t) => failureCase(t, "anthropic"));
 
 async function probeCase(t, provider, mode) {

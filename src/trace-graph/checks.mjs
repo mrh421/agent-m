@@ -17,6 +17,7 @@ const REALISES = "A USE CASE REALISES NAMED REQUIREMENTS";
 const ORIGIN = "EVERY ARTIFACT NAMES ITS ORIGIN";
 const INTERFACES = "DEVELOP AGAINST INTERFACES";
 const CYCLE = "MODULES DEPEND ON EACH OTHER WITHOUT A CYCLE";
+const NAME = "THE NAME IS THE ID AND IT SURVIVES";
 const SUBSYSTEM = "A MODULE BELONGS TO ONE SUBSYSTEM";
 const WHOLE = "ONE DECISION STATES THE WHOLE ARCHITECTURE";
 const CHANGES = "A BACKLOG ITEM NAMES THE MODULES IT CHANGES";
@@ -91,6 +92,29 @@ function cycles(graph) {
     members.forEach((member) => reported.add(member));
     found.push(error(id, uses.get(id).find((use) => members.includes(use.to)).line, CYCLE,
       `the uses of ${members.join(", ")} form a cycle`, "remove a use, or move what they share into a module of its own"));
+  }
+  return found;
+}
+
+// A test identifier declared at more than one place: the places are the path and line of its node and of its `guards` and
+// `exercises` edges, each the place of the declaration it was read from, once each. With two or more, an error at each place, the
+// path as its artifact, naming the other places by path and line.
+function repeatedTests(graph) {
+  const places = new Map();
+  for (const test of nodesOf(graph, "TST")) places.set(test.id, new Set([`${test.path}:${test.line}`]));
+  for (const edge of graph.edges) {
+    if ((edge.via === "guards" || edge.via === "exercises") && places.has(edge.from)) places.get(edge.from).add(`${edge.path}:${edge.line}`);
+  }
+  const found = [];
+  for (const [id, own] of places) {
+    if (own.size < 2) continue;
+    const all = [...own].map((place) => ({ place, path: place.slice(0, place.lastIndexOf(":")), line: Number(place.slice(place.lastIndexOf(":") + 1)) }))
+      .sort((a, b) => byText(a.path, b.path) || a.line - b.line);
+    for (const { place, path, line } of all) {
+      const others = all.filter((other) => other.place !== place).map((other) => other.place);
+      found.push(error(path, line, NAME, `${id} is declared here and also at ${others.join(", ")}`,
+        "give this test an identifier of its own, one that no other test holds or held"));
+    }
   }
   return found;
 }
@@ -200,7 +224,7 @@ function imports(graph) {
 // graphFindings(graph: Graph) -> Finding[] — the checks across artifacts, each decided from the graph alone, one after the other,
 // and last the graph's positions, the warnings of references by position, as they stand in the graph.
 export function graphFindings(graph) {
-  return [...names(graph), ...interfaces(graph), ...cycles(graph), ...subsystems(graph), ...wholeArchitecture(graph),
+  return [...names(graph), ...interfaces(graph), ...cycles(graph), ...repeatedTests(graph), ...subsystems(graph), ...wholeArchitecture(graph),
     ...changedModules(graph), ...planSteps(graph), ...folders(graph), ...imports(graph), ...graph.positions];
 }
 
